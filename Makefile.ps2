@@ -1,5 +1,5 @@
 TARGET := retroarch_ps2
-TARGET_RELEASE = retroarchps2.elf
+TARGET_RELEASE = retroarch.elf
 
 BUILD_FOR_PCSX2    = 0
 DEBUG              = 0
