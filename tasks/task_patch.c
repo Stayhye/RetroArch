@@ -128,12 +128,6 @@ static uint64_t bps_decode(struct bps_data *bps)
    return data;
 }
 
-static void bps_write(struct bps_data *bps, uint8_t data)
-{
-   bps->target_data[bps->output_offset++] = data;
-   bps->target_checksum = ~(encoding_crc32(~bps->target_checksum, &data, 1));
-}
-
 static enum patch_error bps_apply_patch(
       const uint8_t *modify_data, uint64_t modify_length,
       const uint8_t *source_data, uint64_t source_length,
@@ -199,21 +193,29 @@ static enum patch_error bps_apply_patch(
 
    while (bps.modify_offset < bps.modify_length - 12)
    {
-      size_t length = bps_decode(&bps);
-      unsigned mode = length & 3;
+      size_t _len   = bps_decode(&bps);
+      unsigned mode = _len & 3;
 
-      length = (length >> 2) + 1;
+      _len          = (_len >> 2) + 1;
 
       switch (mode)
       {
          case SOURCE_READ:
-            while (length--)
-               bps_write(&bps, bps.source_data[bps.output_offset]);
+            while (_len--)
+            {
+               uint8_t data = bps.source_data[bps.output_offset];
+               bps.target_data[bps.output_offset++] = data;
+               bps.target_checksum = ~(encoding_crc32(~bps.target_checksum, &data, 1));
+            }
             break;
 
          case TARGET_READ:
-            while (length--)
-               bps_write(&bps, bps_read(&bps));
+            while (_len--)
+            {
+               uint8_t data = bps_read(&bps);
+               bps.target_data[bps.output_offset++] = data;
+               bps.target_checksum = ~(encoding_crc32(~bps.target_checksum, &data, 1));
+            }
             break;
 
          case SOURCE_COPY:
@@ -230,14 +232,22 @@ static enum patch_error bps_apply_patch(
             if (mode == SOURCE_COPY)
             {
                bps.source_offset += offset;
-               while (length--)
-                  bps_write(&bps, bps.source_data[bps.source_offset++]);
+               while (_len--)
+               {
+                  uint8_t data = bps.source_data[bps.source_offset++];
+                  bps.target_data[bps.output_offset++] = data;
+                  bps.target_checksum = ~(encoding_crc32(~bps.target_checksum, &data, 1));
+               }
             }
             else
             {
                bps.target_offset += offset;
-               while (length--)
-                  bps_write(&bps, bps.target_data[bps.target_offset++]);
+               while (_len--)
+               {
+                  uint8_t data = bps.target_data[bps.target_offset++];
+                  bps.target_data[bps.output_offset++] = data;
+                  bps.target_checksum = ~(encoding_crc32(~bps.target_checksum, &data, 1));
+               }
                break;
             }
             break;
@@ -688,7 +698,7 @@ static enum patch_error xdelta_apply_patch(
       }
    } while (stream.avail_in);
 
-   *targetdata = malloc(*targetlength);
+   *targetdata = (uint8_t*)malloc(*targetlength);
    switch (ret = xd3_decode_memory(
            patchdata, patchlen,
            sourcedata, sourcelength,
@@ -739,15 +749,12 @@ static bool apply_patch_content(uint8_t **buf,
       /* Show an OSD message */
       if (show_notification)
       {
+         char msg[128];
          const char *patch_filename = path_basename_nocompression(patch_path);
-         char msg[256];
-
-         msg[0] = '\0';
-
-         snprintf(msg, sizeof(msg), msg_hash_to_str(MSG_APPLYING_PATCH),
+         size_t _len = snprintf(msg, sizeof(msg), msg_hash_to_str(MSG_APPLYING_PATCH),
                patch_filename ? patch_filename :
                      msg_hash_to_str(MENU_ENUM_LABEL_VALUE_UNKNOWN));
-         runloop_msg_queue_push(msg, 1, 180, false, NULL,
+         runloop_msg_queue_push(msg, _len, 1, 180, false, NULL,
                MESSAGE_QUEUE_ICON_DEFAULT, MESSAGE_QUEUE_CATEGORY_INFO);
       }
    }

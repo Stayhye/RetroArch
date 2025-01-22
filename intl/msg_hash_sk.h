@@ -1850,6 +1850,10 @@ MSG_HASH(
    "Celočíselné škálovanie"
    )
 MSG_HASH(
+   MENU_ENUM_LABEL_VALUE_VIDEO_SCALE_INTEGER_SCALING_SMART,
+   "Inteligentné"
+   )
+MSG_HASH(
    MENU_ENUM_LABEL_VALUE_VIDEO_ASPECT_RATIO_INDEX,
    "Pomer strán"
    )
@@ -1887,6 +1891,8 @@ MSG_HASH(
    MENU_ENUM_LABEL_VALUE_VIDEO_VIEWPORT_CUSTOM_Y,
    "Vlastný pomer strán (pozícia Y)"
    )
+#if defined(RARCH_MOBILE)
+#endif
 MSG_HASH(
    MENU_ENUM_LABEL_VALUE_VIDEO_VIEWPORT_CUSTOM_WIDTH,
    "Vlastný pomer strán (šírka)"
@@ -1936,10 +1942,6 @@ MSG_HASH(
 MSG_HASH(
    MENU_ENUM_LABEL_VALUE_VIDEO_ADAPTIVE_VSYNC,
    "Adaptívny VSync"
-   )
-MSG_HASH(
-   MENU_ENUM_LABEL_VALUE_VIDEO_FRAME_DELAY,
-   "Trvanie snímky (ms)"
    )
 MSG_HASH(
    MENU_ENUM_LABEL_VALUE_VIDEO_FRAME_DELAY_AUTO,
@@ -2105,10 +2107,6 @@ MSG_HASH(
    MENU_ENUM_LABEL_VALUE_AUDIO_LATENCY,
    "Oneskorenie zvuku (ms)"
    )
-MSG_HASH(
-   MENU_ENUM_SUBLABEL_AUDIO_LATENCY,
-   "Požadované oneskorenie zvuku v milisekundách. Nemusí byť dodržaná, ak zvukový ovládač nedokáže danú latenciu dosiahnuť."
-   )
 
 #ifdef HAVE_MICROPHONE
 /* Settings > Audio > Input */
@@ -2268,18 +2266,6 @@ MSG_HASH(
 MSG_HASH(
    MENU_ENUM_SUBLABEL_MIXER_ACTION_VOLUME,
    "Nastavuje hlasitosť audio streamu."
-   )
-MSG_HASH(
-   MENU_ENUM_LABEL_VALUE_AUDIO_STREAM_STATE_NONE,
-   "Stav : N/A"
-   )
-MSG_HASH(
-   MENU_ENUM_LABEL_VALUE_AUDIO_STREAM_STATE_STOPPED,
-   "Stav : Zastavené"
-   )
-MSG_HASH(
-   MENU_ENUM_LABEL_VALUE_AUDIO_STREAM_STATE_PLAYING,
-   "Stav : Hrá sa"
    )
 
 /* Settings > Audio > Menu Sounds */
@@ -2828,6 +2814,8 @@ MSG_HASH(
 
 /* Settings > Latency */
 
+#if !(defined(HAVE_DYNAMIC) || defined(HAVE_DYLIB))
+#endif
 
 /* Settings > Core */
 
@@ -3566,8 +3554,6 @@ MSG_HASH(
    MENU_ENUM_SUBLABEL_QUICK_MENU_SHOW_ADD_TO_FAVORITES,
    "Zobraziť voľbu 'Pridať do obľúbených'."
    )
-
-
 MSG_HASH(
    MENU_ENUM_LABEL_VALUE_QUICK_MENU_SHOW_SET_CORE_ASSOCIATION,
    "Zobraziť 'Nastaviť asociáciu jadra'"
@@ -4033,7 +4019,7 @@ MSG_HASH(
    MENU_ENUM_LABEL_VALUE_PLAYLIST_PORTABLE_PATHS,
    "Prenosné hracie zoznamy"
    )
-   MSG_HASH(
+MSG_HASH(
    MENU_ENUM_LABEL_VALUE_MANAGE,
    "Spravovať"
    )
@@ -4948,14 +4934,6 @@ MSG_HASH(
 MSG_HASH(
    MENU_ENUM_LABEL_VALUE_AI_SERVICE_SPEECH_MODE,
    "Režim reči"
-   )
-MSG_HASH(
-   MENU_ENUM_LABEL_VALUE_AI_SERVICE_TEXT_POSITION_BOTTOM,
-   "Dole"
-   )
-MSG_HASH(
-   MENU_ENUM_LABEL_VALUE_AI_SERVICE_TEXT_POSITION_TOP,
-   "Hore"
    )
 MSG_HASH(
    MENU_ENUM_LABEL_VALUE_PLAYLIST_ENTRY_REMOVE_ENABLE_HIST_FAV,
@@ -6945,4 +6923,11 @@ MSG_HASH(
    MENU_ENUM_LABEL_VALUE_QT_SCAN_FINISHED,
    "Skenovanie je dokončené.<br><br>\nAk chcete, aby bol obsah správne naskenovaný, musíte:\n<ul><li>mať už stiahnuté kompatibilné jadro</li>\n<li>mať aktualizované „Informačné súbory o jadre“ cez Online Updater</li>\n<li>aktualizovať \"Databázy\" cez Online Updater</li>\n<li>reštartovať RetroArch, ak ste práve vykonali čokoľvek z vyššie uvedeného</li></ul>\nNakoniec, obsah sa musí zhodovať s existujúcimi databázami z <a href=\"https://docs.libretro.com/guides/roms-playlists-thumbnails/#sources\">nachádyajúcimi sa tu</a>. Ak to stále nefunguje, <a href=\"https://www.github.com/libretro/RetroArch/issues\">odošlite hlásenie o chybe</a>."
    )
+#endif
+#ifdef HAVE_GAME_AI
+
+
+
+
+
 #endif

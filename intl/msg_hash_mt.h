@@ -91,6 +91,8 @@
 
 #if defined(DINGUX)
 #endif
+#if defined(RARCH_MOBILE)
+#endif
 
 /* Settings > Video > HDR */
 
@@ -156,6 +158,8 @@
 
 /* Settings > Latency */
 
+#if !(defined(HAVE_DYNAMIC) || defined(HAVE_DYLIB))
+#endif
 
 /* Settings > Core */
 
@@ -231,8 +235,6 @@
 /* Settings > User Interface > Menu Item Visibility > Quick Menu */
 
 
-
-
 /* Settings > User Interface > Views > Settings */
 
 
@@ -265,7 +267,7 @@
 
 /* Settings > Playlists */
 
-   
+
 /* Settings > Playlists > Playlist Management */
 
 
@@ -461,4 +463,11 @@
 #ifdef _3DS
 #endif
 #ifdef HAVE_QT
+#endif
+#ifdef HAVE_GAME_AI
+
+
+
+
+
 #endif

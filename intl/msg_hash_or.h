@@ -383,6 +383,8 @@ MSG_HASH(
 
 #if defined(DINGUX)
 #endif
+#if defined(RARCH_MOBILE)
+#endif
 
 /* Settings > Video > HDR */
 
@@ -452,6 +454,8 @@ MSG_HASH(
 
 /* Settings > Latency */
 
+#if !(defined(HAVE_DYNAMIC) || defined(HAVE_DYLIB))
+#endif
 
 /* Settings > Core */
 
@@ -531,8 +535,6 @@ MSG_HASH(
 /* Settings > User Interface > Menu Item Visibility > Quick Menu */
 
 
-
-
 /* Settings > User Interface > Views > Settings */
 
 
@@ -569,7 +571,7 @@ MSG_HASH(
    MENU_ENUM_LABEL_VALUE_HISTORY_LIST_ENABLE,
    "ଇତିଵୃତ୍ତି"
    )
-   
+
 /* Settings > Playlists > Playlist Management */
 
 
@@ -873,4 +875,11 @@ MSG_HASH(
 #ifdef _3DS
 #endif
 #ifdef HAVE_QT
+#endif
+#ifdef HAVE_GAME_AI
+
+
+
+
+
 #endif

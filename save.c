@@ -29,19 +29,19 @@
 #include <time/rtime.h>
 
 #ifdef HAVE_CONFIG_H
-#include "../config.h"
+#include "config.h"
 #endif
 
-#include "../content.h"
-#include "../core.h"
-#include "../core_info.h"
-#include "../file_path_special.h"
-#include "../configuration.h"
-#include "../msg_hash.h"
-#include "../runloop.h"
-#include "../verbosity.h"
+#include "content.h"
+#include "core.h"
+#include "core_info.h"
+#include "file_path_special.h"
+#include "configuration.h"
+#include "msg_hash.h"
+#include "runloop.h"
+#include "verbosity.h"
 #ifdef HAVE_CHEATS
-#include "../cheat_manager.h"
+#include "cheat_manager.h"
 #endif
 
 struct ram_type
@@ -152,7 +152,7 @@ static void autosave_thread(void *data)
  * autosave_new:
  * @path            : path to autosave file
  * @data            : pointer to buffer
- * @size            : size of @data buffer
+ * @len             : size of @data buffer
  * @interval        : interval at which saves should be performed.
  *
  * Create and initialize autosave object.
@@ -161,7 +161,7 @@ static void autosave_thread(void *data)
  * NULL.
  **/
 static autosave_t *autosave_new(const char *path,
-      const void *data, size_t size,
+      const void *data, size_t len,
       unsigned interval, bool compress)
 {
    void       *buf               = NULL;
@@ -170,14 +170,14 @@ static autosave_t *autosave_new(const char *path,
       return NULL;
 
    handle->flags                 = 0;
-   handle->bufsize               = size;
+   handle->bufsize               = len;
    handle->interval              = interval;
    if (compress)
       handle->flags             |= AUTOSAVE_FLAG_COMPRESS_FILES;
    handle->retro_buffer          = data;
    handle->path                  = path;
 
-   if (!(buf = malloc(size)))
+   if (!(buf = malloc(len)))
    {
       free(handle);
       return NULL;
@@ -407,7 +407,7 @@ static bool content_load_ram_file(unsigned slot)
  * Attempt to save valuable RAM data somewhere.
  **/
 static bool dump_to_file_desperate(const void *data,
-      size_t size, unsigned type)
+      size_t len, unsigned type)
 {
    char path[PATH_MAX_LENGTH + 256 + 32];
    path            [0]    = '\0';
@@ -418,19 +418,12 @@ static bool dump_to_file_desperate(const void *data,
       size_t _len;
       time_t time_;
       struct tm tm_;
-      char timebuf[256];
-      timebuf         [0] = '\0';
       time(&time_);
-
       rtime_localtime(&time_, &tm_);
-
-      strftime(timebuf, 256 * sizeof(char),
+      _len  = strlcat(path, "/RetroArch-recovery-", sizeof(path));
+      _len += snprintf(path + _len, sizeof(path) - _len, "%u", type);
+      strftime(path + _len, sizeof(path) - _len,
             "%Y-%m-%d-%H-%M-%S", &tm_);
-
-      _len = strlcat(path, "/RetroArch-recovery-", sizeof(path));
-
-      snprintf(path + _len, sizeof(path) - _len,
-            "%u%s", type, timebuf);
 
       /* Fallback (emergency) saves are always
        * uncompressed
@@ -441,7 +434,7 @@ static bool dump_to_file_desperate(const void *data,
        * > In this case, we don't want to further
        *   complicate matters by introducing zlib
        *   compression overheads */
-      if (filestream_write_file(path, data, size))
+      if (filestream_write_file(path, data, len))
       {
          RARCH_WARN("[SRAM]: Succeeded in saving RAM data to \"%s\".\n", path);
          return true;
@@ -529,9 +522,7 @@ bool event_save_files(bool is_sram_used)
       return false;
 
    for (i = 0; i < task_save_files->size; i++)
-   {
       content_save_ram_file(i, compress_files);
-   }
 
    return true;
 }

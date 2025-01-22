@@ -21,6 +21,8 @@
 
 #include "../../input/common/wayland_common.h"
 
+#define WAYLAND_APP_ID "com.libretro.RetroArch"
+
 typedef struct toplevel_listener
 {
 #ifdef HAVE_LIBDECOR_H

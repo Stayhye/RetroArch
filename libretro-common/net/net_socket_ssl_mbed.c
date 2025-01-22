@@ -35,8 +35,13 @@
 #include "../../deps/mbedtls/mbedtls/ctr_drbg.h"
 #include "../../deps/mbedtls/mbedtls/entropy.h"
 #else
+#include <mbedtls/version.h>
+#if MBEDTLS_VERSION_MAJOR < 3
 #include <mbedtls/config.h>
 #include <mbedtls/certs.h>
+#else
+#include <mbedtls/build_info.h>
+#endif
 #include <mbedtls/debug.h>
 #include <mbedtls/platform.h>
 #include <mbedtls/net_sockets.h>
@@ -46,7 +51,7 @@
 #endif
 
 /* Not part of the mbedtls upstream source */
-#include "../../deps/mbedtls/cacert.h"
+#include "cacert.h"
 
 #define DEBUG_LEVEL 0
 
@@ -166,7 +171,7 @@ int ssl_socket_connect(void *state_data,
 }
 
 ssize_t ssl_socket_receive_all_nonblocking(void *state_data,
-      bool *error, void *data_, size_t size)
+      bool *error, void *data_, size_t len)
 {
    ssize_t         ret;
    struct ssl_state *state = (struct ssl_state*)state_data;
@@ -175,7 +180,7 @@ ssize_t ssl_socket_receive_all_nonblocking(void *state_data,
 
    mbedtls_net_set_nonblock(&state->net_ctx);
 
-   ret = mbedtls_ssl_read(&state->ctx, (unsigned char*)data, size);
+   ret = mbedtls_ssl_read(&state->ctx, (unsigned char*)data, len);
 
    if (ret > 0)
       return ret;
@@ -195,7 +200,7 @@ ssize_t ssl_socket_receive_all_nonblocking(void *state_data,
 }
 
 int ssl_socket_receive_all_blocking(void *state_data,
-      void *data_, size_t size)
+      void *data_, size_t len)
 {
    struct ssl_state *state = (struct ssl_state*)state_data;
    const uint8_t     *data = (const uint8_t*)data_;
@@ -204,12 +209,12 @@ int ssl_socket_receive_all_blocking(void *state_data,
 
    for (;;)
    {
-      /* mbedtls_ssl_read wants non-const data but it only reads it, 
+      /* mbedtls_ssl_read wants non-const data but it only reads it,
        * so this cast is safe */
-      int ret = mbedtls_ssl_read(&state->ctx, (unsigned char*)data, size);
+      int ret = mbedtls_ssl_read(&state->ctx, (unsigned char*)data, len);
 
-      if (  ret == MBEDTLS_ERR_SSL_WANT_READ || 
-            ret == MBEDTLS_ERR_SSL_WANT_WRITE)
+      if (     ret == MBEDTLS_ERR_SSL_WANT_READ
+            || ret == MBEDTLS_ERR_SSL_WANT_WRITE)
          continue;
 
       if (ret == MBEDTLS_ERR_SSL_PEER_CLOSE_NOTIFY)
@@ -226,7 +231,7 @@ int ssl_socket_receive_all_blocking(void *state_data,
 }
 
 int ssl_socket_send_all_blocking(void *state_data,
-      const void *data_, size_t size, bool no_signal)
+      const void *data_, size_t len, bool no_signal)
 {
    int ret;
    struct ssl_state *state = (struct ssl_state*)state_data;
@@ -234,9 +239,9 @@ int ssl_socket_send_all_blocking(void *state_data,
 
    mbedtls_net_set_block(&state->net_ctx);
 
-   while (size)
+   while (len)
    {
-      ret = mbedtls_ssl_write(&state->ctx, data, size);
+      ret = mbedtls_ssl_write(&state->ctx, data, len);
 
       if (!ret)
          continue;
@@ -250,7 +255,7 @@ int ssl_socket_send_all_blocking(void *state_data,
       else
       {
           data += ret;
-          size -= ret;
+          len  -= ret;
       }
    }
 
@@ -258,21 +263,17 @@ int ssl_socket_send_all_blocking(void *state_data,
 }
 
 ssize_t ssl_socket_send_all_nonblocking(void *state_data,
-      const void *data_, size_t size, bool no_signal)
+      const void *data_, size_t len, bool no_signal)
 {
    int ret;
-   ssize_t            sent = size;
+   ssize_t __len = len;
    struct ssl_state *state = (struct ssl_state*)state_data;
    const uint8_t     *data = (const uint8_t*)data_;
-
    mbedtls_net_set_nonblock(&state->net_ctx);
-
-   ret = mbedtls_ssl_write(&state->ctx, data, size);
-
+   ret = mbedtls_ssl_write(&state->ctx, data, len);
    if (ret <= 0)
       return -1;
-
-   return sent;
+   return __len;
 }
 
 void ssl_socket_close(void *state_data)

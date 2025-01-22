@@ -496,6 +496,10 @@ MSG_HASH(
    "Gerekli Grafik API"
    )
 MSG_HASH(
+   MENU_ENUM_LABEL_VALUE_CORE_INFO_CORE_PATH,
+   "Tam Yol"
+)
+MSG_HASH(
    MENU_ENUM_LABEL_VALUE_CORE_INFO_SAVESTATE_SUPPORT_LEVEL,
    "Durum Kaydı Desteği"
    )
@@ -525,7 +529,7 @@ MSG_HASH(
    )
 MSG_HASH(
    MENU_ENUM_LABEL_VALUE_CORE_INFO_FIRMWARE_PATH,
-   "- Şuraya bakılıyor: '%s'"
+   "- Şuraya bakılıyor: %s"
    )
 MSG_HASH(
    MENU_ENUM_LABEL_VALUE_MISSING_REQUIRED,
@@ -715,6 +719,30 @@ MSG_HASH(
    "SDL 2 Desteği"
    )
 MSG_HASH(
+   MENU_ENUM_LABEL_VALUE_SYSTEM_INFO_D3D8_SUPPORT,
+   "Direct3D 8 Desteği"
+   )
+MSG_HASH(
+   MENU_ENUM_LABEL_VALUE_SYSTEM_INFO_D3D9_SUPPORT,
+   "Direct3D 9 Desteği"
+   )
+MSG_HASH(
+   MENU_ENUM_LABEL_VALUE_SYSTEM_INFO_D3D10_SUPPORT,
+   "Direct3D 10 Desteği"
+   )
+MSG_HASH(
+   MENU_ENUM_LABEL_VALUE_SYSTEM_INFO_D3D11_SUPPORT,
+   "Direct3D 11 Desteği"
+   )
+MSG_HASH(
+   MENU_ENUM_LABEL_VALUE_SYSTEM_INFO_D3D12_SUPPORT,
+   "Direct3D 12 Desteği"
+   )
+MSG_HASH(
+   MENU_ENUM_LABEL_VALUE_SYSTEM_INFO_GDI_SUPPORT,
+   "GDI Desteği"
+   )
+MSG_HASH(
    MENU_ENUM_LABEL_VALUE_SYSTEM_INFO_VULKAN_SUPPORT,
    "Vulkan Desteği"
    )
@@ -795,6 +823,10 @@ MSG_HASH(
    "PulseAudio Desteği"
    )
 MSG_HASH(
+   MENU_ENUM_LABEL_VALUE_SYSTEM_INFO_PIPEWIRE_SUPPORT,
+   "PipeWire Desteği"
+   )
+MSG_HASH(
    MENU_ENUM_LABEL_VALUE_SYSTEM_INFO_COREAUDIO_SUPPORT,
    "CoreAudio Desteği"
    )
@@ -873,6 +905,10 @@ MSG_HASH(
 MSG_HASH(
    MENU_ENUM_LABEL_VALUE_SYSTEM_INFO_V4L2_SUPPORT,
    "Video4Linux2 Desteği"
+   )
+MSG_HASH(
+   MENU_ENUM_LABEL_VALUE_SYSTEM_INFO_SSL_SUPPORT,
+   "SSL Desteği"
    )
 MSG_HASH(
    MENU_ENUM_LABEL_VALUE_SYSTEM_INFO_LIBUSB_SUPPORT,
@@ -1211,6 +1247,38 @@ MSG_HASH(
 MSG_HASH(
    MENU_ENUM_LABEL_VALUE_CLOUD_SYNC_DESTRUCTIVE,
    "Bulut Eşitleme Koruması"
+   )
+MSG_HASH(
+   MENU_ENUM_LABEL_VALUE_CLOUD_SYNC_SYNC_SAVES,
+   "Eşitleyici: Kayıtlar/Durumlar"
+   )
+MSG_HASH(
+   MENU_ENUM_LABEL_VALUE_CLOUD_SYNC_SYNC_CONFIGS,
+   "Eşitleyici: Yapılandırma Dosyaları"
+   )
+MSG_HASH(
+   MENU_ENUM_LABEL_VALUE_CLOUD_SYNC_SYNC_THUMBS,
+   "Eşitle: Küçük Resimler"
+   )
+MSG_HASH(
+   MENU_ENUM_LABEL_VALUE_CLOUD_SYNC_SYNC_SYSTEM,
+   "Eşitle: Sistem Dosyaları"
+   )
+MSG_HASH(
+   MENU_ENUM_SUBLABEL_CLOUD_SYNC_SYNC_SAVES,
+   "Etkinleştirildiğinde, kayıtlar/durumlar bulut ile eşitlenecektir."
+   )
+MSG_HASH(
+   MENU_ENUM_SUBLABEL_CLOUD_SYNC_SYNC_CONFIGS,
+   "Etkinleştirildiğinde yapılandırma dosyaları bulut ile eşitlenecektir."
+   )
+MSG_HASH(
+   MENU_ENUM_SUBLABEL_CLOUD_SYNC_SYNC_THUMBS,
+   "Etkinleştirildiğinde küçük resim görüntüleri bulutla eşitlenecektir. Özel küçük resim resimlerinden oluşan geniş koleksiyonlar dışında genellikle önerilmez; diğer türlü küçük resim indirici daha iyi bir seçimdir."
+   )
+MSG_HASH(
+   MENU_ENUM_SUBLABEL_CLOUD_SYNC_SYNC_SYSTEM,
+   "Etkinleştirildiğinde sistem dosyaları buluta eşitlenecektir. Bu, eşitleme için gereken süreyi önemli ölçüde artırabilir; dikkatli kullanın."
    )
 MSG_HASH(
    MENU_ENUM_SUBLABEL_CLOUD_SYNC_DESTRUCTIVE,
@@ -1694,6 +1762,10 @@ MSG_HASH(
    "PulseAudio sürücüsü. Sistem PulseAudio kullanıyorsa, örn. ALSA."
    )
 MSG_HASH(
+   MENU_ENUM_LABEL_HELP_AUDIO_DRIVER_PIPEWIRE,
+   "PipeWire sürücüsü. Sistem PipeWire kullanıyorsa, ör. PulseAudio."
+   )
+MSG_HASH(
    MENU_ENUM_LABEL_HELP_AUDIO_DRIVER_JACK,
    "Jak Ses Bağlantı Kiti sürücüsü."
    )
@@ -1884,15 +1956,11 @@ MSG_HASH(
    )
 MSG_HASH(
    MENU_ENUM_SUBLABEL_VIDEO_BLACK_FRAME_INSERTION,
-   "Karelerin arasına siyah kareler ekleyin. CRT tarama çıkışını taklit ederek hareket bulanıklığını büyük ölçüde azaltabilir, ancak parlaklık azalabilir. Değiştirme Aralığı > 1, alt-kareler, Kare Gecikmesi veya Tam İçerik Kare Hızına Eşitleme ile birleştirmeyin."
+   "UYARI: Hızlı titreme bazı ekranlarda görüntünün kalıcı olmasına neden olabilir. Kullanım riski size aittir // Karelerin arasına siyah kareler ekleyin. CRT tarama çıkışını taklit ederek hareket bulanıklığını büyük ölçüde azaltabilir, ancak parlaklık pahasına."
    )
 MSG_HASH(
    MENU_ENUM_LABEL_HELP_VIDEO_BLACK_FRAME_INSERTION,
    "Gelişmiş hareket netliği için karelerin arasına siyah kareler ekler. Yalnızca mevcut ekran yenileme hızınız için belirlenen seçeneği kullanın. 144Hz, 165Hz vb. gibi 60Hz katı olmayan yenileme hızlarında kullanılmaz. Değiştirme Aralığı > 1 (Otomatik tamam), Kare Gecikmesi veya Tam İçerik Kare Hızına Eşitleme ile birleştirmeyin. Sistem VRR açık bırakmak normalde sorun değil ancak bu ayarla uygun değil. Herhangi bir geçici görüntü tutulması fark ederseniz, 120h[...]"
-   )
-MSG_HASH(
-   MENU_ENUM_LABEL_VALUE_VIDEO_BLACK_FRAME_INSERTION_VALUE_OFF,
-   "Kapalı"
    )
 MSG_HASH(
    MENU_ENUM_LABEL_VALUE_VIDEO_BLACK_FRAME_INSERTION_VALUE_120,
@@ -1972,15 +2040,11 @@ MSG_HASH(
    )
 MSG_HASH(
    MENU_ENUM_SUBLABEL_VIDEO_SHADER_SUBFRAMES,
-   "Kareler arasına fazladan gölgelendirici kareler ekleyin. Gölgelendiricilerin gerçek içerik hızından daha yüksek bir fps hızında çalışan efektler oluşturmasına olanak tanır. Mevcut ekran Hz değerine ayarlanmalıdır. Takas Aralığı > 1, BFI, Kare Gecikmesi veya Tam İçerik Kare Hızına Eşitle ile birleştirmeyin."
+   "UYARI: Hızlı titreme bazı ekranlarda görüntünün kalıcı olmasına neden olabilir. Kullanım riski size aittir // Ekranı dikey olarak bölerek ve ekranın her bir bölümünü kaç alt kare olduğuna göre işleyerek birden fazla alt kare üzerinde temel bir dönen tarama çizgisini taklit eder."
    )
 MSG_HASH(
    MENU_ENUM_LABEL_HELP_VIDEO_SHADER_SUBFRAMES,
    "İçerik hızından daha hızlı çalışacak şekilde tasarlanmış olası gölgelendirici efektleri için kareler arasına fazladan gölgelendirici kareleri ekler. Yalnızca mevcut ekran yenileme hızınız için belirlenen seçeneği kullanın. 144Hz, 165Hz vb. gibi 60Hz katı olmayan yenileme hızlarında kullanılmaz. Takas Aralığı > 1, BFI, Kare Gecikmesi veya Tam İçerik Kare Hızına Eşitle ile birleştirmeyin. Sistem VRR açık bırakmak bu ayarda sorun çıkarmaz."
-   )
-MSG_HASH(
-   MENU_ENUM_LABEL_VALUE_VIDEO_SHADER_SUBFRAMES_VALUE_OFF,
-   "Kapalı"
    )
 MSG_HASH(
    MENU_ENUM_LABEL_VALUE_VIDEO_SHADER_SUBFRAMES_VALUE_120,
@@ -2052,11 +2116,11 @@ MSG_HASH(
    )
 MSG_HASH(
    MENU_ENUM_SUBLABEL_VIDEO_SCAN_SUBFRAMES,
-   "Ekranı dikey olarak böler ve ekranın her bir bölümünü kaç alt kare olduğuna göre işleyerek birden fazla alt kare üzerinde temel bir dönen tarama çizgisini taklit eder"
+   "UYARI: Hızlı titreme bazı ekranlarda görüntünün kalıcı olmasına neden olabilir. Kullanım riski size aittir // Ekranı dikey olarak bölerek ve ekranın her bir bölümünü kaç alt kare olduğuna göre işleyerek birden fazla alt kare üzerinde temel bir dönen tarama çizgisini taklit eder."
    )
 MSG_HASH(
    MENU_ENUM_LABEL_HELP_VIDEO_SCAN_SUBFRAMES,
-   "Ekranı dikey olarak böler ve ekranın her bir bölümünü ekranın üst kısmından aşağıya doğru kaç alt kare olduğuna göre işleyerek birden fazla alt kare üzerinde temel bir dönen tarama çizgisini taklit eder"
+   "Ekranı dikey olarak böler ve ekranın her bir bölümünü ekranın üst kısmından aşağıya doğru kaç alt kare olduğuna göre işleyerek birden fazla alt kare üzerinde temel bir dönen tarama çizgisini taklit eder."
    )
 MSG_HASH(
    MENU_ENUM_SUBLABEL_VIDEO_GPU_SCREENSHOT,
@@ -2471,15 +2535,35 @@ MSG_HASH(
    )
 MSG_HASH(
    MENU_ENUM_SUBLABEL_VIDEO_SCALE_INTEGER,
-   "Videoyu yalnızca tamsayı adımlarla ölçeklendirir. Temel boyut, sistem tarafından bildirilen geometriye ve en/boy oranına bağlıdır. 'En/Boy Oranını Zorla' ayarlanmazsa, X/Y birbirlerinden bağımsız, tamsayı katlarıyla ölçeklendirilirler."
+   "Videoyu yalnızca tam sayı adımlarla ölçeklendirin. Taban boyutu, çekirdek tarafından bildirilen geometriye ve en boy oranına bağlıdır."
    )
 MSG_HASH(
-   MENU_ENUM_LABEL_VALUE_VIDEO_SCALE_INTEGER_OVERSCALE,
-   "Tamsayı Ölçeği Aşırı Ölçek"
+   MENU_ENUM_LABEL_VALUE_VIDEO_SCALE_INTEGER_AXIS,
+   "Tam Sayı Ölçek Ekseni"
    )
 MSG_HASH(
-   MENU_ENUM_SUBLABEL_VIDEO_SCALE_INTEGER_OVERSCALE,
-   "Aşağı yuvarlamak yerine bir sonraki daha büyük tam sayıya yuvarlamak için tamsayı ölçeklendirmeyi zorlayın."
+   MENU_ENUM_SUBLABEL_VIDEO_SCALE_INTEGER_AXIS,
+   "Yüksekliği veya genişliği ya da hem yüksekliği hem de genişliği ölçeklendirin. Yarım adımlar yalnızca yüksek çözünürlüklü kaynaklara uygulanır."
+   )
+MSG_HASH(
+   MENU_ENUM_LABEL_VALUE_VIDEO_SCALE_INTEGER_SCALING,
+   "Tam Sayı Ölçekli Ölçeklendirme"
+   )
+MSG_HASH(
+   MENU_ENUM_SUBLABEL_VIDEO_SCALE_INTEGER_SCALING,
+   "Aşağıya veya yukarıya bir sonraki tam sayıya yuvarlayın. Resim çok fazla kırpıldığında 'Akıllı' alt ölçeğe düşer."
+   )
+MSG_HASH(
+   MENU_ENUM_LABEL_VALUE_VIDEO_SCALE_INTEGER_SCALING_UNDERSCALE,
+   "Düşük Ölçek"
+   )
+MSG_HASH(
+   MENU_ENUM_LABEL_VALUE_VIDEO_SCALE_INTEGER_SCALING_OVERSCALE,
+   "Yüksek Ölçek"
+   )
+MSG_HASH(
+   MENU_ENUM_LABEL_VALUE_VIDEO_SCALE_INTEGER_SCALING_SMART,
+   "Akıllı"
    )
 MSG_HASH(
    MENU_ENUM_LABEL_VALUE_VIDEO_ASPECT_RATIO_INDEX,
@@ -2533,7 +2617,7 @@ MSG_HASH(
    )
 MSG_HASH(
    MENU_ENUM_SUBLABEL_VIDEO_VIEWPORT_CUSTOM_X,
-   "Görünüm penceresinin X ekseni konumunu tanımlamak için kullanılan özel görünüm alanı ofseti.\n'Tam sayı Ölçeği' etkinse bunlar yok sayılır."
+   "Görünüm alanının X ekseni konumunu tanımlamak için kullanılan özel görünüm alanı dengesi."
    )
 MSG_HASH(
    MENU_ENUM_LABEL_VALUE_VIDEO_VIEWPORT_CUSTOM_Y,
@@ -2541,8 +2625,58 @@ MSG_HASH(
    )
 MSG_HASH(
    MENU_ENUM_SUBLABEL_VIDEO_VIEWPORT_CUSTOM_Y,
-   "Görünüm penceresinin Y ekseni konumunu tanımlamak için kullanılan özel görünüm alanı ofseti.\n'Tam sayı Ölçeği' etkinse bunlar yok sayılır."
+   "Görünüm alanının Y ekseni konumunu tanımlamak için kullanılan özel görünüm alanı dengesi."
    )
+MSG_HASH(
+   MENU_ENUM_LABEL_VIDEO_VIEWPORT_BIAS_X,
+   "Görünüm Bağlantı Noktası X"
+   )
+MSG_HASH(
+   MENU_ENUM_LABEL_VALUE_VIDEO_VIEWPORT_BIAS_X,
+   "Görünüm Bağlantı Noktası X"
+   )
+MSG_HASH(
+   MENU_ENUM_LABEL_VIDEO_VIEWPORT_BIAS_Y,
+   "Görünüm Bağlantı Noktası Y"
+   )
+MSG_HASH(
+   MENU_ENUM_LABEL_VALUE_VIDEO_VIEWPORT_BIAS_Y,
+   "Görünüm Bağlantı Noktası Y"
+   )
+MSG_HASH(
+   MENU_ENUM_SUBLABEL_VIDEO_VIEWPORT_BIAS_X,
+   "Görüntü alanını yatay olarak dengelemek için kullanılan özel görüntü alanı sapması (içerik yüksekliğinden daha genişse).  0,0 en sol, 1,0 ise en sağ anlamına gelir."
+   )
+MSG_HASH(
+   MENU_ENUM_SUBLABEL_VIDEO_VIEWPORT_BIAS_Y,
+   "Görüntü alanını dikey olarak dengelemek için kullanılan özel görüntü alanı sapması (içerik yüksekliğinden daha uzunsa).  0,0 üst, 1,0 ise alt anlamına gelir."
+   )
+#if defined(RARCH_MOBILE)
+MSG_HASH(
+   MENU_ENUM_LABEL_VIDEO_VIEWPORT_BIAS_PORTRAIT_X,
+   "Görünüm Bağlantı Noktası X (Portre Yönü)"
+   )
+MSG_HASH(
+   MENU_ENUM_LABEL_VALUE_VIDEO_VIEWPORT_BIAS_PORTRAIT_X,
+   "Görünüm Bağlantı Noktası X (Portre Yönü)"
+   )
+MSG_HASH(
+   MENU_ENUM_LABEL_VIDEO_VIEWPORT_BIAS_PORTRAIT_Y,
+   "Görünüm Bağlantı Noktası Y (Portre Yönü)"
+   )
+MSG_HASH(
+   MENU_ENUM_LABEL_VALUE_VIDEO_VIEWPORT_BIAS_PORTRAIT_Y,
+   "Görünüm Bağlantı Noktası Y (Portre Yönü)"
+   )
+MSG_HASH(
+   MENU_ENUM_SUBLABEL_VIDEO_VIEWPORT_BIAS_PORTRAIT_X,
+   "Görüntü alanını yatay olarak dengelemek için kullanılan özel görüntü alanı sapması (içerik yüksekliğinden daha genişse).  0,0 en sol, 1,0 ise en sağ anlamına gelir. (Portre Yönü)"
+   )
+MSG_HASH(
+   MENU_ENUM_SUBLABEL_VIDEO_VIEWPORT_BIAS_PORTRAIT_Y,
+   "Görüntü alanını dikey olarak dengelemek için kullanılan özel görüntü alanı sapması (içerik yüksekliğinden daha uzunsa).  0,0 üst, 1,0 ise alt anlamına gelir. (Portre Yönü)"
+   )
+#endif
 MSG_HASH(
    MENU_ENUM_LABEL_VALUE_VIDEO_VIEWPORT_CUSTOM_WIDTH,
    "Özel En Boy Oranı (Genişlik)"
@@ -2643,15 +2777,15 @@ MSG_HASH(
    )
 MSG_HASH(
    MENU_ENUM_LABEL_VALUE_VIDEO_FRAME_DELAY,
-   "Kare Gecikmesi (ms)"
+   "Kare Gecikmesi"
    )
 MSG_HASH(
    MENU_ENUM_SUBLABEL_VIDEO_FRAME_DELAY,
-   "Daha yüksek video kekemeliği riski pahasına gecikmeyi azaltır. Video sunumundan sonra ve çekirdek kare öncesine milisaniye cinsinden bir gecikme ekler."
+   "Gecikmeyi azaltır ancak videonun donma riskini artırır."
    )
 MSG_HASH(
    MENU_ENUM_LABEL_HELP_VIDEO_FRAME_DELAY,
-   "Çekirdeği çalıştırmadan önce video sunumundan sonra kaç milisaniye gecikme yapılacağını ayarlar. Daha yüksek kekemelik riski pahasına gecikmeyi azaltabilir. Azami %d."
+   "Video sunumundan sonra çekirdeği çalıştırmadan önce kaç milisaniye bekleyeceğini ayarlar. Daha yüksek takılma riski pahasına gecikmeyi azaltır.\n20 ve üzeri değerler kare süresi yüzdeleri olarak değerlendirilir."
    )
 MSG_HASH(
    MENU_ENUM_LABEL_VALUE_VIDEO_FRAME_DELAY_AUTO,
@@ -2659,11 +2793,11 @@ MSG_HASH(
    )
 MSG_HASH(
    MENU_ENUM_SUBLABEL_VIDEO_FRAME_DELAY_AUTO,
-   "Gelecekteki kare düşüşlerini önlemek için etkin 'Kare Gecikmesini' geçici olarak azaltın. 'Kare Gecikmesi' 0 olduğunda başlangıç ​​noktası yarım kare süresidir."
+   "Etkili 'Kare Gecikmesini' dinamik olarak ayarla."
    )
 MSG_HASH(
    MENU_ENUM_LABEL_HELP_VIDEO_FRAME_DELAY_AUTO,
-   "Hedef yenileme hızı sabit olana kadar etkin 'Kare Gecikmesi' geçici olarak azaltılır. Ölçüm, 'Kare Gecikmesi' 0 olduğunda yarım kare süresinden başlar. NTSC için 8 ve PAL için 10."
+   "İstenilen 'Kare Gecikmesi' hedefini tutmaya çalışın ve kare düşüşlerini en aza indirin. 'Kare Gecikmesi' 0 (Otomatik) olduğunda başlangıç ​​noktası 3/4 kare süresidir."
    )
 MSG_HASH(
    MENU_ENUM_LABEL_VALUE_VIDEO_FRAME_DELAY_AUTOMATIC,
@@ -2907,7 +3041,7 @@ MSG_HASH(
    )
 MSG_HASH(
    MENU_ENUM_SUBLABEL_AUDIO_LATENCY,
-   "Mili saniye cinsinden istenen ses gecikmesi. Ses sürücüsü verilen gecikmeyi sağlayamıyorsa ses duyulmayabilir."
+   "Milisaniye cinsinden azami ses gecikmesi. Sürücü, gerçek gecikmeyi bu değerin %50 oranında tutmayı hedefler. Ses sürücüsünün belirtilen gecikmeyi sağlayamaması durumunda bu durum kabul edilmeyebilir."
    )
 
 #ifdef HAVE_MICROPHONE
@@ -3127,23 +3261,23 @@ MSG_HASH(
    )
 MSG_HASH(
    MENU_ENUM_LABEL_VALUE_AUDIO_STREAM_STATE_NONE,
-   "Durum : N/A"
+   "Durum: N/A"
    )
 MSG_HASH(
    MENU_ENUM_LABEL_VALUE_AUDIO_STREAM_STATE_STOPPED,
-   "Durum : Durduruldu"
+   "Durum: Durduruldu"
    )
 MSG_HASH(
    MENU_ENUM_LABEL_VALUE_AUDIO_STREAM_STATE_PLAYING,
-   "Durum : Oynanıyor"
+   "Durum: Oynanıyor"
    )
 MSG_HASH(
    MENU_ENUM_LABEL_VALUE_AUDIO_STREAM_STATE_PLAYING_LOOPED,
-   "Durum : Oynanıyor (Döngü)"
+   "Durum: Oynanıyor (Döngü)"
    )
 MSG_HASH(
    MENU_ENUM_LABEL_VALUE_AUDIO_STREAM_STATE_PLAYING_SEQUENTIAL,
-   "Durum : Oynanıyor (Ardışık)"
+   "Durum: Oynanıyor (Ardışık)"
    )
 
 /* Settings > Audio > Menu Sounds */
@@ -3206,6 +3340,14 @@ MSG_HASH(
 MSG_HASH(
    MENU_ENUM_SUBLABEL_INPUT_REMAP_BINDS_ENABLE,
    "Mevcut çekirdek için ayarlanmış yeniden eşlenen bağlarla giriş bağlarını özelleştirir."
+   )
+MSG_HASH(
+   MENU_ENUM_LABEL_VALUE_INPUT_REMAP_SORT_BY_CONTROLLER_ENABLE,
+   "Eşleşmeleri Kontrolcüye Göre Sırala"
+   )
+MSG_HASH(
+   MENU_ENUM_SUBLABEL_INPUT_REMAP_SORT_BY_CONTROLLER_ENABLE,
+   "Eşleşmeler yalnızca kaydedildikleri aktif kontrolcü için geçerli olacaktır."
    )
 MSG_HASH(
    MENU_ENUM_LABEL_VALUE_INPUT_AUTODETECT_ENABLE,
@@ -3528,6 +3670,22 @@ MSG_HASH(
 MSG_HASH(
    MENU_ENUM_SUBLABEL_INPUT_DISABLE_SEARCH_BUTTON,
    "Etkinleştirilirse, arama düğmesine tıklamak dikkate alınmaz."
+   )
+MSG_HASH(
+   MENU_ENUM_LABEL_VALUE_INPUT_DISABLE_LEFT_ANALOG_IN_MENU,
+   "Menüde Sol Analogu Devre Dışı Bırak"
+   )
+MSG_HASH(
+   MENU_ENUM_SUBLABEL_INPUT_DISABLE_LEFT_ANALOG_IN_MENU,
+   "Sol Analog çubuğun menüde gezinmesini önleyin."
+   )
+MSG_HASH(
+   MENU_ENUM_LABEL_VALUE_INPUT_DISABLE_RIGHT_ANALOG_IN_MENU,
+   "Menüde Sağ Analogu Devre Dışı Bırak"
+   )
+MSG_HASH(
+   MENU_ENUM_SUBLABEL_INPUT_DISABLE_RIGHT_ANALOG_IN_MENU,
+   "Sağ Analog çubuğun menüde gezinmesini önleyin."
    )
 MSG_HASH(
    MENU_ENUM_LABEL_VALUE_MENU_INPUT_SWAP_OK_CANCEL,
@@ -4019,7 +4177,7 @@ MSG_HASH(
    )
 MSG_HASH(
    MENU_ENUM_LABEL_VALUE_INPUT_META_NETPLAY_FADE_CHAT_TOGGLE,
-   "Netplay Sohbet Geçişini Soluklaştır"
+   "Netplay Sohbeti Soluklaştır (Değiştir)"
    )
 MSG_HASH(
    MENU_ENUM_SUBLABEL_INPUT_META_NETPLAY_FADE_CHAT_TOGGLE,
@@ -4064,6 +4222,34 @@ MSG_HASH(
 MSG_HASH(
    MENU_ENUM_SUBLABEL_INPUT_DEVICE_INDEX,
    "RetroArch tarafından tanınan fiziksel kontrolcü."
+   )
+MSG_HASH(
+   MENU_ENUM_LABEL_VALUE_INPUT_DEVICE_RESERVED_DEVICE_NAME,
+   "Bu Oyuncu için Ayrılmış Cihaz"
+   )
+MSG_HASH(
+   MENU_ENUM_SUBLABEL_INPUT_DEVICE_RESERVED_DEVICE_NAME,
+   "Bu kontrolcü, rezervasyon kipine göre bu oynatıcı için ayrılacaktır."
+   )
+MSG_HASH(
+   MENU_ENUM_LABEL_VALUE_DEVICE_RESERVATION_NONE,
+   "Ayrılmamış"
+   )
+MSG_HASH(
+   MENU_ENUM_LABEL_VALUE_DEVICE_RESERVATION_PREFERRED,
+   "Tercihen"
+   )
+MSG_HASH(
+   MENU_ENUM_LABEL_VALUE_DEVICE_RESERVATION_RESERVED,
+   "Ayrılmış"
+   )
+MSG_HASH(
+   MENU_ENUM_LABEL_VALUE_INPUT_DEVICE_RESERVATION_TYPE,
+   "Cihaz Ayırma Türü"
+   )
+MSG_HASH(
+   MENU_ENUM_SUBLABEL_INPUT_DEVICE_RESERVATION_TYPE,
+   "Tercih edilen: Belirtilen cihaz mevcutsa bu oynatıcı için ayrılacaktır. Ayrılmış: Bu oynatıcı için başka bir kontrol cihazı ayrılmayacak."
    )
 MSG_HASH(
    MENU_ENUM_LABEL_VALUE_INPUT_REMAP_PORT,
@@ -4257,12 +4443,8 @@ MSG_HASH(
    "Mevcut çekirdek, deterministik tasarruf durumu desteğinin olmaması nedeniyle önden git ile uyumlu değil."
    )
 MSG_HASH(
-   MENU_ENUM_LABEL_VALUE_RUN_AHEAD_ENABLED,
-   "Gecikmeyi Azaltmak için Önden-Git"
-   )
-MSG_HASH(
-   MENU_ENUM_SUBLABEL_RUN_AHEAD_ENABLED,
-   "Çekirdek mantığını bir veya daha fazla karenin önünde çalıştırın, ardından algılanan giriş gecikmesini azaltmak için durumu geri yükleyin."
+   MENU_ENUM_LABEL_VALUE_RUNAHEAD_MODE,
+   "Önden-Git"
    )
 MSG_HASH(
    MENU_ENUM_LABEL_VALUE_RUN_AHEAD_FRAMES,
@@ -4273,12 +4455,26 @@ MSG_HASH(
    "Önde çalıştırılacak kare sayısı. Oyunun içindeki gecikme karelerinin sayısı aşılırsa titreme gibi oyun sorunlarına neden olur."
    )
 MSG_HASH(
-   MENU_ENUM_LABEL_VALUE_RUN_AHEAD_SECONDARY_INSTANCE,
-   "Önden-Git için İkinci Örneği Kullan"
+   MENU_ENUM_SUBLABEL_RUNAHEAD_MODE,
+   "Gecikmeyi azaltmak için ek çekirdek mantığı çalıştırın. Tekli Örnek gelecek kare ile çalışır ve ardından mevcut durumu yeniden yükler. İkinci Örnek, ses durumu sorunlarını önlemek için yalnızca video içeren çekirdek örneği gelecekteki bir karede tutar. Önleyici Kareler, verimlilik için gerektiğinde yeni girdiyle kareleri geçer."
+   )
+#if !(defined(HAVE_DYNAMIC) || defined(HAVE_DYLIB))
+MSG_HASH(
+   MENU_ENUM_SUBLABEL_RUNAHEAD_MODE_NO_SECOND_INSTANCE,
+   "Gecikmeyi azaltmak için ek çekirdek mantığı çalıştırın. Tekli Örnek gelecek kare çalışır ve ardından mevcut durumu yeniden yükler. Önleyici Kareler, verimlilik için gerektiğinde yeni girdiyle kareleri geçer."
+   )
+#endif
+MSG_HASH(
+   MENU_ENUM_LABEL_VALUE_RUNAHEAD_MODE_SINGLE_INSTANCE,
+   "Tekli Örnek Modu"
    )
 MSG_HASH(
-   MENU_ENUM_SUBLABEL_RUN_AHEAD_SECONDARY_INSTANCE,
-   "Önden-Git için RetroArch çekirdeğinin ikincil örneğini kullanın. Yükleme durumu nedeniyle ses sorunlarını önler."
+   MENU_ENUM_LABEL_VALUE_RUNAHEAD_MODE_SECOND_INSTANCE,
+   "İkinci Örnek Modu"
+   )
+MSG_HASH(
+   MENU_ENUM_LABEL_VALUE_RUNAHEAD_MODE_PREEMPTIVE_FRAMES,
+   "Önleyici Kareler Modu"
    )
 MSG_HASH(
    MENU_ENUM_LABEL_VALUE_RUN_AHEAD_HIDE_WARNINGS,
@@ -4289,36 +4485,12 @@ MSG_HASH(
    "Önden-Git kullanırken görüntülenen uyarı mesajını gizleyin ve çekirdek durum kaydı desteklemez."
    )
 MSG_HASH(
-   MENU_ENUM_LABEL_VALUE_PREEMPT_UNSUPPORTED,
-   "[Sınırlı Kareler Kullanılamıyor]"
-   )
-MSG_HASH(
-   MENU_ENUM_SUBLABEL_PREEMPT_UNSUPPORTED,
-   "Mevcut çekirdek, deterministik durum kaydı desteğinin olmaması nedeniyle sınırlı karelerle uyumlu değil."
-   )
-MSG_HASH(
-   MENU_ENUM_LABEL_VALUE_PREEMPT_ENABLE,
-   "Sınırlı Kareleri Çalıştır"
-   )
-MSG_HASH(
-   MENU_ENUM_SUBLABEL_PREEMPT_ENABLE,
-   "Kontrolcü durumu değiştiğinde çekirdeği en son girdiyle yeniden çalıştırın. Önden-Git yönteminden daha hızlıdır, ancak çekirdeklerin durum kaydı yüklemelerinde olabilecek ses sorunlarını engellemez."
-   )
-MSG_HASH(
    MENU_ENUM_LABEL_VALUE_PREEMPT_FRAMES,
    "Sınırlı Kare Sayısı"
    )
 MSG_HASH(
    MENU_ENUM_SUBLABEL_PREEMPT_FRAMES,
    "Yeniden çalıştırılacak kare sayısı. Oyunun içindeki sınırlı karelerin sayısı aşılırsa titreme gibi oyun sorunlarına neden olur."
-   )
-MSG_HASH(
-   MENU_ENUM_LABEL_VALUE_PREEMPT_HIDE_WARNINGS,
-   "Sınırlı Kareler Uyarılarını Gizle"
-   )
-MSG_HASH(
-   MENU_ENUM_SUBLABEL_PREEMPT_HIDE_WARNINGS,
-   "Bir çekirdek sınırlı karelerle uyumsuz olduğunda görüntülenen uyarı mesajını gizleyin."
    )
 
 /* Settings > Core */
@@ -4341,7 +4513,7 @@ MSG_HASH(
    )
 MSG_HASH(
    MENU_ENUM_LABEL_VALUE_DUMMY_ON_CORE_SHUTDOWN,
-   "Çekirdeğin Kapanmaması İçin Kukla Yükle"
+   "Çekirdek Kapatıldığında Benzerini Yükle"
    )
 MSG_HASH(
    MENU_ENUM_SUBLABEL_DUMMY_ON_CORE_SHUTDOWN,
@@ -4522,7 +4694,7 @@ MSG_HASH(
    )
 MSG_HASH(
    MENU_ENUM_LABEL_VALUE_GLOBAL_CORE_OPTIONS,
-   "Evrensel Çekirdek Seçenekleri Dosyalarını Kullan"
+   "Genel Çekirdek Seçenekleri Dosyasını Kullan"
    )
 MSG_HASH(
    MENU_ENUM_SUBLABEL_GLOBAL_CORE_OPTIONS,
@@ -4633,7 +4805,7 @@ MSG_HASH(
    )
 MSG_HASH(
    MENU_ENUM_SUBLABEL_SAVESTATE_AUTO_SAVE,
-   "İçerik kapatıldığında otomatik olarak durum kaydı oluşturur. 'Durumu Otomatik Olarak Yükle' etkinse RetroArch bu durum kaydını otomatik olarak yükler."
+   "İçerik kapatıldığında otomatik durum kaydı oluşturun. 'Otomatik Durum Yükleme' etkinse, bu durum kaydı başlangıçta yüklenir."
    )
 MSG_HASH(
    MENU_ENUM_LABEL_VALUE_SAVESTATE_AUTO_LOAD,
@@ -5195,12 +5367,24 @@ MSG_HASH(
    "Örtüşme hassasiyetini ayarlayın. 8 yönlü simetri için %100'e ayarlayın."
    )
 MSG_HASH(
+   MENU_ENUM_LABEL_VALUE_INPUT_OVERLAY_ANALOG_RECENTER_ZONE,
+   "Analog Yeniden Yönlendirme Bölgesi"
+   )
+MSG_HASH(
+   MENU_ENUM_SUBLABEL_INPUT_OVERLAY_ANALOG_RECENTER_ZONE,
+   "Analog çubuk girişi, bu bölgede basıldığında ilk dokunuşa göre olacaktır."
+   )
+MSG_HASH(
    MENU_ENUM_LABEL_VALUE_OVERLAY,
    "Kaplama"
    )
 MSG_HASH(
    MENU_ENUM_LABEL_VALUE_OVERLAY_AUTOLOAD_PREFERRED,
    "Tercih Edilen Kaplamayı Otomatik Yükle"
+   )
+MSG_HASH(
+   MENU_ENUM_SUBLABEL_OVERLAY_AUTOLOAD_PREFERRED,
+   "Varsayılan ön ayara geri dönmeden önce sistem adına göre katmanları yüklemeyi tercih edin. Yer paylaşımı ön ayarı için özelleştirme ayarlanmışsa göz ardı edilecektir."
    )
 MSG_HASH(
    MENU_ENUM_LABEL_VALUE_OVERLAY_OPACITY,
@@ -5775,7 +5959,7 @@ MSG_HASH(
    )
 MSG_HASH(
    MENU_ENUM_SUBLABEL_VIDEO_FONT_SIZE,
-   "Yazı tipi boyutunu nokta cinsinden belirtin."
+   "Yazı tipi boyutunu punto cinsinden belirtin. Gereçler kullanıldığında, bu boyut yalnızca ekrandaki istatistik gösterimine etki eder."
    )
 MSG_HASH(
    MENU_ENUM_LABEL_VALUE_VIDEO_MESSAGE_POS_X,
@@ -6095,7 +6279,7 @@ MSG_HASH(
    )
 MSG_HASH(
    MENU_ENUM_LABEL_VALUE_MENU_SHOW_LOAD_CORE,
-   "'Çekirdek Yükle'yi Göster"
+   "'Çekirdek Yükle' Göster"
    )
 MSG_HASH(
    MENU_ENUM_SUBLABEL_MENU_SHOW_LOAD_CORE,
@@ -6103,7 +6287,7 @@ MSG_HASH(
    )
 MSG_HASH(
    MENU_ENUM_LABEL_VALUE_MENU_SHOW_LOAD_CONTENT,
-   "'İçerik Yükle'yi Göster"
+   "'İçerik Yükle' Göster"
    )
 MSG_HASH(
    MENU_ENUM_SUBLABEL_MENU_SHOW_LOAD_CONTENT,
@@ -6111,7 +6295,7 @@ MSG_HASH(
    )
 MSG_HASH(
    MENU_ENUM_LABEL_VALUE_MENU_SHOW_LOAD_DISC,
-   "'Disk Yükle'yi Göster"
+   "'Disk Yükle' Göster"
    )
 MSG_HASH(
    MENU_ENUM_SUBLABEL_MENU_SHOW_LOAD_DISC,
@@ -6119,7 +6303,7 @@ MSG_HASH(
    )
 MSG_HASH(
    MENU_ENUM_LABEL_VALUE_MENU_SHOW_DUMP_DISC,
-   "'Diskten Aktar'ı Göster"
+   "'Diskten Aktar' Göster"
    )
 MSG_HASH(
    MENU_ENUM_SUBLABEL_MENU_SHOW_DUMP_DISC,
@@ -6128,7 +6312,7 @@ MSG_HASH(
 #ifdef HAVE_LAKKA
 MSG_HASH(
    MENU_ENUM_LABEL_VALUE_MENU_SHOW_EJECT_DISC,
-   "'Disk Çıkar'ı Göster"
+   "'Diski Çıkar' Göster"
    )
 MSG_HASH(
    MENU_ENUM_SUBLABEL_MENU_SHOW_EJECT_DISC,
@@ -6137,7 +6321,7 @@ MSG_HASH(
 #endif
 MSG_HASH(
    MENU_ENUM_LABEL_VALUE_MENU_SHOW_ONLINE_UPDATER,
-   "'Çevrimiçi Güncelleyici'yi Göster"
+   "'Çevrimiçi Güncelleyici' Göster"
    )
 MSG_HASH(
    MENU_ENUM_SUBLABEL_MENU_SHOW_ONLINE_UPDATER,
@@ -6145,7 +6329,7 @@ MSG_HASH(
    )
 MSG_HASH(
    MENU_ENUM_LABEL_VALUE_MENU_SHOW_CORE_UPDATER,
-   "'Çekirdek İndirmeyi' Göster"
+   "'Çekirdek İndirici' Göster"
    )
 MSG_HASH(
    MENU_ENUM_SUBLABEL_MENU_SHOW_CORE_UPDATER,
@@ -6153,7 +6337,7 @@ MSG_HASH(
    )
 MSG_HASH(
    MENU_ENUM_LABEL_VALUE_MENU_SHOW_LEGACY_THUMBNAIL_UPDATER,
-   "Eski 'Küçük Resim Güncelleyiciyi' Göster"
+   "Eski 'Küçük Resim Güncelleyici' Göster"
    )
 MSG_HASH(
    MENU_ENUM_SUBLABEL_MENU_SHOW_LEGACY_THUMBNAIL_UPDATER,
@@ -6165,11 +6349,11 @@ MSG_HASH(
    )
 MSG_HASH(
    MENU_ENUM_SUBLABEL_MENU_SHOW_INFORMATION,
-   "Ana Menüde 'Bilgi' seçeneğini gösterin."
+   "Ana Menüde 'Bilgiler' seçeneğini gösterin."
    )
 MSG_HASH(
    MENU_ENUM_LABEL_VALUE_MENU_SHOW_CONFIGURATIONS,
-   "'Yapılandırma Dosyası'nı Göster"
+   "'Yapılandırma Dosyası' Göster"
    )
 MSG_HASH(
    MENU_ENUM_SUBLABEL_MENU_SHOW_CONFIGURATIONS,
@@ -6177,7 +6361,7 @@ MSG_HASH(
    )
 MSG_HASH(
    MENU_ENUM_LABEL_VALUE_MENU_SHOW_HELP,
-   "'Yardım'ı Göster"
+   "'Yardım' Göster"
    )
 MSG_HASH(
    MENU_ENUM_SUBLABEL_MENU_SHOW_HELP,
@@ -6185,7 +6369,7 @@ MSG_HASH(
    )
 MSG_HASH(
    MENU_ENUM_LABEL_VALUE_MENU_SHOW_QUIT_RETROARCH,
-   "'RetroArch Çıkışı' Göster"
+   "'RetroArch Çıkış' Göster"
    )
 MSG_HASH(
    MENU_ENUM_SUBLABEL_MENU_SHOW_QUIT_RETROARCH,
@@ -6193,7 +6377,7 @@ MSG_HASH(
    )
 MSG_HASH(
    MENU_ENUM_LABEL_VALUE_MENU_SHOW_RESTART_RETROARCH,
-   "'RetroArch Yeniden Başlat'ı Göster"
+   "'RetroArch Yeniden Başlat' Göster"
    )
 MSG_HASH(
    MENU_ENUM_SUBLABEL_MENU_SHOW_RESTART_RETROARCH,
@@ -6201,7 +6385,7 @@ MSG_HASH(
    )
 MSG_HASH(
    MENU_ENUM_LABEL_VALUE_CONTENT_SHOW_SETTINGS,
-   "'Ayarlar'ı Göster"
+   "'Ayarlar' Göster"
    )
 MSG_HASH(
    MENU_ENUM_SUBLABEL_CONTENT_SHOW_SETTINGS,
@@ -6217,15 +6401,15 @@ MSG_HASH(
    )
 MSG_HASH(
    MENU_ENUM_LABEL_VALUE_CONTENT_SHOW_FAVORITES,
-   "'Sık Kullanılanları' Göster"
+   "'Sık Kullanılanlar' Göster"
    )
 MSG_HASH(
    MENU_ENUM_SUBLABEL_CONTENT_SHOW_FAVORITES,
-   "Sık Kullanılanlar' menüsünü gösterin. (Ozon/XMB'de Yeniden Başlatılmalı)"
+   "'Sık Kullanılanlar' menüsünü gösterin. (Ozon/XMB'de Yeniden Başlatılmalı)"
    )
 MSG_HASH(
    MENU_ENUM_LABEL_VALUE_CONTENT_SHOW_IMAGES,
-   "'Resimleri' Göster"
+   "'Resimler' Göster"
    )
 MSG_HASH(
    MENU_ENUM_SUBLABEL_CONTENT_SHOW_IMAGES,
@@ -6241,7 +6425,7 @@ MSG_HASH(
    )
 MSG_HASH(
    MENU_ENUM_LABEL_VALUE_CONTENT_SHOW_VIDEO,
-   "'Videoyu' Göster"
+   "'Video' Göster"
    )
 MSG_HASH(
    MENU_ENUM_SUBLABEL_CONTENT_SHOW_VIDEO,
@@ -6257,7 +6441,7 @@ MSG_HASH(
    )
 MSG_HASH(
    MENU_ENUM_LABEL_VALUE_CONTENT_SHOW_HISTORY,
-   "'Geçmişi' Göster"
+   "'Geçmiş' Göster"
    )
 MSG_HASH(
    MENU_ENUM_SUBLABEL_CONTENT_SHOW_HISTORY,
@@ -6265,7 +6449,7 @@ MSG_HASH(
    )
 MSG_HASH(
    MENU_ENUM_LABEL_VALUE_CONTENT_SHOW_ADD,
-   "'İçeriği İçe Aktarı' Göster"
+   "'İçeriği İçe Aktar' Göster"
    )
 MSG_HASH(
    MENU_ENUM_SUBLABEL_CONTENT_SHOW_ADD,
@@ -6273,7 +6457,7 @@ MSG_HASH(
    )
 MSG_HASH( /* FIXME can now be replaced with MENU_ENUM_LABEL_VALUE_CONTENT_SHOW_ADD */
    MENU_ENUM_LABEL_VALUE_CONTENT_SHOW_ADD_ENTRY,
-   "'İçeriği İçe Aktarı' Göster"
+   "'İçeriği İçe Aktar' Göster"
    )
 MSG_HASH(
    MENU_ENUM_SUBLABEL_CONTENT_SHOW_ADD_ENTRY,
@@ -6297,7 +6481,7 @@ MSG_HASH(
    )
 MSG_HASH(
    MENU_ENUM_LABEL_VALUE_CONTENT_SHOW_EXPLORE,
-   "'Gezgini' Göster"
+   "'Gezgin' Göster"
    )
 MSG_HASH(
    MENU_ENUM_SUBLABEL_CONTENT_SHOW_EXPLORE,
@@ -6305,7 +6489,7 @@ MSG_HASH(
    )
 MSG_HASH(
    MENU_ENUM_LABEL_VALUE_CONTENT_SHOW_CONTENTLESS_CORES,
-   "'İçeriksiz Çekirdekleri' Göster"
+   "'İçeriksiz Çekirdekler' Göster"
    )
 MSG_HASH(
    MENU_ENUM_SUBLABEL_CONTENT_SHOW_CONTENTLESS_CORES,
@@ -6384,7 +6568,7 @@ MSG_HASH( /* FIXME Not RGUI specific */
 
 MSG_HASH(
    MENU_ENUM_LABEL_VALUE_QUICK_MENU_SHOW_RESUME_CONTENT,
-   "'Devam Eti' Göster"
+   "'Devam Et' Göster"
    )
 MSG_HASH(
    MENU_ENUM_SUBLABEL_QUICK_MENU_SHOW_RESUME_CONTENT,
@@ -6566,24 +6750,14 @@ MSG_HASH(
    MENU_ENUM_SUBLABEL_QUICK_MENU_SHOW_ADD_TO_FAVORITES,
    "'Sık Kullanılanlara Ekle' seçeneğini gösterin."
    )
-
 MSG_HASH(
-   MENU_ENUM_LABEL_VALUE_ADD_TO_PLAYLIST,
-   "Oynatma Listesine Ekle"
+   MENU_ENUM_LABEL_VALUE_QUICK_MENU_SHOW_ADD_TO_PLAYLIST,
+   "'Oynatma Listesine Ekle' Göster"
    )
 MSG_HASH(
-   MENU_ENUM_SUBLABEL_ADD_TO_PLAYLIST,
-   "İçeriği bir oynatma listesine ekleyin."
+   MENU_ENUM_SUBLABEL_QUICK_MENU_SHOW_ADD_TO_PLAYLIST,
+   "'Oynatma Listesine Ekle' seçeneğini gösterin."
    )
-MSG_HASH(
-   MENU_ENUM_LABEL_VALUE_CREATE_NEW_PLAYLIST,
-   "Yeni Oynatma Listesi Oluştur"
-   )
-MSG_HASH(
-   MENU_ENUM_SUBLABEL_CREATE_NEW_PLAYLIST,
-   "Yeni bir oynatma listesi oluşturun ve mevcut kaydı buna ekleyin."
-   )
-
 MSG_HASH(
    MENU_ENUM_LABEL_VALUE_QUICK_MENU_SHOW_SET_CORE_ASSOCIATION,
    "'Çekirdek İlişkilendirmeyi Ayarlayı' Göster"
@@ -6784,6 +6958,14 @@ MSG_HASH(
    "'Kullanıcıyı' Göster"
    )
 MSG_HASH(
+   MENU_ENUM_LABEL_VALUE_ICON_THUMBNAILS,
+   "Oynatma Listesi Simgeleri"
+   )
+MSG_HASH(
+   MENU_ENUM_SUBLABEL_ICON_THUMBNAILS,
+   "Görüntülenecek Oynatma Listesi simgesinin küçük resminin türü."
+   )
+MSG_HASH(
    MENU_ENUM_SUBLABEL_SETTINGS_SHOW_USER,
    "'Kullanıcı' ayarlarını gösterin."
    )
@@ -6916,7 +7098,7 @@ MSG_HASH(
    )
 MSG_HASH(
    MENU_ENUM_SUBLABEL_AI_SERVICE_MODE,
-   "Çeviriyi görüntü katmanı (Görüntü Modu), doğrudan ses (Konuşma), metinden konuşmaya (Anlatıcı) veya metin katmanı (Metin) olarak gösterin."
+   "Çeviriyi bir metin katmanı olarak göster (Görüntü Modu), Metinden Konuşmaya (Konuşma) olarak oynat veya NVDA (Anlatıcı) gibi bir sistem anlatıcısını kullan."
    )
 MSG_HASH(
    MENU_ENUM_LABEL_VALUE_AI_SERVICE_URL,
@@ -6957,30 +7139,6 @@ MSG_HASH(
 MSG_HASH(
    MENU_ENUM_SUBLABEL_AI_SERVICE_TARGET_LANG,
    "Hizmetin çevireceği dil. \"Varsayılan\" İngilizcedir."
-   )
-MSG_HASH(
-   MENU_ENUM_LABEL_VALUE_AI_SERVICE_POLL_DELAY,
-   "Çeviri Hizmeti Otomatik Seçim Gecikmesi"
-   )
-MSG_HASH(
-   MENU_ENUM_SUBLABEL_AI_SERVICE_POLL_DELAY,
-   "Otomatik çağrılar arasında ms cinsinden asgari gecikme. Tepkimeyi azaltır ancak CPU performansını artırır."
-   )
-MSG_HASH(
-   MENU_ENUM_LABEL_VALUE_AI_SERVICE_TEXT_POSITION,
-   "Çeviri Hizmeti Metin Konumunu Özelleştir"
-   )
-MSG_HASH(
-   MENU_ENUM_SUBLABEL_AI_SERVICE_TEXT_POSITION,
-   "Hizmet Metin modundayken kaplamanın konumunu özelleştirin."
-   )
-MSG_HASH(
-   MENU_ENUM_LABEL_VALUE_AI_SERVICE_TEXT_PADDING,
-   "Çeviri Hizmeti Metin Dolgusu (%)"
-   )
-MSG_HASH(
-   MENU_ENUM_SUBLABEL_AI_SERVICE_TEXT_PADDING,
-   "Hizmet Metin modundayken metin kaplamasına uygulanacak dikey dolgu. Daha fazla dolgu, metni ekranın ortasına doğru itecektir."
    )
 
 /* Settings > Accessibility */
@@ -7298,6 +7456,10 @@ MSG_HASH(
 MSG_HASH(
    MENU_ENUM_LABEL_VALUE_NETPLAY_MITM_SERVER_LOCATION_4,
    "Güneydoğu Asya"
+   )
+MSG_HASH(
+   MENU_ENUM_LABEL_VALUE_NETPLAY_MITM_SERVER_LOCATION_5,
+   "Doğu Asya (Chuncheon, Güney Kore)"
    )
 MSG_HASH(
    MENU_ENUM_LABEL_VALUE_NETPLAY_MITM_SERVER_LOCATION_CUSTOM,
@@ -7797,7 +7959,15 @@ MSG_HASH(
    MENU_ENUM_SUBLABEL_PLAYLIST_USE_FILENAME,
    "Etkinleştirildiğinde, küçük resimleri giriş etiketi yerine dosya adına göre bulur."
    )
-   MSG_HASH(
+MSG_HASH(
+   MENU_ENUM_LABEL_VALUE_PLAYLIST_ALLOW_NON_PNG,
+   "Küçük Resimler için Desteklenen Tüm Resim Türlerine İzin Ver"
+   )
+MSG_HASH(
+   MENU_ENUM_SUBLABEL_PLAYLIST_ALLOW_NON_PNG,
+   "Etkinleştirildiğinde, RetroArch tarafından desteklenen tüm görüntü türlerine (jpeg gibi) yerel küçük resimler eklenebilir. Küçük bir performans kaybı olabilir."
+   )
+MSG_HASH(
    MENU_ENUM_LABEL_VALUE_MANAGE,
    "Yönet"
    )
@@ -8771,6 +8941,22 @@ MSG_HASH(
 MSG_HASH(
    MENU_ENUM_SUBLABEL_ADD_TO_FAVORITES_PLAYLIST,
    "İçeriği 'Sık Kullanılanlara' ekleyin."
+   )
+MSG_HASH(
+   MENU_ENUM_LABEL_VALUE_ADD_TO_PLAYLIST,
+   "Oynatma Listesine Ekle"
+   )
+MSG_HASH(
+   MENU_ENUM_SUBLABEL_ADD_TO_PLAYLIST,
+   "İçeriği bir oynatma listesine ekleyin."
+   )
+MSG_HASH(
+   MENU_ENUM_LABEL_VALUE_CREATE_NEW_PLAYLIST,
+   "Yeni Oynatma Listesi Oluştur"
+   )
+MSG_HASH(
+   MENU_ENUM_SUBLABEL_CREATE_NEW_PLAYLIST,
+   "Yeni bir oynatma listesi oluşturun ve mevcut kaydı buna ekleyin."
    )
 MSG_HASH(
    MENU_ENUM_LABEL_VALUE_SET_CORE_ASSOCIATION,
@@ -9989,6 +10175,18 @@ MSG_HASH(
    "Bekleyen tüm istekler RetroAchievements sunucusuyla başarıyla eşitlendi."
 )
 MSG_HASH(
+   MENU_ENUM_LABEL_VALUE_CHEEVOS_IDENTIFYING_GAME,
+   "Oyun tanımlanıyor"
+)
+MSG_HASH(
+   MENU_ENUM_LABEL_VALUE_CHEEVOS_FETCHING_GAME_DATA,
+   "Oyun verileri getiriliyor"
+)
+MSG_HASH(
+   MENU_ENUM_LABEL_VALUE_CHEEVOS_STARTING_SESSION,
+   "Oturum başlatılıyor"
+)
+MSG_HASH(
    MENU_ENUM_LABEL_VALUE_NOT_LOGGED_IN,
    "Giriş yapmadınız"
 )
@@ -10093,6 +10291,10 @@ MSG_HASH(
 MSG_HASH(
    MENU_ENUM_LABEL_VALUE_CYCLE_THUMBNAILS,
    "Küçük resim döngüsü"
+   )
+MSG_HASH(
+   MENU_ENUM_LABEL_VALUE_RANDOM_SELECT,
+   "Rastgele seç"
    )
 MSG_HASH(
    MENU_ENUM_LABEL_VALUE_BASIC_MENU_CONTROLS_BACK,
@@ -10204,26 +10406,6 @@ MSG_HASH(
 MSG_HASH(
    MENU_ENUM_LABEL_VALUE_AI_SERVICE_NARRATOR_MODE,
    "Ekran Okuyucusu Kipi"
-   )
-MSG_HASH(
-   MENU_ENUM_LABEL_VALUE_AI_SERVICE_TEXT_MODE,
-   "Metin Modu"
-   )
-MSG_HASH(
-   MENU_ENUM_LABEL_VALUE_AI_SERVICE_TEXT_NARRATOR_MODE,
-   "Metin + Anlatıcı"
-   )
-MSG_HASH(
-   MENU_ENUM_LABEL_VALUE_AI_SERVICE_IMAGE_NARRATOR_MODE,
-   "Resim + Anlatıcı"
-   )
-MSG_HASH(
-   MENU_ENUM_LABEL_VALUE_AI_SERVICE_TEXT_POSITION_BOTTOM,
-   "Alt"
-   )
-MSG_HASH(
-   MENU_ENUM_LABEL_VALUE_AI_SERVICE_TEXT_POSITION_TOP,
-   "Üst"
    )
 MSG_HASH(
    MENU_ENUM_LABEL_VALUE_PLAYLIST_ENTRY_REMOVE_ENABLE_HIST_FAV,
@@ -10480,6 +10662,10 @@ MSG_HASH(
 MSG_HASH(
    MENU_ENUM_LABEL_VALUE_THUMBNAIL_MODE_TITLE_SCREENS,
    "Ekran Başlığı"
+   )
+MSG_HASH(
+   MENU_ENUM_LABEL_VALUE_THUMBNAIL_MODE_LOGOS,
+   "İçerik Logosu"
    )
 MSG_HASH(
    MENU_ENUM_LABEL_VALUE_SCROLL_FAST,
@@ -11366,6 +11552,10 @@ MSG_HASH(
    "Düz Arayüz"
    )
 MSG_HASH(
+   MENU_ENUM_LABEL_VALUE_XMB_ICON_THEME_FLATUX,
+   "DüzArayüz"
+   )
+MSG_HASH(
    MENU_ENUM_LABEL_VALUE_XMB_ICON_THEME_MONOCHROME,
    "Tek Renk"
    )
@@ -11378,16 +11568,8 @@ MSG_HASH(
    "Sistematik"
    )
 MSG_HASH(
-   MENU_ENUM_LABEL_VALUE_XMB_ICON_THEME_NEOACTIVE,
-   "NeoAktif"
-   )
-MSG_HASH(
    MENU_ENUM_LABEL_VALUE_XMB_ICON_THEME_PIXEL,
    "Piksel"
-   )
-MSG_HASH(
-   MENU_ENUM_LABEL_VALUE_XMB_ICON_THEME_RETROACTIVE,
-   "RetroAktif"
    )
 MSG_HASH(
    MENU_ENUM_LABEL_VALUE_XMB_ICON_THEME_RETROSYSTEM,
@@ -11551,6 +11733,10 @@ MSG_HASH(
 MSG_HASH(
    MENU_ENUM_LABEL_VALUE_OZONE_COLOR_THEME_DRACULA,
    "Drakula"
+   )
+MSG_HASH(
+   MENU_ENUM_LABEL_VALUE_OZONE_COLOR_THEME_SELENIUM,
+   "Selenyum"
    )
 MSG_HASH(
    MENU_ENUM_LABEL_VALUE_OZONE_COLOR_THEME_SOLARIZED_DARK,
@@ -13065,22 +13251,6 @@ MSG_HASH( /* FIXME Should be MSG_ */
    "Çekirdek kurulumu başarısız"
    )
 MSG_HASH(
-   MSG_AI_VIDEO_DRIVER_NOT_SUPPORTED,
-   "Video sürücüsü Çeviri Hizmeti için desteklenmiyor."
-   )
-MSG_HASH(
-   MSG_AI_AUTO_MODE_ENABLED,
-   "Otomatik çeviri etkin."
-   )
-MSG_HASH(
-   MSG_AI_AUTO_MODE_DISABLED,
-   "Otomatik çeviri devre dışı."
-   )
-MSG_HASH(
-   MSG_AI_NOTHING_TO_TRANSLATE,
-   "Çevirecek birşey yok."
-   )
-MSG_HASH(
    MSG_CHEAT_DELETE_ALL_INSTRUCTIONS,
    "Tüm hileleri silmek için beş kez sağa basın."
    )
@@ -13318,10 +13488,6 @@ MSG_HASH(
    "Otomatik algıla"
    )
 MSG_HASH(
-   MSG_AUTOLOADING_SAVESTATE_FROM,
-   "Durum kaydından otomatik yükle"
-   )
-MSG_HASH(
    MSG_CAPABILITIES,
    "Yetenekler"
    )
@@ -13446,6 +13612,14 @@ MSG_HASH(
    "Sık kullanılan eklenemedi: oynatma listesi dolu"
    )
 MSG_HASH(
+   MSG_ADDED_TO_PLAYLIST,
+   "Oynatma listesine eklendi"
+   )
+MSG_HASH(
+   MSG_ADD_TO_PLAYLIST_FAILED,
+   "Oynatma listesine eklenemedi: liste dolu"
+   )
+MSG_HASH(
    MSG_SET_CORE_ASSOCIATION,
    "Çekirdek ayarla: "
    )
@@ -13516,10 +13690,6 @@ MSG_HASH(
 MSG_HASH(
    MSG_CANNOT_INFER_NEW_CONFIG_PATH,
    "Yeni yapılandırma yolu çıkarılamıyor. Mevcut saati kullanın."
-   )
-MSG_HASH(
-   MSG_CHEEVOS_HARDCORE_MODE_ENABLE,
-   "Başarımlar için Zorlu Kip Etkin, durum kaydı ve geri sarma devre dışı bırakıldı."
    )
 MSG_HASH(
    MSG_COMPARING_WITH_KNOWN_MAGIC_NUMBERS,
@@ -14059,7 +14229,7 @@ MSG_HASH(
    )
 MSG_HASH(
    MSG_NO_CONTENT_STARTING_DUMMY_CORE,
-   "İçerik yok, kukla çekirdek başlatılıyor."
+   "İçerik yok, benzer çekirdek başlatılıyor."
    )
 MSG_HASH(
    MSG_NO_SAVE_STATE_HAS_BEEN_OVERWRITTEN_YET,
@@ -14298,6 +14468,10 @@ MSG_HASH(
    "Başarım Kilidi Açıldı"
    )
 MSG_HASH(
+   MSG_RARE_ACHIEVEMENT_UNLOCKED,
+   "Nadir Başarım Kilidi Açıldı"
+   )
+MSG_HASH(
    MSG_LEADERBOARD_STARTED,
    "Skor tablosu denemesi başladı"
    )
@@ -14308,6 +14482,14 @@ MSG_HASH(
 MSG_HASH(
    MSG_LEADERBOARD_SUBMISSION,
    "%s için %s gönderildi" /* Submitted [value] for [leaderboard name] */
+   )
+MSG_HASH(
+   MSG_LEADERBOARD_RANK,
+   "Derece: %d" /* Rank: [leaderboard rank] */
+   )
+MSG_HASH(
+   MSG_LEADERBOARD_BEST,
+   "En iyi %s" /* Best: [value] */
    )
 MSG_HASH(
    MSG_CHANGE_THUMBNAIL_TYPE,
@@ -14363,7 +14545,7 @@ MSG_HASH(
    )
 MSG_HASH(
    MSG_USING_LIBRETRO_DUMMY_CORE_RECORDING_SKIPPED,
-   "Libretro kukla çekirdeği kullanılıyor. Kayıt atlanıyor."
+   "Libretro benzer çekirdeği kullanılıyor. Kayıt atlanıyor."
    )
 MSG_HASH(
    MSG_VALUE_CONNECT_DEVICE_FROM_A_VALID_PORT,
@@ -14396,6 +14578,10 @@ MSG_HASH(
 MSG_HASH(
    MSG_VIRTUAL_DISK_TRAY_CLOSE,
    "Sanal disk tepsisi kapatılamadı."
+   )
+MSG_HASH(
+   MSG_AUTOLOADING_SAVESTATE_FROM,
+   "Durum kaydından otomatik yükle"
    )
 MSG_HASH(
    MSG_AUTOLOADING_SAVESTATE_FAILED,
@@ -14690,6 +14876,10 @@ MSG_HASH(
    "Ana bilgisayardan başlık alınamadı."
    )
 MSG_HASH(
+   MSG_CHEEVOS_LOGGED_IN_AS_USER,
+   "RetroAchievements: \"%s\" olarak oturum açıldı."
+   )
+MSG_HASH(
    MSG_CHEEVOS_LOAD_STATE_PREVENTED_BY_HARDCORE_MODE,
    "Durumları yüklemek için Zorlu Kipte Başarılar duraklatılmalı veya devre dışı bırakmanız gerekir."
    )
@@ -14702,12 +14892,80 @@ MSG_HASH(
    "Bir hile etkinleştirildi. Başarılar mevcut oturum için Zorlu Kip devre dışı bırakıldı."
    )
 MSG_HASH(
+   MSG_CHEEVOS_HARDCORE_MODE_CHANGED_BY_HOST,
+   "Başarımlar Zorlu Mod, sunucu tarafından değiştirildi."
+   )
+MSG_HASH(
+   MSG_CHEEVOS_HARDCORE_MODE_REQUIRES_NEWER_HOST,
+   "Netplay ana bilgisayarının güncellenmesi gerekiyor. Başarımlar Zorlu Mod mevcut oturum için devre dışı bırakıldı."
+   )
+MSG_HASH(
    MSG_CHEEVOS_MASTERED_GAME,
    "Ustalıkla %s"
    )
 MSG_HASH(
    MSG_CHEEVOS_COMPLETED_GAME,
    "Tamamlandı %s"
+   )
+MSG_HASH(
+   MSG_CHEEVOS_HARDCORE_MODE_ENABLE,
+   "Başarımlar için Zorlu Kip Etkin, durum kaydı ve geri sarma devre dışı bırakıldı."
+   )
+MSG_HASH(
+   MSG_CHEEVOS_GAME_HAS_NO_ACHIEVEMENTS,
+   "Bu oyunun herhangi bir başarımı yok."
+   )
+MSG_HASH(
+   MSG_CHEEVOS_ALL_ACHIEVEMENTS_ACTIVATED,
+   "Bu oturum için %d başarımının tümü etkinleştirildi"
+)
+MSG_HASH(
+   MSG_CHEEVOS_UNOFFICIAL_ACHIEVEMENTS_ACTIVATED,
+   "%d resmi olmayan başarım etkinleştirildi"
+)
+MSG_HASH(
+   MSG_CHEEVOS_NUMBER_ACHIEVEMENTS_UNLOCKED,
+   "%d başarımdan %d tanesinin kilidi açıldı"
+)
+MSG_HASH(
+   MSG_CHEEVOS_UNSUPPORTED_COUNT,
+   "%d desteklenmiyor"
+)
+MSG_HASH(
+   MSG_CHEEVOS_RICH_PRESENCE_SPECTATING,
+   "İzleyici %s"
+   )
+MSG_HASH(
+   MSG_CHEEVOS_HARDCORE_PAUSED_MANUAL_FRAME_DELAY,
+   "Zorlu kip durakladı. El ile video karesi gecikme ayarına izin verilmiyor."
+   )
+MSG_HASH(
+   MSG_CHEEVOS_HARDCORE_PAUSED_VSYNC_SWAP_INTERVAL,
+   "Zorlu kip durakladı. 1 üzerindeki vsync takas aralığına izin verilmiyor."
+   )
+MSG_HASH(
+   MSG_CHEEVOS_HARDCORE_PAUSED_BLACK_FRAME_INSERTION,
+   "Zorlu kip durakladı. Siyah kare eklenmesine izin verilmiyor."
+   )
+MSG_HASH(
+   MSG_CHEEVOS_HARDCORE_PAUSED_SETTING_NOT_ALLOWED,
+   "Zorlu kip durakladı. Ayarlamaya izin verilmiyor: %s=%s"
+   )
+MSG_HASH(
+   MSG_CHEEVOS_HARDCORE_PAUSED_SYSTEM_NOT_FOR_CORE,
+   "Zorlu kip durakladı. %s kullanarak %s için zorlu başarılar kazanamazsınız"
+   )
+MSG_HASH(
+   MSG_CHEEVOS_GAME_NOT_IDENTIFIED,
+   "RetroAchievements: Oyun tanımlanamadı."
+   )
+MSG_HASH(
+   MSG_CHEEVOS_GAME_LOAD_FAILED,
+   "RetroAchievements oyun yüklemesi başarısız: %s"
+   )
+MSG_HASH(
+   MSG_CHEEVOS_CHANGE_MEDIA_FAILED,
+   "RetroAchievements medyayı değiştiremedi: %s"
    )
 MSG_HASH(
    MSG_RESAMPLER_QUALITY_LOWEST,
@@ -15192,14 +15450,6 @@ MSG_HASH(
    "Linux GameMode etkinleştirilmesi, en iyi performans için CPU ve GPU'nuzu otomatik olarak yapılandırarak gecikmeyi iyileştirebilir, ses cızırtı sorunlarını düzeltebilir ve genel performansı en üst düzeye çıkarabilir.\nBunun çalışması için GameMode yazılımının yüklenmesi gerekir. GameMode nasıl kurulacağı hakkında bilgi için https://github.com/FeralInteractive/gamemode adresine bakın."
    )
 MSG_HASH(
-   MENU_ENUM_LABEL_VALUE_VIDEO_FRAME_REST,
-   "Kare Desteği"
-   )
-MSG_HASH(
-   MENU_ENUM_SUBLABEL_VIDEO_FRAME_REST,
-   "Kare sunumundan sonra mümkün olduğunca uyuyarak vsync CPU kullanımını azaltmaya çalışın. Öncelikle üçüncü taraf tarama hattı eşitlenmesi için tasarlandı."
-   )
-MSG_HASH(
    MENU_ENUM_LABEL_VALUE_PAL60_ENABLE,
    "PAL60 Kipi Kullan"
    )
@@ -15643,6 +15893,10 @@ MSG_HASH(
    "Dokunmatik fare devre dışı"
    )
 MSG_HASH(
+   MSG_SDL2_MIC_NEEDS_SDL2_AUDIO,
+   "sdl2 mikrofon, sdl2 ses sürücüsü gerektirir"
+   )
+MSG_HASH(
    MSG_ACCESSIBILITY_STARTUP,
    "RetroArch erişilebilirliği açık. Ana Menü Çekirdek Yükle."
    )
@@ -15650,3 +15904,10 @@ MSG_HASH(
    MSG_AI_SERVICE_STOPPED,
    "durduruldu."
    )
+#ifdef HAVE_GAME_AI
+
+
+
+
+
+#endif

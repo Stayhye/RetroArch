@@ -22,7 +22,9 @@
 
 #ifdef __unix__
 #ifndef __sun__
+#ifndef _POSIX_C_SOURCE
 #define _POSIX_C_SOURCE 199309
+#endif
 #endif
 #endif
 
@@ -682,7 +684,7 @@ bool scond_wait_timeout(scond_t *cond, slock_t *lock, int64_t timeout_us)
     * of the minimum length */
    /* The implementation of a 0 timeout here with pthreads is sketchy.
     * It isn't clear what happens if pthread_cond_timedwait is called with NOW.
-    * Moreover, it is possible that this thread gets pre-empted after the
+    * Moreover, it is possible that this thread gets preempted after the
     * clock_gettime but before the pthread_cond_timedwait.
     * In order to help smoke out problems caused by this strange usage,
     * let's treat a 0 timeout as always timing out.
