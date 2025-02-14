@@ -110,6 +110,18 @@ MSG_HASH(
    "Crea y anueva llistes pente la busca de conteníu."
    )
 MSG_HASH(
+   MENU_ENUM_LABEL_VALUE_SHOW_WIMP,
+   "Amosar el menú pa escritorios"
+   )
+MSG_HASH(
+   MENU_ENUM_SUBLABEL_SHOW_WIMP,
+   "Abre'l menú tradicional pa escritorios."
+   )
+MSG_HASH(
+   MENU_ENUM_SUBLABEL_MENU_DISABLE_KIOSK_MODE,
+   "Amuesa toles opciones de configuración rellacionaes."
+   )
+MSG_HASH(
    MENU_ENUM_LABEL_VALUE_ONLINE_UPDATER,
    "Anovador"
    )
@@ -1480,8 +1492,20 @@ MSG_HASH(
 /* Settings > Core */
 
 MSG_HASH(
+   MENU_ENUM_LABEL_VALUE_DRIVER_SWITCH_ENABLE,
+   "Permitir que los nucleos cambien el controlador de videu"
+   )
+MSG_HASH(
    MENU_ENUM_SUBLABEL_DUMMY_ON_CORE_SHUTDOWN,
    "Dalgunos nucleos tienen una función d'apagáu, la carga d'un nucleu maniquín impide que RetroArch cole."
+   )
+MSG_HASH(
+   MENU_ENUM_LABEL_VALUE_CHECK_FOR_MISSING_FIRMWARE,
+   "Comprobar el firmware que falte enantes de cargar"
+   )
+MSG_HASH(
+   MENU_ENUM_LABEL_VALUE_CORE_INFO_CACHE_ENABLE,
+   "Atroxar na cache los ficheros d'información de los núcleos"
    )
 #ifndef HAVE_DYNAMIC
 #endif
@@ -1511,6 +1535,10 @@ MSG_HASH(
 MSG_HASH(
    MENU_ENUM_LABEL_VALUE_CONFIG_SAVE_ON_EXIT,
    "Guardar la configuración al colar"
+   )
+MSG_HASH(
+   MENU_ENUM_LABEL_VALUE_AUTO_OVERRIDES_ENABLE,
+   "Cargar automáticamente los ficheros d'anulación"
    )
 
 /* Settings > Saving */
@@ -1545,6 +1573,10 @@ MSG_HASH(
 
 /* Settings > File Browser */
 
+MSG_HASH(
+   MENU_ENUM_LABEL_VALUE_USE_BUILTIN_IMAGE_VIEWER,
+   "Usar el visor d'imáxenes integráu"
+   )
 
 /* Settings > Frame Throttle */
 
@@ -1965,6 +1997,14 @@ MSG_HASH(
 /* Settings > AI Service */
 
 MSG_HASH(
+   MENU_ENUM_LABEL_VALUE_AI_SERVICE_MODE,
+   "Salida del serviciu d'IA"
+   )
+MSG_HASH(
+   MENU_ENUM_LABEL_VALUE_AI_SERVICE_URL,
+   "URL del serviciu d'IA"
+   )
+MSG_HASH(
    MENU_ENUM_LABEL_VALUE_AI_SERVICE_SOURCE_LANG,
    "Llingua d'orixe"
    )
@@ -2284,7 +2324,7 @@ MSG_HASH(
    )
 MSG_HASH( /* FIXME Not RGUI specific */
    MENU_ENUM_LABEL_VALUE_RGUI_BROWSER_DIRECTORY,
-   "Restolador de ficheros"
+   "Direutoriu inicial"
    )
 MSG_HASH( /* FIXME Not RGUI specific */
    MENU_ENUM_LABEL_VALUE_RGUI_CONFIG_DIRECTORY,
@@ -2574,10 +2614,6 @@ MSG_HASH(
 MSG_HASH(
    MENU_ENUM_LABEL_VALUE_RESUME_CONTENT,
    "Siguir"
-   )
-MSG_HASH(
-   MENU_ENUM_SUBLABEL_RESUME_CONTENT,
-   "Sigue col conteníu n'execución y cola del menú rápidu."
    )
 MSG_HASH(
    MENU_ENUM_LABEL_VALUE_CLOSE_CONTENT,
@@ -2886,6 +2922,10 @@ MSG_HASH(
 MSG_HASH(
    MENU_ENUM_LABEL_CHEAT_HANDLER_TYPE_EMU,
    "Emulador"
+   )
+MSG_HASH(
+   MENU_ENUM_LABEL_VALUE_THUMBNAIL_MODE_BOXARTS,
+   "Carátula"
    )
 MSG_HASH(
    MENU_ENUM_LABEL_VALUE_ON,
@@ -3412,6 +3452,10 @@ MSG_HASH(
    "Restolador de conteníu"
    )
 MSG_HASH(
+   MENU_ENUM_LABEL_VALUE_QT_THUMBNAIL_BOXART,
+   "Carátula"
+   )
+MSG_HASH(
    MENU_ENUM_LABEL_VALUE_QT_ALL_PLAYLISTS,
    "Toles llistes"
    )
@@ -3691,10 +3735,6 @@ MSG_HASH(
    "Usuariu"
    )
 MSG_HASH(
-   MENU_ENUM_LABEL_VALUE_USE_BUILTIN_IMAGE_VIEWER,
-   "Usar el visor d'imáxenes integráu"
-   )
-MSG_HASH(
    MENU_ENUM_LABEL_VALUE_BROWSE_START,
    "Aniciar"
    )
@@ -3708,14 +3748,6 @@ MSG_HASH(
 MSG_HASH(
    MENU_ENUM_LABEL_VALUE_NETPLAY_ROOM_NICKNAME_LAN,
    "Nomatu (LAN): %s"
-   )
-MSG_HASH(
-   MENU_ENUM_LABEL_VALUE_RESUME,
-   "Siguir"
-   )
-MSG_HASH(
-   MENU_ENUM_SUBLABEL_RESUME,
-   "Sigue col conteníu n'execución y cola del menú rápidu."
    )
 MSG_HASH( /* FIXME Still exists in a comment about being removed */
    MENU_ENUM_LABEL_VALUE_MATERIALUI_MENU_FOOTER_OPACITY,

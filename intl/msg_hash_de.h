@@ -2838,7 +2838,7 @@ MSG_HASH(
    )
 MSG_HASH(
    MENU_ENUM_LABEL_VALUE_AUDIO_FASTFORWARD_MUTE,
-   "Beim Vorspulen stummschalten"
+   "Auto-stumm bei schnellem Vorspulen"
    )
 MSG_HASH(
    MENU_ENUM_SUBLABEL_AUDIO_FASTFORWARD_MUTE,
@@ -2846,11 +2846,19 @@ MSG_HASH(
    )
 MSG_HASH(
    MENU_ENUM_LABEL_VALUE_AUDIO_FASTFORWARD_SPEEDUP,
-   "Beim Vorspulen beschleunigen"
+   "Audiobeschleunigung bei schnellem Vorspulen"
    )
 MSG_HASH(
    MENU_ENUM_SUBLABEL_AUDIO_FASTFORWARD_SPEEDUP,
    "Audio beim schnellen Vorlauf beschleunigen. Verhindert Knackgeräusche, verändert aber die Tonhöhe."
+   )
+MSG_HASH(
+   MENU_ENUM_LABEL_VALUE_AUDIO_REWIND_MUTE,
+   "Auto-stumm bei Rückspulen"
+   )
+MSG_HASH(
+   MENU_ENUM_SUBLABEL_AUDIO_REWIND_MUTE,
+   "Audio beim Zurückspulen automatisch stumm stellen."
    )
 MSG_HASH(
    MENU_ENUM_LABEL_VALUE_AUDIO_VOLUME,
@@ -3660,7 +3668,7 @@ MSG_HASH(
    )
 MSG_HASH(
    MENU_ENUM_SUBLABEL_INPUT_META_MENU_TOGGLE,
-   "Wechselt die aktuelle Anzeige zwischen dem Menü und dem laufenden Inhalt."
+   "Schaltet die aktuelle Anzeige zwischen Menü und Inhalt um."
    )
 MSG_HASH(
    MENU_ENUM_LABEL_VALUE_INPUT_QUIT_GAMEPAD_COMBO,
@@ -3736,7 +3744,7 @@ MSG_HASH(
    )
 MSG_HASH(
    MENU_ENUM_SUBLABEL_INPUT_META_PAUSE_TOGGLE,
-   "Schaltet den Inhalt zwischen pausierten und nicht-pausierten Zuständen um."
+   "Schaltet den Inhalt zwischen pausiert und nicht-pausiert um."
    )
 MSG_HASH(
    MENU_ENUM_LABEL_VALUE_INPUT_META_FRAMEADVANCE,
@@ -4878,12 +4886,12 @@ MSG_HASH(
    "Im Dateibrowser nur Dateien mit unterstützten Dateitypen anzeigen."
    )
 MSG_HASH(
-   MENU_ENUM_LABEL_VALUE_USE_BUILTIN_PLAYER,
-   "Eingebauten Mediaplayer verwenden"
-   )
-MSG_HASH(
    MENU_ENUM_LABEL_VALUE_FILTER_BY_CURRENT_CORE,
    "Nach aktuellem Core filtern"
+   )
+MSG_HASH(
+   MENU_ENUM_SUBLABEL_FILTER_BY_CURRENT_CORE,
+   "Die im Dateibrowser anzuzeigenden Dateien durch aktuellen Core filtern."
    )
 MSG_HASH(
    MENU_ENUM_LABEL_VALUE_USE_LAST_START_DIRECTORY,
@@ -4892,6 +4900,14 @@ MSG_HASH(
 MSG_HASH(
    MENU_ENUM_SUBLABEL_USE_LAST_START_DIRECTORY,
    "Den Dateibrowser im zuletzt verwendeten Pfad öffnen, wenn Inhalte aus dem Startverzeichnis geladen werden. Hinweis: Der Pfad wird beim Neustart von RetroArch zurückgesetzt."
+   )
+MSG_HASH(
+   MENU_ENUM_LABEL_VALUE_USE_BUILTIN_PLAYER,
+   "Eingebauten Mediaplayer verwenden"
+   )
+MSG_HASH(
+   MENU_ENUM_LABEL_VALUE_USE_BUILTIN_IMAGE_VIEWER,
+   "Integrierten Bildbetrachter verwenden"
    )
 
 /* Settings > Frame Throttle */
@@ -6000,7 +6016,7 @@ MSG_HASH(
    )
 MSG_HASH(
    MENU_ENUM_SUBLABEL_PAUSE_LIBRETRO,
-   "Den aktuell laufenden Inhalt pausieren, wenn das Menü aktiv ist."
+   "Pausiert den Inhalt, wenn das Menü aktiv ist."
    )
 MSG_HASH(
    MENU_ENUM_LABEL_VALUE_MENU_SAVESTATE_RESUME,
@@ -6357,7 +6373,15 @@ MSG_HASH(
    )
 MSG_HASH(
    MENU_ENUM_SUBLABEL_CONTENT_SHOW_PLAYLISTS,
-   "Die Wiedergabelisten anzeigen. (Neustart erforderlich bei Ozone/XMB)"
+   "Wiedergabelisten im Hauptmenü anzeigen. Wird in GLUI ignoriert, wenn Wiedergabelisten und Navigationsleiste aktiviert sind."
+   )
+MSG_HASH(
+   MENU_ENUM_LABEL_VALUE_CONTENT_SHOW_PLAYLIST_TABS,
+   "Wiedergabelisten-Tabs anzeigen"
+   )
+MSG_HASH(
+   MENU_ENUM_SUBLABEL_CONTENT_SHOW_PLAYLIST_TABS,
+   "Wiedergabelisten-Tabs anzeigen. Wirkt sich nicht auf RGUI aus. Navigationsleiste muss in GLUI aktiviert sein. (Neustart erforderlich auf Ozone/XMB)"
    )
 MSG_HASH(
    MENU_ENUM_LABEL_VALUE_CONTENT_SHOW_EXPLORE,
@@ -6836,14 +6860,6 @@ MSG_HASH(
 MSG_HASH(
    MENU_ENUM_LABEL_VALUE_SETTINGS_SHOW_USER,
    "\"Benutzer\" anzeigen"
-   )
-MSG_HASH(
-   MENU_ENUM_LABEL_VALUE_ICON_THUMBNAILS,
-   "Wiedergabelistensymbole"
-   )
-MSG_HASH(
-   MENU_ENUM_SUBLABEL_ICON_THUMBNAILS,
-   "Art des anzuzeigenden Playlist-Symbols."
    )
 MSG_HASH(
    MENU_ENUM_SUBLABEL_SETTINGS_SHOW_USER,
@@ -7797,7 +7813,7 @@ MSG_HASH(
    )
 MSG_HASH(
    MENU_ENUM_LABEL_VALUE_SCAN_SERIAL_AND_CRC,
-   "Prüft CRC auf mögliche Duplikate"
+   "Per Checksumme auf mögliche Duplikate scannen"
    )
 MSG_HASH(
    MENU_ENUM_SUBLABEL_SCAN_SERIAL_AND_CRC,
@@ -8032,7 +8048,7 @@ MSG_HASH(
    )
 MSG_HASH( /* FIXME Not RGUI specific */
    MENU_ENUM_LABEL_VALUE_RGUI_BROWSER_DIRECTORY,
-   "Dateibrowser"
+   "Startverzeichnis"
    )
 MSG_HASH( /* FIXME Not RGUI specific */
    MENU_ENUM_SUBLABEL_RGUI_BROWSER_DIRECTORY,
@@ -8265,7 +8281,7 @@ MSG_HASH(
    )
 MSG_HASH(
    MENU_ENUM_SUBLABEL_STEAM_RICH_PRESENCE_FORMAT,
-   "Entscheiden, welche Informationen zum laufenden Inhalt geteilt werden."
+   "Festlegen, welche Informationen über den Inhalt geteilt werden sollen."
    )
 
 MSG_HASH(
@@ -8853,7 +8869,7 @@ MSG_HASH(
    )
 MSG_HASH(
    MENU_ENUM_SUBLABEL_RESUME_CONTENT,
-   "Das Schnellmenü verlassen und den aktuellen Inhalt fortsetzen."
+   "Den Inhalt fortsetzen und das Schnellmenü verlassen."
    )
 MSG_HASH(
    MENU_ENUM_LABEL_VALUE_RESTART_CONTENT,
@@ -8869,7 +8885,7 @@ MSG_HASH(
    )
 MSG_HASH(
    MENU_ENUM_SUBLABEL_CLOSE_CONTENT,
-   "Den aktuellen Inhalt schließen. Nicht gespeicherte Änderungen können verloren gehen."
+   "Den Inhalt schließen. Alle nicht gespeicherte Änderungen können verloren gehen."
    )
 MSG_HASH(
    MENU_ENUM_LABEL_VALUE_TAKE_SCREENSHOT,
@@ -9005,7 +9021,7 @@ MSG_HASH(
    )
 MSG_HASH(
    MENU_ENUM_SUBLABEL_CORE_OPTIONS,
-   "Die Einstellungen für die aktuell laufende Anwendung ändern."
+   "Die Optionen für den Inhalt ändern."
    )
 MSG_HASH(
    MENU_ENUM_LABEL_VALUE_CORE_INPUT_REMAPPING_OPTIONS,
@@ -9013,7 +9029,7 @@ MSG_HASH(
    )
 MSG_HASH(
    MENU_ENUM_SUBLABEL_CORE_INPUT_REMAPPING_OPTIONS,
-   "Die Steuerung für den aktuell laufenden Inhalt ändern."
+   "Die Steuerung für den Inhalt ändern."
    )
 MSG_HASH(
    MENU_ENUM_SUBLABEL_CORE_CHEAT_OPTIONS,
@@ -9619,7 +9635,7 @@ MSG_HASH(
    )
 MSG_HASH(
    MENU_ENUM_LABEL_HELP_SHADER_WATCH_FOR_CHANGES,
-   "Shaderdateien auf Änderungen überwachen. Nach dem Speichern von Änderungen an einem Shader wird dieser automatisch neu kompiliert und auf den laufenden Inhalt angewendet."
+   "Shaderdateien auf neue Änderungen beobachten. Nach dem Speichern von Änderungen an einem Shader auf den Datenträger, wird dieser automatisch neu kompiliert und auf den Inhalt angewendet."
    )
 MSG_HASH(
    MENU_ENUM_LABEL_VALUE_VIDEO_SHADER_REMEMBER_LAST_DIR,
@@ -10804,7 +10820,7 @@ MSG_HASH(
    )
 MSG_HASH(
    MENU_ENUM_SUBLABEL_MENU_RGUI_TRANSPARENCY,
-   "Laufende Inhalte im Hintergrund anzeigen, während das Schnellmenü aktiv ist. Das Deaktivieren der Transparenz kann die Farben des Designs verändern."
+   "Die Hintergrundanzeige des Inhalts aktivieren, wenn das Schnellmenü aktiv ist. Das Deaktivieren der Transparenz kann die Farben des Themas verändern."
    )
 MSG_HASH(
    MENU_ENUM_LABEL_VALUE_MENU_RGUI_SHADOWS,
@@ -11095,6 +11111,14 @@ MSG_HASH(
 MSG_HASH(
    MENU_ENUM_SUBLABEL_LEFT_THUMBNAILS,
    "Art des Vorschaubildes, das auf der linken Seite gezeigt werden soll."
+   )
+MSG_HASH(
+   MENU_ENUM_LABEL_VALUE_ICON_THUMBNAILS,
+   "Symbolminiaturbild"
+   )
+MSG_HASH(
+   MENU_ENUM_SUBLABEL_ICON_THUMBNAILS,
+   "Art des anzuzeigenden Miniaturbildes für die Wiedergabeliste."
    )
 MSG_HASH(
    MENU_ENUM_LABEL_VALUE_DYNAMIC_WALLPAPER,
@@ -12343,10 +12367,6 @@ MSG_HASH(
    "Tastatur"
    )
 MSG_HASH(
-   MENU_ENUM_LABEL_VALUE_USE_BUILTIN_IMAGE_VIEWER,
-   "Integrierten Bildbetrachter verwenden"
-   )
-MSG_HASH(
    MENU_ENUM_LABEL_VALUE_VIDEO_MAX_SWAPCHAIN_IMAGES,
    "Maximale Anzahl von Zwischenbildern"
    )
@@ -12468,14 +12488,6 @@ MSG_HASH(
 MSG_HASH(
    MENU_ENUM_LABEL_VALUE_SELECT_FROM_PLAYLIST,
    "Wähle aus Wiedergabenliste"
-   )
-MSG_HASH(
-   MENU_ENUM_LABEL_VALUE_RESUME,
-   "Fortsetzen"
-   )
-MSG_HASH(
-   MENU_ENUM_SUBLABEL_RESUME,
-   "Das Schnellmenü verlassen und den aktuellen Inhalt fortsetzen."
    )
 MSG_HASH(
    MENU_ENUM_LABEL_VALUE_CHEAT_VIEW_MATCHES,
@@ -15485,9 +15497,53 @@ MSG_HASH(
    "gestoppt."
    )
 #ifdef HAVE_GAME_AI
+MSG_HASH(
+   MENU_ENUM_LABEL_VALUE_GAME_AI_MENU_OPTION,
+   "KI-Player überschreiben"
+   )
+MSG_HASH(
+   MENU_ENUM_SUBLABEL_GAME_AI_MENU_OPTION,
+   "KI-Spieler überschreiben Unterlabel"
+   )
 
+MSG_HASH(
+   MENU_ENUM_LABEL_VALUE_CORE_GAME_AI_OPTIONS,
+   "Spiel-KI"
+   )
 
+MSG_HASH(
+   MENU_ENUM_LABEL_VALUE_GAME_AI_OVERRIDE_P1,
+   "P1 überschreiben"
+   )
+MSG_HASH(
+   MENU_ENUM_SUBLABEL_GAME_AI_OVERRIDE_P1,
+   "Spieler 01 überschreiben"
+   )
 
+MSG_HASH(
+   MENU_ENUM_LABEL_VALUE_GAME_AI_OVERRIDE_P2,
+   "P2 überschreiben"
+   )
+MSG_HASH(
+   MENU_ENUM_SUBLABEL_GAME_AI_OVERRIDE_P2,
+   "Spieler 02 überschreiben"
+   )
 
+MSG_HASH(
+   MENU_ENUM_LABEL_VALUE_GAME_AI_SHOW_DEBUG,
+   "Fehlerinformation anzeigen"
+   )
+MSG_HASH(
+   MENU_ENUM_SUBLABEL_GAME_AI_SHOW_DEBUG,
+   "Fehlerinformation anzeigen"
+   )
 
+MSG_HASH(
+   MENU_ENUM_LABEL_VALUE_QUICK_MENU_SHOW_GAME_AI,
+   "„Spiel-KI“ anzeigen"
+   )
+MSG_HASH(
+   MENU_ENUM_SUBLABEL_QUICK_MENU_SHOW_GAME_AI,
+   "Die Option „Spiel-KI“ anzeigen."
+   )
 #endif

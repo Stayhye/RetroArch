@@ -233,6 +233,7 @@ enum camera_driver_enum
    CAMERA_RWEBCAM,
    CAMERA_ANDROID,
    CAMERA_AVFOUNDATION,
+   CAMERA_PIPEWIRE,
    CAMERA_NULL
 };
 
@@ -276,6 +277,7 @@ enum menu_driver_enum
 enum record_driver_enum
 {
    RECORD_FFMPEG            = MENU_NULL + 1,
+   RECORD_WAV,
    RECORD_NULL
 };
 
@@ -590,7 +592,7 @@ static const enum audio_resampler_driver_enum AUDIO_DEFAULT_RESAMPLER_DRIVER = A
 #if defined(HAVE_FFMPEG)
 static const enum record_driver_enum RECORD_DEFAULT_DRIVER = RECORD_FFMPEG;
 #else
-static const enum record_driver_enum RECORD_DEFAULT_DRIVER = RECORD_NULL;
+static const enum record_driver_enum RECORD_DEFAULT_DRIVER = RECORD_WAV;
 #endif
 
 #ifdef HAVE_WINMM
@@ -717,6 +719,8 @@ static const enum camera_driver_enum CAMERA_DEFAULT_DRIVER = CAMERA_V4L2;
 static const enum camera_driver_enum CAMERA_DEFAULT_DRIVER = CAMERA_RWEBCAM;
 #elif defined(ANDROID)
 static const enum camera_driver_enum CAMERA_DEFAULT_DRIVER = CAMERA_ANDROID;
+#elif defined(HAVE_PIPEWIRE)
+static const enum camera_driver_enum CAMERA_DEFAULT_DRIVER = CAMERA_PIPEWIRE;
 #else
 static const enum camera_driver_enum CAMERA_DEFAULT_DRIVER = CAMERA_NULL;
 #endif
@@ -1009,6 +1013,8 @@ const char *config_get_default_record(void)
    {
       case RECORD_FFMPEG:
          return "ffmpeg";
+      case RECORD_WAV:
+         return "wav";
       case RECORD_NULL:
          break;
    }
@@ -1299,6 +1305,8 @@ const char *config_get_default_camera(void)
          return "android";
       case CAMERA_AVFOUNDATION:
          return "avfoundation";
+      case CAMERA_PIPEWIRE:
+         return "pipewire";
       case CAMERA_NULL:
          break;
    }
@@ -1830,6 +1838,7 @@ static struct config_bool_setting *populate_settings_bool(
 #endif
    SETTING_BOOL("audio_fastforward_mute",        &settings->bools.audio_fastforward_mute, true, DEFAULT_AUDIO_FASTFORWARD_MUTE, false);
    SETTING_BOOL("audio_fastforward_speedup",     &settings->bools.audio_fastforward_speedup, true, DEFAULT_AUDIO_FASTFORWARD_SPEEDUP, false);
+   SETTING_BOOL("audio_rewind_mute",             &settings->bools.audio_rewind_mute, true, DEFAULT_AUDIO_REWIND_MUTE, false);
 
 #ifdef HAVE_WASAPI
    SETTING_BOOL("audio_wasapi_exclusive_mode",   &settings->bools.audio_wasapi_exclusive_mode, true, DEFAULT_WASAPI_EXCLUSIVE_MODE, false);
@@ -1933,6 +1942,7 @@ static struct config_bool_setting *populate_settings_bool(
    SETTING_BOOL("menu_dynamic_wallpaper_enable", &settings->bools.menu_dynamic_wallpaper_enable, true, DEFAULT_MENU_DYNAMIC_WALLPAPER_ENABLE, false);
    SETTING_BOOL("menu_ticker_smooth",            &settings->bools.menu_ticker_smooth, true, DEFAULT_MENU_TICKER_SMOOTH, false);
    SETTING_BOOL("menu_scroll_fast",              &settings->bools.menu_scroll_fast, true, DEFAULT_MENU_SCROLL_FAST, false);
+   SETTING_BOOL("menu_ignore_missing_assets",    &settings->bools.menu_ignore_missing_assets, true, DEFAULT_MENU_IGNORE_MISSING_ASSETS, false);
 
    SETTING_BOOL("settings_show_drivers",         &settings->bools.settings_show_drivers, true, DEFAULT_SETTINGS_SHOW_DRIVERS, false);
    SETTING_BOOL("settings_show_video",           &settings->bools.settings_show_video, true, DEFAULT_SETTINGS_SHOW_VIDEO, false);
@@ -2000,8 +2010,8 @@ static struct config_bool_setting *populate_settings_bool(
    SETTING_BOOL("content_show_netplay",          &settings->bools.menu_content_show_netplay, true, DEFAULT_CONTENT_SHOW_NETPLAY, false);
 #endif
    SETTING_BOOL("content_show_history",          &settings->bools.menu_content_show_history, true, DEFAULT_CONTENT_SHOW_HISTORY, false);
-   SETTING_BOOL("content_show_add",              &settings->bools.menu_content_show_add, true, DEFAULT_MENU_CONTENT_SHOW_ADD, false);
    SETTING_BOOL("content_show_playlists",        &settings->bools.menu_content_show_playlists, true, DEFAULT_CONTENT_SHOW_PLAYLISTS, false);
+   SETTING_BOOL("content_show_playlist_tabs",    &settings->bools.menu_content_show_playlist_tabs, true, DEFAULT_CONTENT_SHOW_PLAYLIST_TABS, false);
 #if defined(HAVE_LIBRETRODB)
    SETTING_BOOL("content_show_explore",          &settings->bools.menu_content_show_explore, true, DEFAULT_MENU_CONTENT_SHOW_EXPLORE, false);
 #endif
@@ -3725,6 +3735,14 @@ static bool config_load_file(global_t *global,
       RARCH_LOG_OUTPUT("=== Config end ===\n");
    }
 #endif
+
+   /* Special case for perfcnt_enable */
+   {
+      bool tmp = false;
+      config_get_bool(conf, "perfcnt_enable", &tmp);
+      if (tmp)
+         retroarch_ctl(RARCH_CTL_SET_PERFCNT_ENABLE, NULL);
+   }
 
    /* Overrides */
 

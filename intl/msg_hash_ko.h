@@ -2954,7 +2954,7 @@ MSG_HASH(
    )
 MSG_HASH(
    MENU_ENUM_LABEL_VALUE_AUDIO_FASTFORWARD_MUTE,
-   "빨리 감기 중 음소거"
+   "빨리 감기 중 오디오 음소거"
    )
 MSG_HASH(
    MENU_ENUM_SUBLABEL_AUDIO_FASTFORWARD_MUTE,
@@ -2967,6 +2967,14 @@ MSG_HASH(
 MSG_HASH(
    MENU_ENUM_SUBLABEL_AUDIO_FASTFORWARD_SPEEDUP,
    "빨리 감기 중 오디오의 속도를 올립니다. 소리 깨짐 효과를 방지하지만 음높이가 올라갑니다."
+   )
+MSG_HASH(
+   MENU_ENUM_LABEL_VALUE_AUDIO_REWIND_MUTE,
+   "뒤로 감기 중 오디오 음소거"
+   )
+MSG_HASH(
+   MENU_ENUM_SUBLABEL_AUDIO_REWIND_MUTE,
+   "뒤로 감기를 사용할 때 오디오를 음소거합니다."
    )
 MSG_HASH(
    MENU_ENUM_LABEL_VALUE_AUDIO_VOLUME,
@@ -3788,7 +3796,7 @@ MSG_HASH(
    )
 MSG_HASH(
    MENU_ENUM_SUBLABEL_INPUT_META_MENU_TOGGLE,
-   "실행중인 콘텐츠와 메뉴 사이를 전환합니다."
+   "콘텐츠와 메뉴 사이를 전환합니다."
    )
 MSG_HASH(
    MENU_ENUM_LABEL_VALUE_INPUT_QUIT_GAMEPAD_COMBO,
@@ -5022,12 +5030,12 @@ MSG_HASH(
    "파일 탐색기에서 지원되는 확장자의 파일만 표시합니다."
    )
 MSG_HASH(
-   MENU_ENUM_LABEL_VALUE_USE_BUILTIN_PLAYER,
-   "내장 미디어 플레이어 사용"
-   )
-MSG_HASH(
    MENU_ENUM_LABEL_VALUE_FILTER_BY_CURRENT_CORE,
    "현재 코어에 따라 필터"
+   )
+MSG_HASH(
+   MENU_ENUM_SUBLABEL_FILTER_BY_CURRENT_CORE,
+   "현재 코어에서 사용 가능한 파일만 표시합니다."
    )
 MSG_HASH(
    MENU_ENUM_LABEL_VALUE_USE_LAST_START_DIRECTORY,
@@ -5036,6 +5044,14 @@ MSG_HASH(
 MSG_HASH(
    MENU_ENUM_SUBLABEL_USE_LAST_START_DIRECTORY,
    "시작 디렉토리에서 콘텐츠를 불러올 경우 최근 사용한 위치에서 파일 탐색기를 시작합니다. 참고: RetroArch를 재시작하면 기본 위치로 초기화 됩니다."
+   )
+MSG_HASH(
+   MENU_ENUM_LABEL_VALUE_USE_BUILTIN_PLAYER,
+   "내장 미디어 플레이어 사용"
+   )
+MSG_HASH(
+   MENU_ENUM_LABEL_VALUE_USE_BUILTIN_IMAGE_VIEWER,
+   "내장 이미지 뷰어 사용"
    )
 
 /* Settings > Frame Throttle */
@@ -6156,7 +6172,7 @@ MSG_HASH(
    )
 MSG_HASH(
    MENU_ENUM_SUBLABEL_PAUSE_LIBRETRO,
-   "RetroArch 메뉴가 활성화되면 실행중인 콘텐츠를 일시정지합니다."
+   "메뉴가 활성화되면 컨텐츠를 일시정지합니다."
    )
 MSG_HASH(
    MENU_ENUM_LABEL_VALUE_MENU_SAVESTATE_RESUME,
@@ -6517,7 +6533,15 @@ MSG_HASH(
    )
 MSG_HASH(
    MENU_ENUM_SUBLABEL_CONTENT_SHOW_PLAYLISTS,
-   "실행목록을 표시합니다. (Ozone/XMB 사용시 재시작 필요)"
+   "메인 메뉴에 실행목록을 표시합니다. GLUI에서는 실행목록 탭과 내비게이션 바가 활성화된 경우 무시됩니다."
+   )
+MSG_HASH(
+   MENU_ENUM_LABEL_VALUE_CONTENT_SHOW_PLAYLIST_TABS,
+   "실행목록 탭 표시"
+   )
+MSG_HASH(
+   MENU_ENUM_SUBLABEL_CONTENT_SHOW_PLAYLIST_TABS,
+   "실행목록 탭을 표시합니다. RGUI에서는 무시됩니다. GLUI에서는 내비게이션 바가 활성화되어 있어야 합니다. (Ozone/XMB 사용시 재시작 필요)"
    )
 MSG_HASH(
    MENU_ENUM_LABEL_VALUE_CONTENT_SHOW_EXPLORE,
@@ -6996,14 +7020,6 @@ MSG_HASH(
 MSG_HASH(
    MENU_ENUM_LABEL_VALUE_SETTINGS_SHOW_USER,
    "'사용자' 표시"
-   )
-MSG_HASH(
-   MENU_ENUM_LABEL_VALUE_ICON_THUMBNAILS,
-   "실행목록 아이콘"
-   )
-MSG_HASH(
-   MENU_ENUM_SUBLABEL_ICON_THUMBNAILS,
-   "표시할 실행목록 아이콘 섬네일의 종류입니다."
    )
 MSG_HASH(
    MENU_ENUM_SUBLABEL_SETTINGS_SHOW_USER,
@@ -7969,11 +7985,11 @@ MSG_HASH(
    )
 MSG_HASH(
    MENU_ENUM_LABEL_VALUE_SCAN_SERIAL_AND_CRC,
-   "스캔은 가능한 중복에 대해 CRC를 확인"
+   "CRC 검사로 중복 여부 확인"
    )
 MSG_HASH(
    MENU_ENUM_SUBLABEL_SCAN_SERIAL_AND_CRC,
-   "때때로 ISO는 특히 PSP/PSN 타이틀의 경우 시리즈를 복제합니다. 시리즈에만 의존하면 스캐너가 콘텐츠를 잘못된 시스템에 배치하는 경우가 있습니다. 이렇게 하면 CRC 검사가 추가되어 스캔 속도가 상당히 느려지지만 더 정확할 수 있습니다."
+   "종종 내용은 다르지만 같은 시리얼 값을 가지는 ISO들이 존재하며, 이는 특히 PSP/PSN 타이틀에서 빈번히 발견됩니다. 시리얼 값만으로 콘텐츠를 구분할 경우 콘텐츠가 잘못된 시스템으로 분류될 수 있습니다. 이 옵션을 활성화하면 CRC 검사 과정이 추가되며, 검사 속도가 현저히 느려지지만, 더 정확한 결과를 얻을 수 있습니다."
    )
 MSG_HASH(
    MENU_ENUM_LABEL_VALUE_PLAYLIST_MANAGER_LIST,
@@ -8228,7 +8244,7 @@ MSG_HASH(
    )
 MSG_HASH( /* FIXME Not RGUI specific */
    MENU_ENUM_LABEL_VALUE_RGUI_BROWSER_DIRECTORY,
-   "파일 탐색기"
+   "시작 디렉토리"
    )
 MSG_HASH( /* FIXME Not RGUI specific */
    MENU_ENUM_SUBLABEL_RGUI_BROWSER_DIRECTORY,
@@ -8473,7 +8489,7 @@ MSG_HASH(
    )
 MSG_HASH(
    MENU_ENUM_SUBLABEL_STEAM_RICH_PRESENCE_FORMAT,
-   "실행중인 콘텐츠에 대해 어떤 정보를 공유할지 결정합니다."
+   "콘텐츠에 대한 어떤 정보를 공유할지 결정합니다."
    )
 
 MSG_HASH(
@@ -9073,7 +9089,7 @@ MSG_HASH(
    )
 MSG_HASH(
    MENU_ENUM_SUBLABEL_RESUME_CONTENT,
-   "빠른 메뉴를 종료하고 현재 실행 중인 콘텐츠를 이어합니다"
+   "빠른 메뉴를 종료하고 콘텐츠로 돌아갑니다."
    )
 MSG_HASH(
    MENU_ENUM_LABEL_VALUE_RESTART_CONTENT,
@@ -9089,7 +9105,7 @@ MSG_HASH(
    )
 MSG_HASH(
    MENU_ENUM_SUBLABEL_CLOSE_CONTENT,
-   "현재 콘텐츠를 종료합니다. 저장되지 않은 내용은 사라지게 됩니다."
+   "콘텐츠를 종료합니다. 저장되지 않은 내용은 사라지게 됩니다."
    )
 MSG_HASH(
    MENU_ENUM_LABEL_VALUE_TAKE_SCREENSHOT,
@@ -9225,7 +9241,7 @@ MSG_HASH(
    )
 MSG_HASH(
    MENU_ENUM_SUBLABEL_CORE_OPTIONS,
-   "현재 실행중인 콘텐츠의 옵션을 변경합니다."
+   "콘텐츠의 옵션을 변경합니다."
    )
 MSG_HASH(
    MENU_ENUM_LABEL_VALUE_CORE_INPUT_REMAPPING_OPTIONS,
@@ -9233,7 +9249,7 @@ MSG_HASH(
    )
 MSG_HASH(
    MENU_ENUM_SUBLABEL_CORE_INPUT_REMAPPING_OPTIONS,
-   "현재 실행중인 콘텐츠의 조작방법 설정을 변경합니다."
+   "콘텐츠의 조작 방법을 변경합니다."
    )
 MSG_HASH(
    MENU_ENUM_LABEL_VALUE_CORE_CHEAT_OPTIONS,
@@ -9867,7 +9883,7 @@ MSG_HASH(
    )
 MSG_HASH(
    MENU_ENUM_LABEL_HELP_SHADER_WATCH_FOR_CHANGES,
-   "셰이더 파일에서 변경 사항을 확인합니다. 셰이더 변경 사항을 디스크에 저장하면 자동으로 다시 컴파일되어 실행 중인 콘텐츠에 적용됩니다."
+   "셰이더 파일의 변경을 감지합니다. 셰이더의 변경 사항이 디스크에 저장되면 셰이더가 자동으로 다시 컴파일되어 콘텐츠에 적용됩니다."
    )
 MSG_HASH(
    MENU_ENUM_LABEL_VALUE_VIDEO_SHADER_REMEMBER_LAST_DIR,
@@ -10331,6 +10347,10 @@ MSG_HASH(
 MSG_HASH(
    MENU_ENUM_LABEL_VALUE_CYCLE_THUMBNAILS,
    "미리보기 전환"
+   )
+MSG_HASH(
+   MENU_ENUM_LABEL_VALUE_RANDOM_SELECT,
+   "랜덤 선택"
    )
 MSG_HASH(
    MENU_ENUM_LABEL_VALUE_BASIC_MENU_CONTROLS_BACK,
@@ -11008,7 +11028,7 @@ MSG_HASH(
    )
 MSG_HASH(
    MENU_ENUM_SUBLABEL_MENU_RGUI_TRANSPARENCY,
-   "빠른 메뉴 활성 시 실행 중인 컨텐츠를 배경 화면으로 표시합니다. 이 설정을 변경하면 테마 색상이 달라질 수 있습니다."
+   "빠른 메뉴 활성 시 콘텐츠를 배경 화면으로 표시합니다. 이 설정을 변경하면 테마 색상이 달라질 수 있습니다."
    )
 MSG_HASH(
    MENU_ENUM_LABEL_VALUE_MENU_RGUI_SHADOWS,
@@ -11351,6 +11371,14 @@ MSG_HASH(
 MSG_HASH(
    MENU_ENUM_SUBLABEL_LEFT_THUMBNAILS,
    "왼쪽에 표시할 미리보기의 종류입니다."
+   )
+MSG_HASH(
+   MENU_ENUM_LABEL_VALUE_ICON_THUMBNAILS,
+   "아이콘 미리보기"
+   )
+MSG_HASH(
+   MENU_ENUM_SUBLABEL_ICON_THUMBNAILS,
+   "표시할 실행목록 아이콘 미리보기의 종류입니다."
    )
 MSG_HASH(
    MENU_ENUM_LABEL_VALUE_DYNAMIC_WALLPAPER,
@@ -12755,10 +12783,6 @@ MSG_HASH(
    "키보드"
    )
 MSG_HASH(
-   MENU_ENUM_LABEL_VALUE_USE_BUILTIN_IMAGE_VIEWER,
-   "내장 이미지 뷰어 사용"
-   )
-MSG_HASH(
    MENU_ENUM_LABEL_VALUE_VIDEO_MAX_SWAPCHAIN_IMAGES,
    "최대 스왑체인 이미지"
    )
@@ -12892,14 +12916,6 @@ MSG_HASH(
 MSG_HASH(
    MENU_ENUM_LABEL_VALUE_SELECT_FROM_PLAYLIST,
    "실행목록에서 선택"
-   )
-MSG_HASH(
-   MENU_ENUM_LABEL_VALUE_RESUME,
-   "이어하기"
-   )
-MSG_HASH(
-   MENU_ENUM_SUBLABEL_RESUME,
-   "빠른 메뉴를 종료하고 현재 실행 중인 콘텐츠를 이어합니다."
    )
 MSG_HASH(
    MENU_ENUM_LABEL_VALUE_CHEAT_VIEW_MATCHES,
@@ -15937,9 +15953,53 @@ MSG_HASH(
    "중지됨."
    )
 #ifdef HAVE_GAME_AI
+MSG_HASH(
+   MENU_ENUM_LABEL_VALUE_GAME_AI_MENU_OPTION,
+   "AI 플레이어 할당"
+   )
+MSG_HASH(
+   MENU_ENUM_SUBLABEL_GAME_AI_MENU_OPTION,
+   "AI 플레이어 할당 설명"
+   )
 
+MSG_HASH(
+   MENU_ENUM_LABEL_VALUE_CORE_GAME_AI_OPTIONS,
+   "게임 AI"
+   )
 
+MSG_HASH(
+   MENU_ENUM_LABEL_VALUE_GAME_AI_OVERRIDE_P1,
+   "p1 할당"
+   )
+MSG_HASH(
+   MENU_ENUM_SUBLABEL_GAME_AI_OVERRIDE_P1,
+   "플레이어 1에 할당"
+   )
 
+MSG_HASH(
+   MENU_ENUM_LABEL_VALUE_GAME_AI_OVERRIDE_P2,
+   "p2 할당"
+   )
+MSG_HASH(
+   MENU_ENUM_SUBLABEL_GAME_AI_OVERRIDE_P2,
+   "플레이어 2에 할당"
+   )
 
+MSG_HASH(
+   MENU_ENUM_LABEL_VALUE_GAME_AI_SHOW_DEBUG,
+   "디버그 표시"
+   )
+MSG_HASH(
+   MENU_ENUM_SUBLABEL_GAME_AI_SHOW_DEBUG,
+   "디버그 표시"
+   )
 
+MSG_HASH(
+   MENU_ENUM_LABEL_VALUE_QUICK_MENU_SHOW_GAME_AI,
+   "'게임 AI' 표시"
+   )
+MSG_HASH(
+   MENU_ENUM_SUBLABEL_QUICK_MENU_SHOW_GAME_AI,
+   "'게임 AI' 옵션을 표시합니다."
+   )
 #endif

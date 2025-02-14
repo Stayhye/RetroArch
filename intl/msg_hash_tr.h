@@ -2921,16 +2921,8 @@ MSG_HASH(
    "Sessiz modda tüm sesleri kapatın."
    )
 MSG_HASH(
-   MENU_ENUM_LABEL_VALUE_AUDIO_FASTFORWARD_MUTE,
-   "Hızlı İleri Sararken Sesi Kapat"
-   )
-MSG_HASH(
    MENU_ENUM_SUBLABEL_AUDIO_FASTFORWARD_MUTE,
    "Hızlı ileri sarma kullanırken sesi otomatik olarak sessize alır."
-   )
-MSG_HASH(
-   MENU_ENUM_LABEL_VALUE_AUDIO_FASTFORWARD_SPEEDUP,
-   "Hızlı İleri Sarmada Sesi Hızlandır"
    )
 MSG_HASH(
    MENU_ENUM_SUBLABEL_AUDIO_FASTFORWARD_SPEEDUP,
@@ -3755,10 +3747,6 @@ MSG_HASH(
    "Menüyü Değiştir"
    )
 MSG_HASH(
-   MENU_ENUM_SUBLABEL_INPUT_META_MENU_TOGGLE,
-   "Mevcut ekranı menü ve çalışan içerik arasında değiştirir."
-   )
-MSG_HASH(
    MENU_ENUM_LABEL_VALUE_INPUT_QUIT_GAMEPAD_COMBO,
    "Çık (Kontrolcü Kombinasyonu)"
    )
@@ -3833,10 +3821,6 @@ MSG_HASH(
 MSG_HASH(
    MENU_ENUM_LABEL_VALUE_INPUT_META_PAUSE_TOGGLE,
    "Duraklat"
-   )
-MSG_HASH(
-   MENU_ENUM_SUBLABEL_INPUT_META_PAUSE_TOGGLE,
-   "Çalışan içeriği duraklatılmış ve duraklatılmamış durumlar arasında değiştirir."
    )
 MSG_HASH(
    MENU_ENUM_LABEL_VALUE_INPUT_META_FRAMEADVANCE,
@@ -4986,12 +4970,12 @@ MSG_HASH(
    "Dosya tarayıcısında gösterilen dosyaları desteklenen uzantılara göre süzgeçle."
    )
 MSG_HASH(
-   MENU_ENUM_LABEL_VALUE_USE_BUILTIN_PLAYER,
-   "Dahili Medya Oynatıcı Kullan"
-   )
-MSG_HASH(
    MENU_ENUM_LABEL_VALUE_FILTER_BY_CURRENT_CORE,
    "Mevcut Çekirdeğe Göre Süzgeçle"
+   )
+MSG_HASH(
+   MENU_ENUM_SUBLABEL_FILTER_BY_CURRENT_CORE,
+   "Dosya tarayıcısında gösterilen dosyaları mevcut çekirdeğe göre filtreleyin."
    )
 MSG_HASH(
    MENU_ENUM_LABEL_VALUE_USE_LAST_START_DIRECTORY,
@@ -5000,6 +4984,14 @@ MSG_HASH(
 MSG_HASH(
    MENU_ENUM_SUBLABEL_USE_LAST_START_DIRECTORY,
    "Başlangıç ​​Dizininden içerik yüklerken son kullanılan konumda dosya tarayıcısını açın. Not: RetroArch yeniden başlatıldığında konum varsayılana sıfırlanacaktır."
+   )
+MSG_HASH(
+   MENU_ENUM_LABEL_VALUE_USE_BUILTIN_PLAYER,
+   "Dahili Medya Oynatıcı Kullan"
+   )
+MSG_HASH(
+   MENU_ENUM_LABEL_VALUE_USE_BUILTIN_IMAGE_VIEWER,
+   "Dahili Resim Görüntüleyici Kullan"
    )
 
 /* Settings > Frame Throttle */
@@ -6115,10 +6107,6 @@ MSG_HASH(
    "Menü Etkinken İçeriği Duraklat"
    )
 MSG_HASH(
-   MENU_ENUM_SUBLABEL_PAUSE_LIBRETRO,
-   "Menü etkinse, o anda çalışan içeriği duraklatın."
-   )
-MSG_HASH(
    MENU_ENUM_LABEL_VALUE_MENU_SAVESTATE_RESUME,
    "Durum Kayıtlarını Kullandıktan Sonra İçeriğe Devam Et"
    )
@@ -6474,10 +6462,6 @@ MSG_HASH(
 MSG_HASH(
    MENU_ENUM_LABEL_VALUE_CONTENT_SHOW_PLAYLISTS,
    "'Oynatma Listelerini' Göster"
-   )
-MSG_HASH(
-   MENU_ENUM_SUBLABEL_CONTENT_SHOW_PLAYLISTS,
-   "Oynatma listesini gösterin. (Ozon/XMB'de Yeniden Başlatılmalı)"
    )
 MSG_HASH(
    MENU_ENUM_LABEL_VALUE_CONTENT_SHOW_EXPLORE,
@@ -6956,14 +6940,6 @@ MSG_HASH(
 MSG_HASH(
    MENU_ENUM_LABEL_VALUE_SETTINGS_SHOW_USER,
    "'Kullanıcıyı' Göster"
-   )
-MSG_HASH(
-   MENU_ENUM_LABEL_VALUE_ICON_THUMBNAILS,
-   "Oynatma Listesi Simgeleri"
-   )
-MSG_HASH(
-   MENU_ENUM_SUBLABEL_ICON_THUMBNAILS,
-   "Görüntülenecek Oynatma Listesi simgesinin küçük resminin türü."
    )
 MSG_HASH(
    MENU_ENUM_SUBLABEL_SETTINGS_SHOW_USER,
@@ -7928,10 +7904,6 @@ MSG_HASH(
    "İçeriğin, onu destekleyen bir çekirdek yüklenmeden taranmasına ve bir oynatma listesine eklenmesine izin verin."
    )
 MSG_HASH(
-   MENU_ENUM_LABEL_VALUE_SCAN_SERIAL_AND_CRC,
-   "Tarama esnasında olası kopyalarda crc kontrol eder"
-   )
-MSG_HASH(
    MENU_ENUM_SUBLABEL_SCAN_SERIAL_AND_CRC,
    "Bazen ISO dosya serileri PSP/PSN başlıklarını kopyalar. Yalnızca seri numarasına güvenmek bazen taranan içeriğin yanlış sisteme yerleştirmesine neden olabilir. Bu, taramayı önemli ölçüde yavaşlatan ancak daha doğru olabilecek bir CRC kontrolü ekler."
    )
@@ -8192,7 +8164,7 @@ MSG_HASH(
    )
 MSG_HASH( /* FIXME Not RGUI specific */
    MENU_ENUM_LABEL_VALUE_RGUI_BROWSER_DIRECTORY,
-   "Dosya Tarayıcısı"
+   "Başlangıç Dizini"
    )
 MSG_HASH( /* FIXME Not RGUI specific */
    MENU_ENUM_SUBLABEL_RGUI_BROWSER_DIRECTORY,
@@ -8434,10 +8406,6 @@ MSG_HASH(
 MSG_HASH(
    MENU_ENUM_LABEL_VALUE_STEAM_RICH_PRESENCE_FORMAT,
    "Gelişmiş Durum İçeriği Biçimi"
-   )
-MSG_HASH(
-   MENU_ENUM_SUBLABEL_STEAM_RICH_PRESENCE_FORMAT,
-   "Çalışan içerikle ilgili hangi bilgilerin paylaşılacağına karar verin."
    )
 
 MSG_HASH(
@@ -9036,10 +9004,6 @@ MSG_HASH(
    "Devam"
    )
 MSG_HASH(
-   MENU_ENUM_SUBLABEL_RESUME_CONTENT,
-   "Çalışan içeriği devam ettirip Hızlı Menüden çıkın."
-   )
-MSG_HASH(
    MENU_ENUM_LABEL_VALUE_RESTART_CONTENT,
    "Yeniden Başlat"
    )
@@ -9050,10 +9014,6 @@ MSG_HASH(
 MSG_HASH(
    MENU_ENUM_LABEL_VALUE_CLOSE_CONTENT,
    "İçeriği Kapat"
-   )
-MSG_HASH(
-   MENU_ENUM_SUBLABEL_CLOSE_CONTENT,
-   "Mevcut içeriği kapatın. Kaydedilmemiş tüm değişiklikler kaybolabilir."
    )
 MSG_HASH(
    MENU_ENUM_LABEL_VALUE_TAKE_SCREENSHOT,
@@ -9188,16 +9148,8 @@ MSG_HASH(
    "Çekirdek Seçenekleri"
    )
 MSG_HASH(
-   MENU_ENUM_SUBLABEL_CORE_OPTIONS,
-   "Çalışan içeriğin seçeneklerini değiştirin."
-   )
-MSG_HASH(
    MENU_ENUM_LABEL_VALUE_CORE_INPUT_REMAPPING_OPTIONS,
    "Kontrolcüler"
-   )
-MSG_HASH(
-   MENU_ENUM_SUBLABEL_CORE_INPUT_REMAPPING_OPTIONS,
-   "Çalışan içerik için kontrolcüleri değiştirin."
    )
 MSG_HASH(
    MENU_ENUM_LABEL_VALUE_CORE_CHEAT_OPTIONS,
@@ -9824,10 +9776,6 @@ MSG_HASH(
 MSG_HASH(
    MENU_ENUM_SUBLABEL_SHADER_WATCH_FOR_CHANGES,
    "Diskteki gölgelendirici dosyalarında yapılan değişiklikleri otomatik olarak uygulayın."
-   )
-MSG_HASH(
-   MENU_ENUM_LABEL_HELP_SHADER_WATCH_FOR_CHANGES,
-   "Yeni değişiklikler için gölgelendirici dosyalarını izleyin. Değişiklikleri diskteki gölgelendiriciye kaydettikten sonra, otomatik olarak yeniden derlenecek ve çalışan içeriğe uygulanacaktır."
    )
 MSG_HASH(
    MENU_ENUM_LABEL_VALUE_VIDEO_SHADER_REMEMBER_LAST_DIR,
@@ -11037,10 +10985,6 @@ MSG_HASH(
 MSG_HASH(
    MENU_ENUM_LABEL_VALUE_MENU_RGUI_TRANSPARENCY,
    "Şeffaflık"
-   )
-MSG_HASH(
-   MENU_ENUM_SUBLABEL_MENU_RGUI_TRANSPARENCY,
-   "Hızlı Menü etkinken çalışan içeriğin arka planda görüntülenmesini etkinleştirin. Şeffaflığın devre dışı bırakılması tema renklerini değiştirebilir."
    )
 MSG_HASH(
    MENU_ENUM_LABEL_VALUE_MENU_RGUI_SHADOWS,
@@ -12747,10 +12691,6 @@ MSG_HASH(
    "Kullanıcı"
    )
 MSG_HASH(
-   MENU_ENUM_LABEL_VALUE_USE_BUILTIN_IMAGE_VIEWER,
-   "Dahili Resim Görüntüleyici Kullan"
-   )
-MSG_HASH(
    MENU_ENUM_LABEL_VALUE_VIDEO_MAX_SWAPCHAIN_IMAGES,
    "Azami Takas Zinciri Görüntüleri"
    )
@@ -12884,14 +12824,6 @@ MSG_HASH(
 MSG_HASH(
    MENU_ENUM_LABEL_VALUE_SELECT_FROM_PLAYLIST,
    "Bir oynatma listesinden seç"
-   )
-MSG_HASH(
-   MENU_ENUM_LABEL_VALUE_RESUME,
-   "Devam"
-   )
-MSG_HASH(
-   MENU_ENUM_SUBLABEL_RESUME,
-   "Çalışan içeriği devam ettirip Hızlı Menüden çıkın."
    )
 MSG_HASH(
    MENU_ENUM_LABEL_VALUE_CHEAT_VIEW_MATCHES,

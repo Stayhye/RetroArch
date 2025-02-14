@@ -1924,7 +1924,7 @@ void video_driver_unset_stub_frame(void)
 }
 
 /* Get time diff between frames in usec (microseconds) */
-uint32_t video_driver_get_frame_time_delta_usec(void)
+retro_time_t video_driver_get_frame_time_delta_usec(void)
 {
    static retro_time_t last_time;
    retro_time_t now_time   = cpu_features_get_time_usec();
@@ -4129,17 +4129,17 @@ void video_driver_frame(const void *data, unsigned width,
                " Viewport:    %u x %u\n"
                " - Scale:     %u x %u\n"
                " - Scale X/Y: %2.2f / %2.2f\n"
-               " Refresh:     %5.2f hz\n"
-               " Frame Rate:  %5.2f fps\n"
-               " Frame Time:  %5.2f ms\n"
-               " - Deviation: %5.2f %%\n"
+               " Refresh:    %6.2f hz\n"
+               " Frame Rate:%7.2f fps\n"
+               " Frame Time: %6.2f ms\n"
+               " - Deviation:%6.2f %%\n"
                " Frames:   %8" PRIu64"\n"
                " - Dropped:   %5u\n"
                "AUDIO: %s\n"
-               " Saturation:  %5.2f %%\n"
-               " Deviation:   %5.2f %%\n"
-               " Underrun:    %5.2f %%\n"
-               " Blocking:    %5.2f %%\n"
+               " Saturation: %6.2f %%\n"
+               " Deviation:  %6.2f %%\n"
+               " Underrun:   %6.2f %%\n"
+               " Blocking:   %6.2f %%\n"
                " Samples:  %8d\n"
                ,
                video_st->frame_cache_width,
@@ -4300,7 +4300,9 @@ void video_driver_frame(const void *data, unsigned width,
             video_info.monitor_index,
             dynamic_super_width,
             video_info.crt_switch_resolution_super,
-            video_info.crt_switch_hires_menu);
+            video_info.crt_switch_hires_menu,
+            config_get_ptr()->uints.video_aspect_ratio_idx
+            );
    }
    else if (!video_info.crt_switch_resolution)
 #endif

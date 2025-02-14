@@ -2873,16 +2873,8 @@ MSG_HASH(
    "サイレントモードですべてのオーディオを消音にします。"
    )
 MSG_HASH(
-   MENU_ENUM_LABEL_VALUE_AUDIO_FASTFORWARD_MUTE,
-   "早送り時に消音"
-   )
-MSG_HASH(
    MENU_ENUM_SUBLABEL_AUDIO_FASTFORWARD_MUTE,
    "早送りを使用中に自動的にオーディオを消音にします。"
-   )
-MSG_HASH(
-   MENU_ENUM_LABEL_VALUE_AUDIO_FASTFORWARD_SPEEDUP,
-   "早送り時に高速化"
    )
 MSG_HASH(
    MENU_ENUM_SUBLABEL_AUDIO_FASTFORWARD_SPEEDUP,
@@ -3659,10 +3651,6 @@ MSG_HASH(
    "メニュー切り替え"
    )
 MSG_HASH(
-   MENU_ENUM_SUBLABEL_INPUT_META_MENU_TOGGLE,
-   "現在の表示をメニューと実行中のコンテンツの間で切り替えます。"
-   )
-MSG_HASH(
    MENU_ENUM_LABEL_VALUE_INPUT_QUIT_GAMEPAD_COMBO,
    "終了 (コントローラー同時押し)"
    )
@@ -3737,10 +3725,6 @@ MSG_HASH(
 MSG_HASH(
    MENU_ENUM_LABEL_VALUE_INPUT_META_PAUSE_TOGGLE,
    "一時停止"
-   )
-MSG_HASH(
-   MENU_ENUM_SUBLABEL_INPUT_META_PAUSE_TOGGLE,
-   "実行中のコンテンツの一時停止と非一時停止の状態を切り替えます。"
    )
 MSG_HASH(
    MENU_ENUM_LABEL_VALUE_INPUT_META_FRAMEADVANCE,
@@ -4866,10 +4850,6 @@ MSG_HASH(
    "ファイルブラウザに表示されるファイルを対応する拡張子でフィルタリングします。"
    )
 MSG_HASH(
-   MENU_ENUM_LABEL_VALUE_USE_BUILTIN_PLAYER,
-   "内蔵メディアプレイヤーを使用"
-   )
-MSG_HASH(
    MENU_ENUM_LABEL_VALUE_FILTER_BY_CURRENT_CORE,
    "現在のコアでフィルター"
    )
@@ -4880,6 +4860,14 @@ MSG_HASH(
 MSG_HASH(
    MENU_ENUM_SUBLABEL_USE_LAST_START_DIRECTORY,
    "コンテンツをロードする際に、最後に使用したディレクトリでファイルブラウザを開きます。注意: 再起動すると場所はデフォルトにリセットされます。"
+   )
+MSG_HASH(
+   MENU_ENUM_LABEL_VALUE_USE_BUILTIN_PLAYER,
+   "内蔵メディアプレイヤーを使用"
+   )
+MSG_HASH(
+   MENU_ENUM_LABEL_VALUE_USE_BUILTIN_IMAGE_VIEWER,
+   "内蔵画像ビューアを使用"
    )
 
 /* Settings > Frame Throttle */
@@ -5983,10 +5971,6 @@ MSG_HASH(
    "メニュー表示時にコンテンツを一時停止"
    )
 MSG_HASH(
-   MENU_ENUM_SUBLABEL_PAUSE_LIBRETRO,
-   "メニューを表示している間、現在実行中のコンテンツを一時停止します。"
-   )
-MSG_HASH(
    MENU_ENUM_LABEL_VALUE_MENU_SAVESTATE_RESUME,
    "ステートセーブ後にコンテンツを再開"
    )
@@ -6330,10 +6314,6 @@ MSG_HASH(
 MSG_HASH(
    MENU_ENUM_LABEL_VALUE_CONTENT_SHOW_PLAYLISTS,
    "[プレイリスト] を表示"
-   )
-MSG_HASH(
-   MENU_ENUM_SUBLABEL_CONTENT_SHOW_PLAYLISTS,
-   "[プレイリスト] メニューを表示します。 (Ozone/XMB で再起動が必要)"
    )
 MSG_HASH(
    MENU_ENUM_LABEL_VALUE_CONTENT_SHOW_EXPLORE,
@@ -6812,14 +6792,6 @@ MSG_HASH(
 MSG_HASH(
    MENU_ENUM_LABEL_VALUE_SETTINGS_SHOW_USER,
    "[ユーザー] を表示"
-   )
-MSG_HASH(
-   MENU_ENUM_LABEL_VALUE_ICON_THUMBNAILS,
-   "プレイリストアイコン"
-   )
-MSG_HASH(
-   MENU_ENUM_SUBLABEL_ICON_THUMBNAILS,
-   "表示するプレイリストアイコンサムネイルの種類です。"
    )
 MSG_HASH(
    MENU_ENUM_SUBLABEL_SETTINGS_SHOW_USER,
@@ -7780,10 +7752,6 @@ MSG_HASH(
    "対応するコアがインストールされていないコンテンツをスキャンし、プレイリストに追加することを許可します。"
    )
 MSG_HASH(
-   MENU_ENUM_LABEL_VALUE_SCAN_SERIAL_AND_CRC,
-   "スキャン時に重複の可能性がある場合 CRC をチェック"
-   )
-MSG_HASH(
    MENU_ENUM_SUBLABEL_SCAN_SERIAL_AND_CRC,
    "特に PSP/PSN タイトルで、ISO が重複するシリアルを持つ場合があります。シリアルにのみ依存すると、スキャナーがコンテンツを間違ったシステムに入れてしまうことがあります。これにより CRC チェックが追加され、スキャンが大幅に遅くなりますが、より正確になる可能性があります。"
    )
@@ -8040,7 +8008,7 @@ MSG_HASH(
    )
 MSG_HASH( /* FIXME Not RGUI specific */
    MENU_ENUM_LABEL_VALUE_RGUI_BROWSER_DIRECTORY,
-   "ファイルブラウザ"
+   "開始ディレクトリ"
    )
 MSG_HASH( /* FIXME Not RGUI specific */
    MENU_ENUM_SUBLABEL_RGUI_BROWSER_DIRECTORY,
@@ -8282,10 +8250,6 @@ MSG_HASH(
 MSG_HASH(
    MENU_ENUM_LABEL_VALUE_STEAM_RICH_PRESENCE_FORMAT,
    "Rich Presence コンテンツ形式"
-   )
-MSG_HASH(
-   MENU_ENUM_SUBLABEL_STEAM_RICH_PRESENCE_FORMAT,
-   "実行中のコンテンツに関連する情報について、どのような情報を共有するかを決定します。"
    )
 
 MSG_HASH(
@@ -8884,10 +8848,6 @@ MSG_HASH(
    "再開"
    )
 MSG_HASH(
-   MENU_ENUM_SUBLABEL_RESUME_CONTENT,
-   "クイックメニューを閉じて現在動作中のアプリを再開します。"
-   )
-MSG_HASH(
    MENU_ENUM_LABEL_VALUE_RESTART_CONTENT,
    "再起動"
    )
@@ -8898,10 +8858,6 @@ MSG_HASH(
 MSG_HASH(
    MENU_ENUM_LABEL_VALUE_CLOSE_CONTENT,
    "コンテンツを閉じる"
-   )
-MSG_HASH(
-   MENU_ENUM_SUBLABEL_CLOSE_CONTENT,
-   "現在のコンテンツを閉じます。すべての保存されていない設定は失われる可能性があります。"
    )
 MSG_HASH(
    MENU_ENUM_LABEL_VALUE_TAKE_SCREENSHOT,
@@ -9036,16 +8992,8 @@ MSG_HASH(
    "コアオプション"
    )
 MSG_HASH(
-   MENU_ENUM_SUBLABEL_CORE_OPTIONS,
-   "現在動作中のコンテンツのオプションを変更します。"
-   )
-MSG_HASH(
    MENU_ENUM_LABEL_VALUE_CORE_INPUT_REMAPPING_OPTIONS,
    "コントロール"
-   )
-MSG_HASH(
-   MENU_ENUM_SUBLABEL_CORE_INPUT_REMAPPING_OPTIONS,
-   "現在動作中のコンテンツのコントロールを変更します。"
    )
 MSG_HASH(
    MENU_ENUM_LABEL_VALUE_CORE_CHEAT_OPTIONS,
@@ -9676,10 +9624,6 @@ MSG_HASH(
 MSG_HASH(
    MENU_ENUM_SUBLABEL_SHADER_WATCH_FOR_CHANGES,
    "ディスク上のシェーダーファイルに加えられた変更を自動的に適用します。"
-   )
-MSG_HASH(
-   MENU_ENUM_LABEL_HELP_SHADER_WATCH_FOR_CHANGES,
-   "シェーダーファイルの新しい変更を監視します。シェーダーの変更をディスクに保存すると、自動的に再コンパイルされ実行中のコンテンツに適用されます。"
    )
 MSG_HASH(
    MENU_ENUM_LABEL_VALUE_VIDEO_SHADER_REMEMBER_LAST_DIR,
@@ -10921,10 +10865,6 @@ MSG_HASH(
 MSG_HASH(
    MENU_ENUM_LABEL_VALUE_MENU_RGUI_TRANSPARENCY,
    "透明度"
-   )
-MSG_HASH(
-   MENU_ENUM_SUBLABEL_MENU_RGUI_TRANSPARENCY,
-   "クイックメニューがアクティブな間、実行中のコンテンツの背景表示を有効にします。透明度を無効にするとテーマカラーが変わることがあります。"
    )
 MSG_HASH(
    MENU_ENUM_LABEL_VALUE_MENU_RGUI_SHADOWS,
@@ -12463,10 +12403,6 @@ MSG_HASH(
    "キーボード"
    )
 MSG_HASH(
-   MENU_ENUM_LABEL_VALUE_USE_BUILTIN_IMAGE_VIEWER,
-   "内蔵画像ビューアを使用"
-   )
-MSG_HASH(
    MENU_ENUM_LABEL_VALUE_VIDEO_MAX_SWAPCHAIN_IMAGES,
    "最大スワップチェーンイメージ"
    )
@@ -12600,14 +12536,6 @@ MSG_HASH(
 MSG_HASH(
    MENU_ENUM_LABEL_VALUE_SELECT_FROM_PLAYLIST,
    "プレイリストから選択"
-   )
-MSG_HASH(
-   MENU_ENUM_LABEL_VALUE_RESUME,
-   "再開"
-   )
-MSG_HASH(
-   MENU_ENUM_SUBLABEL_RESUME,
-   "クイックメニューを閉じて現在動作中のアプリを再開します。"
    )
 MSG_HASH(
    MENU_ENUM_LABEL_VALUE_CHEAT_VIEW_MATCHES,

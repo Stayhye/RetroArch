@@ -700,13 +700,13 @@ static int16_t cocoa_input_state(
             case RETRO_DEVICE_ID_LIGHTGUN_PAUSE:
                {
                   unsigned new_id                = input_driver_lightgun_id_convert(id);
-                  const uint64_t bind_joykey     = input_config_binds[port][new_id].joykey;
-                  const uint64_t bind_joyaxis    = input_config_binds[port][new_id].joyaxis;
-                  const uint64_t autobind_joykey = input_autoconf_binds[port][new_id].joykey;
-                  const uint64_t autobind_joyaxis= input_autoconf_binds[port][new_id].joyaxis;
+                  const uint32_t bind_joykey     = input_config_binds[port][new_id].joykey;
+                  const uint32_t bind_joyaxis    = input_config_binds[port][new_id].joyaxis;
+                  const uint32_t autobind_joykey = input_autoconf_binds[port][new_id].joykey;
+                  const uint32_t autobind_joyaxis= input_autoconf_binds[port][new_id].joyaxis;
                   uint16_t joyport               = joypad_info->joy_idx;
                   float axis_threshold           = joypad_info->axis_threshold;
-                  const uint64_t joykey          = (bind_joykey != NO_BTN) ? bind_joykey  : autobind_joykey;
+                  const uint32_t joykey          = (bind_joykey != NO_BTN) ? bind_joykey  : autobind_joykey;
                   const uint32_t joyaxis         = (bind_joyaxis != AXIS_NONE) ? bind_joyaxis : autobind_joyaxis;
                   
                   if (binds[port][new_id].valid)
@@ -742,7 +742,6 @@ static int16_t cocoa_input_state(
 
 static void cocoa_input_free(void *data)
 {
-   unsigned i;
    cocoa_input_data_t *apple = (cocoa_input_data_t*)data;
 
    if (!apple || !data)
@@ -781,6 +780,10 @@ static bool cocoa_input_set_sensor_state(void *data, unsigned port,
          if (!controller || controller.playerIndex != port)
             continue;
          if (!controller.motion)
+            break;
+         if (action == RETRO_SENSOR_ACCELEROMETER_ENABLE && !controller.motion.hasGravityAndUserAcceleration)
+            break;
+         if (action == RETRO_SENSOR_GYROSCOPE_ENABLE && !controller.motion.hasAttitudeAndRotationRate)
             break;
          if (controller.motion.sensorsRequireManualActivation)
          {
@@ -827,7 +830,7 @@ static bool cocoa_input_set_sensor_state(void *data, unsigned port,
 static float cocoa_input_get_sensor_input(void *data, unsigned port, unsigned id)
 {
 #ifdef HAVE_MFI
-   if (@available(iOS 14.0, *))
+   if (@available(iOS 14.0, macOS 11.0, tvOS 14.0, *))
    {
       for (GCController *controller in [GCController controllers])
       {
@@ -838,11 +841,11 @@ static float cocoa_input_get_sensor_input(void *data, unsigned port, unsigned id
          switch (id)
          {
             case RETRO_SENSOR_ACCELEROMETER_X:
-               return controller.motion.userAcceleration.x;
+               return controller.motion.acceleration.x;
             case RETRO_SENSOR_ACCELEROMETER_Y:
-               return controller.motion.userAcceleration.y;
+               return controller.motion.acceleration.y;
             case RETRO_SENSOR_ACCELEROMETER_Z:
-               return controller.motion.userAcceleration.z;
+               return controller.motion.acceleration.z;
             case RETRO_SENSOR_GYROSCOPE_X:
                return controller.motion.rotationRate.x;
             case RETRO_SENSOR_GYROSCOPE_Y:
@@ -860,11 +863,11 @@ static float cocoa_input_get_sensor_input(void *data, unsigned port, unsigned id
       switch (id)
       {
          case RETRO_SENSOR_ACCELEROMETER_X:
-            return motionManager.deviceMotion.userAcceleration.x;
+            return motionManager.deviceMotion.gravity.x + motionManager.deviceMotion.userAcceleration.x;
          case RETRO_SENSOR_ACCELEROMETER_Y:
-            return motionManager.deviceMotion.userAcceleration.y;
+            return motionManager.deviceMotion.gravity.y + motionManager.deviceMotion.userAcceleration.y;
          case RETRO_SENSOR_ACCELEROMETER_Z:
-            return motionManager.deviceMotion.userAcceleration.z;
+            return motionManager.deviceMotion.gravity.z + motionManager.deviceMotion.userAcceleration.z;
          case RETRO_SENSOR_GYROSCOPE_X:
             return motionManager.deviceMotion.rotationRate.x;
          case RETRO_SENSOR_GYROSCOPE_Y:

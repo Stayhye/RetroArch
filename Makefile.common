@@ -929,6 +929,10 @@ ifeq ($(HAVE_PIPEWIRE), 1)
       OBJ += audio/drivers_microphone/pipewire.o
    endif
 
+   ifeq ($(HAVE_PIPEWIRE_STABLE), 1)
+      OBJ += camera/drivers/pipewire.o
+   endif
+
    LIBS += $(PIPEWIRE_LIBS)
    DEF_FLAGS += $(PIPEWIRE_CFLAGS)
 endif
@@ -1570,10 +1574,11 @@ ifeq ($(HAVE_GL_CONTEXT), 1)
       DEF_FLAGS += $(OPENGLES_CFLAGS)
       ifeq ($(HAVE_OPENGLES3), 1)
          DEFINES += -DHAVE_OPENGLES3
+         OBJ += $(LIBRETRO_COMM_DIR)/glsym/glsym_es3.o
       else
          DEFINES += -DHAVE_OPENGLES2
+         OBJ += $(LIBRETRO_COMM_DIR)/glsym/glsym_es2.o
       endif
-      OBJ += $(LIBRETRO_COMM_DIR)/glsym/glsym_es2.o
    else
       DEFINES += -DHAVE_GL_SYNC
       OBJ += $(LIBRETRO_COMM_DIR)/glsym/glsym_gl.o

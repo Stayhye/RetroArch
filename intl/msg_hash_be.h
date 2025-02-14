@@ -2929,20 +2929,16 @@ MSG_HASH(
    "Адключыць увесь гук у бясшумным рэжыме."
    )
 MSG_HASH(
-   MENU_ENUM_LABEL_VALUE_AUDIO_FASTFORWARD_MUTE,
-   "Сцішванне пры перамотцы наперад"
-   )
-MSG_HASH(
    MENU_ENUM_SUBLABEL_AUDIO_FASTFORWARD_MUTE,
    "Аўтаматычна адключаць гук пры выкарыстанні перамотцы наперад."
    )
 MSG_HASH(
-   MENU_ENUM_LABEL_VALUE_AUDIO_FASTFORWARD_SPEEDUP,
-   "Паскарэнне пры перамотцы наперад"
-   )
-MSG_HASH(
    MENU_ENUM_SUBLABEL_AUDIO_FASTFORWARD_SPEEDUP,
    "Паскараць гук пры перамотцы наперад. Прадухіляе патрэскванне, але змяняе вышыню."
+   )
+MSG_HASH(
+   MENU_ENUM_SUBLABEL_AUDIO_REWIND_MUTE,
+   "Аўтаматычна адключаць гук пры выкарыстанні перамотцы назад."
    )
 MSG_HASH(
    MENU_ENUM_LABEL_VALUE_AUDIO_VOLUME,
@@ -3764,7 +3760,7 @@ MSG_HASH(
    )
 MSG_HASH(
    MENU_ENUM_SUBLABEL_INPUT_META_MENU_TOGGLE,
-   "Пераключае паміж меню ды бягучым змесцівам на бягучым дысплэі."
+   "Пераключае бягучы дысплэй паміж меню ды змесцівам."
    )
 MSG_HASH(
    MENU_ENUM_LABEL_VALUE_INPUT_QUIT_GAMEPAD_COMBO,
@@ -3844,7 +3840,7 @@ MSG_HASH(
    )
 MSG_HASH(
    MENU_ENUM_SUBLABEL_INPUT_META_PAUSE_TOGGLE,
-   "Прыпыняе ці аднаўляе бягучы кантэнт."
+   "Пераключае змесціва паміж станамі з прыпыненнем ды без."
    )
 MSG_HASH(
    MENU_ENUM_LABEL_VALUE_INPUT_META_FRAMEADVANCE,
@@ -4995,15 +4991,15 @@ MSG_HASH(
    )
 MSG_HASH(
    MENU_ENUM_SUBLABEL_NAVIGATION_BROWSER_FILTER_SUPPORTED_EXTENSIONS_ENABLE,
-   "Фільтраваць файлы, якія паказваюцца файлавым браўзерам, па пашырэннях, якія падтрымліваюцца."
-   )
-MSG_HASH(
-   MENU_ENUM_LABEL_VALUE_USE_BUILTIN_PLAYER,
-   "Выкарыстанне ўбудаванага медыяпрайгравальніка"
+   "Фільтраваць паказ файлаў файлавым браўзерам паводле падтрымкі пашырэння."
    )
 MSG_HASH(
    MENU_ENUM_LABEL_VALUE_FILTER_BY_CURRENT_CORE,
    "Фільтраванне па бягучаму ядру"
+   )
+MSG_HASH(
+   MENU_ENUM_SUBLABEL_FILTER_BY_CURRENT_CORE,
+   "Фільтраваць паказ файлаў файлавым браўзерам па бягучаму ядру."
    )
 MSG_HASH(
    MENU_ENUM_LABEL_VALUE_USE_LAST_START_DIRECTORY,
@@ -5012,6 +5008,14 @@ MSG_HASH(
 MSG_HASH(
    MENU_ENUM_SUBLABEL_USE_LAST_START_DIRECTORY,
    "Адкрываць файлавы браўзер на апошнім выкарыстаным месцы пры загрузцы змесціва з пачатковага каталога. Заўвага: месца будзе скінута да прадвызначанага пры перазапуску RetroArch."
+   )
+MSG_HASH(
+   MENU_ENUM_LABEL_VALUE_USE_BUILTIN_PLAYER,
+   "Выкарыстанне ўбудаванага медыяпрайгравальніка"
+   )
+MSG_HASH(
+   MENU_ENUM_LABEL_VALUE_USE_BUILTIN_IMAGE_VIEWER,
+   "Убудаваны прагляд малюнкаў"
    )
 
 /* Settings > Frame Throttle */
@@ -6128,7 +6132,7 @@ MSG_HASH(
    )
 MSG_HASH(
    MENU_ENUM_SUBLABEL_PAUSE_LIBRETRO,
-   "Прыпыняць запушчаны кантэнт пры выкліку меню."
+   "Прыпыняць змесціва пры выкліку меню."
    )
 MSG_HASH(
    MENU_ENUM_LABEL_VALUE_MENU_SAVESTATE_RESUME,
@@ -6401,7 +6405,7 @@ MSG_HASH(
    )
 MSG_HASH(
    MENU_ENUM_SUBLABEL_CONTENT_SHOW_SETTINGS,
-   "Паказваць меню 'Налады' (патрабуецца перазапуск на Ozone/XMB)"
+   "Паказваць меню 'Налады'. (Патрабуецца перазапуск на Ozone/XMB)"
    )
 MSG_HASH(
    MENU_ENUM_LABEL_VALUE_CONTENT_SHOW_SETTINGS_PASSWORD,
@@ -6417,7 +6421,7 @@ MSG_HASH(
    )
 MSG_HASH(
    MENU_ENUM_SUBLABEL_CONTENT_SHOW_FAVORITES,
-   "Паказваць меню 'Упадабанае' (патрабуецца перазапуск на Ozone/XMB)"
+   "Паказваць меню 'Упадабанае'. (Патрабуецца перазапуск на Ozone/XMB)"
    )
 MSG_HASH(
    MENU_ENUM_LABEL_VALUE_CONTENT_SHOW_IMAGES,
@@ -6425,7 +6429,7 @@ MSG_HASH(
    )
 MSG_HASH(
    MENU_ENUM_SUBLABEL_CONTENT_SHOW_IMAGES,
-   "Паказваць меню 'Відарысы' (патрабуецца перазапуск на Ozone/XMB)"
+   "Паказваць меню 'Відарысы'. (Патрабуецца перазапуск на Ozone/XMB)"
    )
 MSG_HASH(
    MENU_ENUM_LABEL_VALUE_CONTENT_SHOW_MUSIC,
@@ -6433,7 +6437,7 @@ MSG_HASH(
    )
 MSG_HASH(
    MENU_ENUM_SUBLABEL_CONTENT_SHOW_MUSIC,
-   "Паказваць меню 'Музыка' (патрабуецца перазапуск на Ozone/XMB)"
+   "Паказваць меню 'Музыка'. (Патрабуецца перазапуск на Ozone/XMB)"
    )
 MSG_HASH(
    MENU_ENUM_LABEL_VALUE_CONTENT_SHOW_VIDEO,
@@ -6441,7 +6445,7 @@ MSG_HASH(
    )
 MSG_HASH(
    MENU_ENUM_SUBLABEL_CONTENT_SHOW_VIDEO,
-   "Паказваць меню 'Відэа' (патрабуецца перазапуск на Ozone/XMB)"
+   "Паказваць меню 'Відэа'. (Патрабуецца перазапуск на Ozone/XMB)"
    )
 MSG_HASH(
    MENU_ENUM_LABEL_VALUE_CONTENT_SHOW_NETPLAY,
@@ -6449,7 +6453,7 @@ MSG_HASH(
    )
 MSG_HASH(
    MENU_ENUM_SUBLABEL_CONTENT_SHOW_NETPLAY,
-   "Паказваць меню 'Сеткавая гульня' (патрабуецца перазапуск на Ozone/XMB)"
+   "Паказваць меню 'Сеткавая гульня'. (Патрабуецца перазапуск на Ozone/XMB)"
    )
 MSG_HASH(
    MENU_ENUM_LABEL_VALUE_CONTENT_SHOW_HISTORY,
@@ -6457,7 +6461,7 @@ MSG_HASH(
    )
 MSG_HASH(
    MENU_ENUM_SUBLABEL_CONTENT_SHOW_HISTORY,
-   "Паказваць меню нядаўняй гісторыі (патрабуецца перазапуск на Ozone/XMB)"
+   "Паказваць меню нядаўняй гісторыі. (Патрабуецца перазапуск на Ozone/XMB)"
    )
 MSG_HASH(
    MENU_ENUM_LABEL_VALUE_CONTENT_SHOW_ADD,
@@ -6465,7 +6469,7 @@ MSG_HASH(
    )
 MSG_HASH(
    MENU_ENUM_SUBLABEL_CONTENT_SHOW_ADD,
-   "Паказваць меню 'Імпартаваць змесціва' (патрабуецца перазапуск на Ozone/XMB)"
+   "Паказваць меню 'Імпартаваць змесціва'. (Патрабуецца перазапуск на Ozone/XMB)"
    )
 MSG_HASH( /* FIXME can now be replaced with MENU_ENUM_LABEL_VALUE_CONTENT_SHOW_ADD */
    MENU_ENUM_LABEL_VALUE_CONTENT_SHOW_ADD_ENTRY,
@@ -6488,8 +6492,12 @@ MSG_HASH(
    "Паказ 'Плэй-лісты'"
    )
 MSG_HASH(
-   MENU_ENUM_SUBLABEL_CONTENT_SHOW_PLAYLISTS,
-   "Паказваць плэй-лісты (патрабуецца перазапуск на Ozone/XMB)"
+   MENU_ENUM_LABEL_VALUE_CONTENT_SHOW_PLAYLIST_TABS,
+   "Паказ картак плэй-лістоў"
+   )
+MSG_HASH(
+   MENU_ENUM_SUBLABEL_CONTENT_SHOW_PLAYLIST_TABS,
+   "Паказваць карткі плэй-лістоў. Не мае ўплыву на RGUI. Панэль навігацыі мае быць уключаная ў GLUI. (Патрабуецца перазапуск на Ozone/XMB)"
    )
 MSG_HASH(
    MENU_ENUM_LABEL_VALUE_CONTENT_SHOW_EXPLORE,
@@ -6497,7 +6505,7 @@ MSG_HASH(
    )
 MSG_HASH(
    MENU_ENUM_SUBLABEL_CONTENT_SHOW_EXPLORE,
-   "Паказваць опцыю даследчыка змесціва (патрабуецца перазапуск на Ozone/XMB)"
+   "Паказваць опцыю даследчыка змесціва. (Патрабуецца перазапуск на Ozone/XMB)"
    )
 MSG_HASH(
    MENU_ENUM_LABEL_VALUE_CONTENT_SHOW_CONTENTLESS_CORES,
@@ -6968,14 +6976,6 @@ MSG_HASH(
 MSG_HASH(
    MENU_ENUM_LABEL_VALUE_SETTINGS_SHOW_USER,
    "Паказ 'Карыстальнік'"
-   )
-MSG_HASH(
-   MENU_ENUM_LABEL_VALUE_ICON_THUMBNAILS,
-   "Значкі плэй-ліста"
-   )
-MSG_HASH(
-   MENU_ENUM_SUBLABEL_ICON_THUMBNAILS,
-   "Тып мініяцюры для адлюстравання значкоў плэй-ліста."
    )
 MSG_HASH(
    MENU_ENUM_SUBLABEL_SETTINGS_SHOW_USER,
@@ -8204,7 +8204,7 @@ MSG_HASH(
    )
 MSG_HASH( /* FIXME Not RGUI specific */
    MENU_ENUM_LABEL_VALUE_RGUI_BROWSER_DIRECTORY,
-   "Файлавы браўзер"
+   "Пачатковы каталог"
    )
 MSG_HASH( /* FIXME Not RGUI specific */
    MENU_ENUM_SUBLABEL_RGUI_BROWSER_DIRECTORY,
@@ -8449,7 +8449,7 @@ MSG_HASH(
    )
 MSG_HASH(
    MENU_ENUM_SUBLABEL_STEAM_RICH_PRESENCE_FORMAT,
-   "Выбраць якая інфармацыя аб запушчаным кантэнце будзе перададзена."
+   "Выбраць, якія звесткі пра змесціва будуць перададзеныя."
    )
 
 MSG_HASH(
@@ -9049,7 +9049,7 @@ MSG_HASH(
    )
 MSG_HASH(
    MENU_ENUM_SUBLABEL_RESUME_CONTENT,
-   "Закрыць хуткае меню і аднавіць бягучы кантэнт."
+   "Закрыць хуткае меню і аднавіць змесціва."
    )
 MSG_HASH(
    MENU_ENUM_LABEL_VALUE_RESTART_CONTENT,
@@ -9065,7 +9065,7 @@ MSG_HASH(
    )
 MSG_HASH(
    MENU_ENUM_SUBLABEL_CLOSE_CONTENT,
-   "Закрыць бягучае змесціва. Любыя незахаваныя змены могуць страціцца."
+   "Закрыць змесціва. Любыя незахаваныя змены могуць быць страчаныя."
    )
 MSG_HASH(
    MENU_ENUM_LABEL_VALUE_TAKE_SCREENSHOT,
@@ -9201,7 +9201,7 @@ MSG_HASH(
    )
 MSG_HASH(
    MENU_ENUM_SUBLABEL_CORE_OPTIONS,
-   "Змяніць опцыі бягучага выканання змесціва."
+   "Змена опцый для змесціва."
    )
 MSG_HASH(
    MENU_ENUM_LABEL_VALUE_CORE_INPUT_REMAPPING_OPTIONS,
@@ -9209,7 +9209,7 @@ MSG_HASH(
    )
 MSG_HASH(
    MENU_ENUM_SUBLABEL_CORE_INPUT_REMAPPING_OPTIONS,
-   "Змяніць кіраванне бягучым выкананнем змесціва."
+   "Змяніць кіраванне для змесціва."
    )
 MSG_HASH(
    MENU_ENUM_LABEL_VALUE_CORE_CHEAT_OPTIONS,
@@ -9835,7 +9835,7 @@ MSG_HASH(
    )
 MSG_HASH(
    MENU_ENUM_LABEL_HELP_SHADER_WATCH_FOR_CHANGES,
-   "Адсочваць змены ў файлах шэйдара. Пасля захавання змен шэйдара ў памяць, ён будзе аўтаматычна перакампіляваны і ўжыты да запушчанага кантэнту."
+   "Адсочваць змены ў файлах шэйдара. Пасля захавання змен шэйдара на дыск ён будзе аўтаматычна перакампіляваны і ўжыты да змесціва."
    )
 MSG_HASH(
    MENU_ENUM_LABEL_VALUE_VIDEO_SHADER_REMEMBER_LAST_DIR,
@@ -11088,7 +11088,7 @@ MSG_HASH(
    )
 MSG_HASH(
    MENU_ENUM_SUBLABEL_MENU_RGUI_TRANSPARENCY,
-   "Адлюстроўваць у фоне запушчаны кантэнт пры выкліку хуткага меню. Адключэнне празрыстасці можа змяніць колеры тэмы."
+   "Адлюстроўваць у фоне змесціва пры выкліку хуткага меню. Адключэнне празрыстасці можа змяніць колеры тэмы."
    )
 MSG_HASH(
    MENU_ENUM_LABEL_VALUE_MENU_RGUI_SHADOWS,
@@ -11387,6 +11387,14 @@ MSG_HASH(
 MSG_HASH(
    MENU_ENUM_SUBLABEL_LEFT_THUMBNAILS,
    "Тып мініяцюры для адлюстравання злева."
+   )
+MSG_HASH(
+   MENU_ENUM_LABEL_VALUE_ICON_THUMBNAILS,
+   "Значок мініяцюры"
+   )
+MSG_HASH(
+   MENU_ENUM_SUBLABEL_ICON_THUMBNAILS,
+   "Тып значка мініяцюры, які адлюстроўваецца ў плэй-лісце."
    )
 MSG_HASH(
    MENU_ENUM_LABEL_VALUE_DYNAMIC_WALLPAPER,
@@ -12727,10 +12735,6 @@ MSG_HASH(
    "Клавіятура"
    )
 MSG_HASH(
-   MENU_ENUM_LABEL_VALUE_USE_BUILTIN_IMAGE_VIEWER,
-   "Убудаваны прагляд малюнкаў"
-   )
-MSG_HASH(
    MENU_ENUM_LABEL_VALUE_VIDEO_MAX_SWAPCHAIN_IMAGES,
    "Максімум малюнкаў у свопчэйне"
    )
@@ -12864,14 +12868,6 @@ MSG_HASH(
 MSG_HASH(
    MENU_ENUM_LABEL_VALUE_SELECT_FROM_PLAYLIST,
    "Выбраць з плэйліста"
-   )
-MSG_HASH(
-   MENU_ENUM_LABEL_VALUE_RESUME,
-   "Працягнуць"
-   )
-MSG_HASH(
-   MENU_ENUM_SUBLABEL_RESUME,
-   "Закрыць хуткае меню і аднавіць бягучы кантэнт."
    )
 MSG_HASH(
    MENU_ENUM_LABEL_VALUE_CHEAT_VIEW_MATCHES,
