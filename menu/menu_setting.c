@@ -4233,6 +4233,16 @@ static size_t setting_get_string_representation_uint_xmb_menu_color_theme(
                   msg_hash_to_str(
                      MENU_ENUM_LABEL_VALUE_XMB_MENU_COLOR_THEME_ICE_COLD),
                   len);
+         case XMB_THEME_GRAY_DARK:
+            return strlcpy(s,
+                  msg_hash_to_str(
+                     MENU_ENUM_LABEL_VALUE_XMB_MENU_COLOR_THEME_GRAY_DARK),
+                  len);
+         case XMB_THEME_GRAY_LIGHT:
+            return strlcpy(s,
+                  msg_hash_to_str(
+                     MENU_ENUM_LABEL_VALUE_XMB_MENU_COLOR_THEME_GRAY_LIGHT),
+                  len);
       }
    }
    return 0;
@@ -7231,33 +7241,11 @@ int menu_action_handle_setting(rarch_setting_t *setting,
                   break;
                case MENU_ACTION_LEFT:
                   if (setting->action_left)
-                  {
                      ret = setting->action_left(setting, selection, false);
-                     if (menu_st->driver_ctx)
-                     {
-                        if (menu_st->driver_ctx->update_savestate_thumbnail_path)
-                           menu_st->driver_ctx->update_savestate_thumbnail_path(
-                                 menu_st->userdata, (unsigned)selection);
-                        if (menu_st->driver_ctx->update_savestate_thumbnail_image)
-                           menu_st->driver_ctx->update_savestate_thumbnail_image(
-                                 menu_st->userdata);
-                     }
-                  }
                   break;
                case MENU_ACTION_RIGHT:
                   if (setting->action_right)
-                  {
                      ret = setting->action_right(setting, selection, false);
-                     if (menu_st->driver_ctx)
-                     {
-                        if (menu_st->driver_ctx->update_savestate_thumbnail_path)
-                           menu_st->driver_ctx->update_savestate_thumbnail_path(
-                                 menu_st->userdata, (unsigned)selection);
-                        if (menu_st->driver_ctx->update_savestate_thumbnail_image)
-                           menu_st->driver_ctx->update_savestate_thumbnail_image(
-                                 menu_st->userdata);
-                     }
-                  }
                   break;
                case MENU_ACTION_SELECT:
                   if (setting->action_select)
@@ -18797,6 +18785,8 @@ static bool setting_append_list(
                   general_write_handler,
                   general_read_handler);
                (*list)[list_info->index - 1].action_ok = &setting_action_ok_uint;
+               (*list)[list_info->index - 1].action_left = &setting_uint_action_left_with_refresh;
+               (*list)[list_info->index - 1].action_right = &setting_uint_action_right_with_refresh;
                (*list)[list_info->index - 1].get_string_representation =
                   &setting_get_string_representation_uint_xmb_menu_color_theme;
             menu_settings_list_current_add_range(list, list_info, 0, XMB_THEME_LAST-1, 1, true, true);

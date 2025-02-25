@@ -361,6 +361,9 @@ static const location_driver_t *location_drivers[] = {
 #ifdef ANDROID
    &location_android,
 #endif
+#ifdef HAVE_CORELOCATION
+   &location_corelocation,
+#endif
    &location_null,
    NULL,
 };
@@ -478,6 +481,9 @@ static bool init_location(
       const char *loc_drv,
       bool verbosity_enabled)
 {
+   if (!location_st->driver || !location_st->driver->init)
+      return false;
+
    /* Resource leaks will follow if location
       interface is initialized twice. */
    if (!location_st->data)
@@ -559,6 +565,9 @@ midi_driver_t *midi_drivers[]   = {
 #endif
 #ifdef HAVE_WINMM
    &midi_winmm,
+#endif
+#ifdef HAVE_COREMIDI
+   &midi_coremidi,
 #endif
    &midi_null
 };

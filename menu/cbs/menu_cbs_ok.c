@@ -4687,15 +4687,6 @@ static int action_ok_cheat_delete(const char *path,
    menu_entries_pop_stack(&new_selection_ptr, 0, 1);
    menu_st->selection_ptr = new_selection_ptr;
 
-   if (menu_st->driver_ctx)
-   {
-      if (menu_st->driver_ctx->update_savestate_thumbnail_path)
-         menu_st->driver_ctx->update_savestate_thumbnail_path(
-               menu_st->userdata, (unsigned)selection);
-      if (menu_st->driver_ctx->update_savestate_thumbnail_image)
-         menu_st->driver_ctx->update_savestate_thumbnail_image(menu_st->userdata);
-   }
-
    return 0;
 }
 #endif
@@ -4879,6 +4870,9 @@ static void cb_decompressed(retro_task_t *task,
          case MENU_ENUM_LABEL_CB_UPDATE_ASSETS:
          case MENU_ENUM_LABEL_CB_UPDATE_AUTOCONFIG_PROFILES:
             generic_action_ok_command(CMD_EVENT_REINIT);
+            break;
+         case MENU_ENUM_LABEL_CB_UPDATE_CORE_INFO_FILES:
+            generic_action_ok_command(CMD_EVENT_CORE_INFO_INIT);
             break;
          default:
             break;

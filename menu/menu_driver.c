@@ -92,6 +92,8 @@ typedef struct menu_input_ctx_bind
 
 /* TODO/FIXME - public global variable */
 extern u32 __nx_applet_type;
+
+void libnx_apply_overclock(void);
 #endif
 
 /* Accelerated navigation buttons */
@@ -382,7 +384,7 @@ void menu_entry_get(menu_entry_t *entry, size_t stack_idx,
 
    newpath[0]                  = '\0';
 
-   if (!list)
+   if (!list || !list->size)
       return;
 
    path_enabled               = (entry_flags & MENU_ENTRY_FLAG_PATH_ENABLED) ? true : false;
@@ -5670,7 +5672,7 @@ static int menu_input_post_iterate(
    menu_list_t *menu_list                          = menu_st->entries.list;
    file_list_t *selection_buf                      = menu_list ? MENU_LIST_GET_SELECTION(menu_list, (unsigned)0) : NULL;
    size_t selection                                = menu_st->selection_ptr;
-   menu_file_list_cbs_t *cbs                       = selection_buf
+   menu_file_list_cbs_t *cbs                       = selection_buf && selection_buf->size
       ? (menu_file_list_cbs_t*)selection_buf->list[selection].actiondata
       : NULL;
 
@@ -7384,7 +7386,7 @@ int generic_menu_entry_action(
    file_list_t *menu_stack        = menu_list ? MENU_LIST_GET(menu_list, (unsigned)0) : NULL;
    size_t entries_size            = menu_list ? MENU_LIST_GET_SELECTION(menu_list, 0)->size : 0;
    size_t selection_buf_size      = selection_buf ? selection_buf->size : 0;
-   menu_file_list_cbs_t *cbs      = selection_buf ?
+   menu_file_list_cbs_t *cbs      = selection_buf && selection_buf->size ?
       (menu_file_list_cbs_t*)selection_buf->list[i].actiondata : NULL;
 #ifdef HAVE_ACCESSIBILITY
    bool accessibility_enable      = settings->bools.accessibility_enable;
@@ -7664,7 +7666,7 @@ int generic_menu_entry_action(
          break;
    }
 
-   if (MENU_ENTRIES_NEEDS_REFRESH(menu_st))
+   if (MENU_ENTRIES_NEEDS_REFRESH(menu_st) && selection_buf_size)
    {
       menu_driver_displaylist_push(
             menu_st,
@@ -7977,39 +7979,26 @@ size_t menu_update_fullscreen_thumbnail_label(
    /* > State slot label */
    else if (   is_quick_menu
             && (
-               string_is_equal(selected_entry.label, "state_slot")
-            || string_is_equal(selected_entry.label, "loadstate")
-            || string_is_equal(selected_entry.label, "savestate")
+               string_is_equal(selected_entry.label, msg_hash_to_str(MENU_ENUM_LABEL_STATE_SLOT))
+            || string_is_equal(selected_entry.label, msg_hash_to_str(MENU_ENUM_LABEL_LOAD_STATE))
+            || string_is_equal(selected_entry.label, msg_hash_to_str(MENU_ENUM_LABEL_SAVE_STATE))
                )
            )
    {
-      size_t _len = strlcpy(s,
-            msg_hash_to_str(MENU_ENUM_LABEL_VALUE_STATE_SLOT),
+      int slot    = config_get_ptr()->ints.state_slot;
+      size_t _len = strlcpy(s, msg_hash_to_str(MENU_ENUM_LABEL_VALUE_STATE_SLOT),
             len);
-      _len += snprintf(s + _len, len - _len, " %d",
-            config_get_ptr()->ints.state_slot);
-      return _len;
-   }
-   else if (   is_quick_menu
-            && (
-               string_is_equal(selected_entry.label, "replay_slot")
-            || string_is_equal(selected_entry.label, "record_replay")
-            || string_is_equal(selected_entry.label, "play_replay")
-            || string_is_equal(selected_entry.label, "halt_replay")
-         ))
-   {
-      size_t _len = strlcpy(s, msg_hash_to_str(MENU_ENUM_LABEL_VALUE_REPLAY_SLOT),
-            len);
-      _len += snprintf(s + _len, len - _len, " %d",
-               config_get_ptr()->ints.replay_slot);
+      if (slot < 0)
+         _len += snprintf(s + _len, len - _len, " %s", "Auto");
+      else
+         _len += snprintf(s + _len, len - _len, " %d", slot);
       return _len;
    }
    else if (string_to_unsigned(selected_entry.label) == MENU_ENUM_LABEL_STATE_SLOT)
    {
       size_t _len = strlcpy(s, msg_hash_to_str(MENU_ENUM_LABEL_VALUE_STATE_SLOT),
             len);
-      _len += snprintf(s + _len, len - _len, " %d",
-            string_to_unsigned(selected_entry.path));
+      _len += snprintf(s + _len, len - _len, " %s", selected_entry.path);
       return _len;
    }
    /* > Quick Menu playlist label */

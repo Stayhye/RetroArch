@@ -1076,16 +1076,16 @@ static int16_t input_joypad_analog_axis(
             ? joypad_info->auto_binds[ident_y_plus].joyaxis
             : bind_y_plus->joyaxis;
          /* normalized magnitude for radial scaled analog deadzone */
-         if (x_axis_plus != AXIS_NONE)
+         if (x_axis_plus != AXIS_NONE && drv->axis)
             x                     = drv->axis(
                   joypad_info->joy_idx, x_axis_plus);
-         if (x_axis_minus != AXIS_NONE)
+         if (x_axis_minus != AXIS_NONE && drv->axis)
             x                    += drv->axis(joypad_info->joy_idx,
                   x_axis_minus);
-         if (y_axis_plus != AXIS_NONE)
+         if (y_axis_plus != AXIS_NONE && drv->axis)
             y                     = drv->axis(
                   joypad_info->joy_idx, y_axis_plus);
-         if (y_axis_minus != AXIS_NONE)
+         if (y_axis_minus != AXIS_NONE && drv->axis)
             y                    += drv->axis(
                   joypad_info->joy_idx, y_axis_minus);
          normal_mag               = (1.0f / 0x7fff) * sqrt(x * x + y * y);
@@ -1113,9 +1113,9 @@ static int16_t input_joypad_analog_axis(
       uint16_t key_plus     = (bind_plus->joykey  == NO_BTN)
          ? joypad_info->auto_binds[ident_plus].joykey
          : bind_plus->joykey;
-      if (drv->button(joypad_info->joy_idx, key_plus))
+      if (drv->button && drv->button(joypad_info->joy_idx, key_plus))
          res  = 0x7fff;
-      if (drv->button(joypad_info->joy_idx, key_minus))
+      if (drv->button && drv->button(joypad_info->joy_idx, key_minus))
          res += -0x7fff;
    }
 
@@ -1199,12 +1199,10 @@ static int16_t input_overlay_device_mouse_state(
          ptr_st->device_mask |= (1 << RETRO_DEVICE_MOUSE);
          res =   (ptr_st->mouse.scale_x)
                * (ptr_st->screen_x - ptr_st->mouse.prev_screen_x);
-         ptr_st->mouse.prev_screen_x = ptr_st->screen_x;
          return res;
       case RETRO_DEVICE_ID_MOUSE_Y:
          res =   (ptr_st->mouse.scale_y)
                * (ptr_st->screen_y - ptr_st->mouse.prev_screen_y);
-         ptr_st->mouse.prev_screen_y = ptr_st->screen_y;
          return res;
       case RETRO_DEVICE_ID_MOUSE_LEFT:
          return    (ptr_st->mouse.click & 0x1)
@@ -1793,7 +1791,7 @@ static int16_t input_state_device(
                   input_st->overlay_ptr, port, device, idx, id);
 #endif
 
-         if (input_st->flags & INP_FLAG_BLOCK_POINTER_INPUT)
+         if (res && input_st->flags & INP_FLAG_BLOCK_POINTER_INPUT)
             break;
 
          if (id < RARCH_FIRST_META_KEY)
@@ -3468,11 +3466,13 @@ static void input_overlay_update_pointer_coords(
    if (     !ptr_st->count
          && (ptr_st->device_mask & (1 << RETRO_DEVICE_MOUSE)))
    {
+      ptr_st->mouse.prev_screen_x = ptr_st->screen_x;
       ptr_st->screen_x = current_input->input_state(
             input_data, NULL, NULL, NULL, NULL, true, 0,
             RARCH_DEVICE_POINTER_SCREEN,
             touch_idx,
             RETRO_DEVICE_ID_POINTER_X);
+      ptr_st->mouse.prev_screen_y = ptr_st->screen_y;
       ptr_st->screen_y = current_input->input_state(
             input_data, NULL, NULL, NULL, NULL, true, 0,
             RARCH_DEVICE_POINTER_SCREEN,
@@ -5104,10 +5104,14 @@ void input_driver_init_command(input_driver_state_t *input_st,
    }
 #endif
 
-#ifdef HAVE_LAKKA
+#if defined(HAVE_LAKKA)
    if (!(input_st->command[2] = command_uds_new()))
       RARCH_ERR("Failed to initialize the UDS command interface.\n");
+#elif defined(EMSCRIPTEN)
+   if (!(input_st->command[2] = command_emscripten_new()))
+      RARCH_ERR("Failed to initialize the emscripten command interface.\n");
 #endif
+
 }
 
 void input_driver_deinit_command(input_driver_state_t *input_st)
