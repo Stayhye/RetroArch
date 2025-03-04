@@ -82,7 +82,7 @@ run:
 	ps2client -h $(PS2_IP) execee host:$(EE_BIN)
 
 release: all
-	ps2-packer $(EE_BIN) $(TARGET_RELEASE)
+	cp $(EE_BIN) $(TARGET_RELEASE)
 
 #Include preferences
 include $(PS2SDK)/samples/Makefile.pref
