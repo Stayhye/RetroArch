@@ -81,18 +81,33 @@ static void create_path_names(void)
          "database/rdb", sizeof(g_defaults.dirs[DEFAULT_DIR_DATABASE]));
    fill_pathname_join(g_defaults.dirs[DEFAULT_DIR_CHEATS], user_path,
          "cheats", sizeof(g_defaults.dirs[DEFAULT_DIR_CHEATS]));
-   fill_pathname_join(g_defaults.dirs[DEFAULT_DIR_MENU_CONFIG], user_path,
-         "config", sizeof(g_defaults.dirs[DEFAULT_DIR_MENU_CONFIG]));
+
+   /* Check if booted from CD/DVD and override writable paths to memory card */
+   if (getBootDeviceID(cwd) == BOOT_DEVICE_CDFS)
+   {
+      fill_pathname_join(g_defaults.path_config, "mc0:/PICO",
+            FILE_PATH_MAIN_CONFIG, sizeof(g_defaults.path_config));
+      strlcpy(g_defaults.dirs[DEFAULT_DIR_MENU_CONFIG], "mc0:/PICO/config", sizeof(g_defaults.dirs[DEFAULT_DIR_MENU_CONFIG]));
+      strlcpy(g_defaults.dirs[DEFAULT_DIR_SRAM], "mc0:/PICO/savefiles", sizeof(g_defaults.dirs[DEFAULT_DIR_SRAM]));
+      strlcpy(g_defaults.dirs[DEFAULT_DIR_SAVESTATE], "mc0:/PICO/savestates", sizeof(g_defaults.dirs[DEFAULT_DIR_SAVESTATE]));
+   }
+   else
+   {
+      fill_pathname_join(g_defaults.dirs[DEFAULT_DIR_MENU_CONFIG], user_path,
+            "config", sizeof(g_defaults.dirs[DEFAULT_DIR_MENU_CONFIG]));
+      fill_pathname_join(g_defaults.dirs[DEFAULT_DIR_SRAM], user_path,
+            "savefiles", sizeof(g_defaults.dirs[DEFAULT_DIR_SRAM]));
+      fill_pathname_join(g_defaults.dirs[DEFAULT_DIR_SAVESTATE], user_path,
+            "savestates", sizeof(g_defaults.dirs[DEFAULT_DIR_SAVESTATE]));
+   }
+
    fill_pathname_join(g_defaults.dirs[DEFAULT_DIR_CORE_ASSETS], user_path,
          "downloads", sizeof(g_defaults.dirs[DEFAULT_DIR_CORE_ASSETS]));
    fill_pathname_join(g_defaults.dirs[DEFAULT_DIR_PLAYLIST], user_path,
          "playlists", sizeof(g_defaults.dirs[DEFAULT_DIR_PLAYLIST]));
    fill_pathname_join(g_defaults.dirs[DEFAULT_DIR_REMAP], g_defaults.dirs[DEFAULT_DIR_MENU_CONFIG],
          "remaps", sizeof(g_defaults.dirs[DEFAULT_DIR_REMAP]));
-   fill_pathname_join(g_defaults.dirs[DEFAULT_DIR_SRAM], user_path,
-         "savefiles", sizeof(g_defaults.dirs[DEFAULT_DIR_SRAM]));
-   fill_pathname_join(g_defaults.dirs[DEFAULT_DIR_SAVESTATE], user_path,
-         "savestates", sizeof(g_defaults.dirs[DEFAULT_DIR_SAVESTATE]));
+
    fill_pathname_join(g_defaults.dirs[DEFAULT_DIR_SYSTEM], user_path,
          "system", sizeof(g_defaults.dirs[DEFAULT_DIR_SYSTEM]));
    fill_pathname_join(g_defaults.dirs[DEFAULT_DIR_CACHE], user_path,
@@ -107,8 +122,12 @@ static void create_path_names(void)
    /* history and main config */
    strlcpy(g_defaults.dirs[DEFAULT_DIR_CONTENT_HISTORY],
          user_path, sizeof(g_defaults.dirs[DEFAULT_DIR_CONTENT_HISTORY]));
-   fill_pathname_join(g_defaults.path_config, user_path,
-         FILE_PATH_MAIN_CONFIG, sizeof(g_defaults.path_config));
+   
+   if (getBootDeviceID(cwd) != BOOT_DEVICE_CDFS)
+   {
+      fill_pathname_join(g_defaults.path_config, user_path,
+            FILE_PATH_MAIN_CONFIG, sizeof(g_defaults.path_config));
+   }
 
 #ifndef IS_SALAMANDER
    dir_check_defaults("custom.ini");
