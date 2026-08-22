@@ -147,7 +147,7 @@ endif
 debug: clean all run
 
 release: all
-	ee-strip -s $(EE_BIN)
+	mips64r5900el-ps2-elf-strip -s $(EE_BIN)
 	cp $(EE_BIN) $(TARGET_RELEASE)
 
 #Include preferences
