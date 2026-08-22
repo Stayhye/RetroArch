@@ -14,7 +14,6 @@
  *  If not, see <http://www.gnu.org/licenses/>.
  */
 
-#include <memory/mem_stats.h>
 #include <stdio.h>
 #include <string.h>
 
@@ -50,10 +49,13 @@ static frontend_ctx_driver_t frontend_ctx_null = {
    NULL,                         /* shutdown */
    NULL,                         /* get_name */
    NULL,                         /* get_os */
+   NULL,                         /* get_rating */
    NULL,                         /* load_content */
    NULL,                         /* get_architecture */
    NULL,                         /* get_powerstate */
    NULL,                         /* parse_drive_list */
+   NULL,                         /* get_mem_total */
+   NULL,                         /* get_mem_free */
    NULL,                         /* install_signal_handler */
    NULL,                         /* get_sighandler_state */
    NULL,                         /* set_sighandler_state */
@@ -62,19 +64,20 @@ static frontend_ctx_driver_t frontend_ctx_null = {
    NULL,                         /* detach_console */
    NULL,                         /* get_lakka_version */
    NULL,                         /* set_screen_brightness */
+   NULL,                         /* watch_path_for_changes */
+   NULL,                         /* check_for_path_changes */
    NULL,                         /* set_sustained_performance_mode */
    NULL,                         /* get_cpu_model_name */
    NULL,                         /* get_user_language */
    NULL,                         /* is_narrator_running */
    NULL,                         /* accessibility_speak */
    NULL,                         /* set_gamemode */
-   NULL,                         /* get_display_type */
    "null",
    NULL,                         /* get_video_driver */
 };
 
 static frontend_ctx_driver_t *frontend_ctx_drivers[] = {
-#if defined(__EMSCRIPTEN__)
+#if defined(EMSCRIPTEN)
    &frontend_ctx_emscripten,
 #endif
 #if defined(__PS3__)
@@ -209,7 +212,7 @@ size_t frontend_driver_get_core_extension(char *s, size_t len)
    if (envIsHomebrew())
       return strlcpy(s, "3dsx", len);
    return strlcpy(s, "cia", len);
-#elif defined(__EMSCRIPTEN__)
+#elif defined(EMSCRIPTEN)
    /* may not contain the core */
    return strlcpy(s, "core", len);
 #else
@@ -464,7 +467,23 @@ const void *frontend_driver_get_cpu_architecture_str(char *s, size_t len)
    return frontend;
 }
 
+uint64_t frontend_driver_get_total_memory(void)
+{
+   frontend_state_t *frontend_st   = &frontend_driver_st;
+   frontend_ctx_driver_t *frontend = frontend_st->current_frontend_ctx;
+   if (frontend && frontend->get_total_mem)
+      return frontend->get_total_mem();
+   return 0;
+}
 
+uint64_t frontend_driver_get_free_memory(void)
+{
+   frontend_state_t *frontend_st   = &frontend_driver_st;
+   frontend_ctx_driver_t *frontend = frontend_st->current_frontend_ctx;
+   if (frontend && frontend->get_free_mem)
+      return frontend->get_free_mem();
+   return 0;
+}
 
 void frontend_driver_install_signal_handler(void)
 {
@@ -537,6 +556,32 @@ void frontend_driver_destroy_signal_handler_state(void)
    frontend_ctx_driver_t *frontend = frontend_st->current_frontend_ctx;
    if (frontend && frontend->destroy_signal_handler_state)
       frontend->destroy_signal_handler_state();
+}
+
+bool frontend_driver_can_watch_for_changes(void)
+{
+   frontend_state_t *frontend_st   = &frontend_driver_st;
+   frontend_ctx_driver_t *frontend = frontend_st->current_frontend_ctx;
+   return frontend && frontend->watch_path_for_changes;
+}
+
+void frontend_driver_watch_path_for_changes(
+      struct string_list *list, int flags,
+      path_change_data_t **change_data)
+{
+   frontend_state_t *frontend_st   = &frontend_driver_st;
+   frontend_ctx_driver_t *frontend = frontend_st->current_frontend_ctx;
+   if (frontend && frontend->watch_path_for_changes)
+      frontend->watch_path_for_changes(list, flags, change_data);
+}
+
+bool frontend_driver_check_for_path_changes(path_change_data_t *change_data)
+{
+   frontend_state_t *frontend_st   = &frontend_driver_st;
+   frontend_ctx_driver_t *frontend = frontend_st->current_frontend_ctx;
+   if (frontend && frontend->check_for_path_changes)
+      return frontend->check_for_path_changes(change_data);
+   return false;
 }
 
 void frontend_driver_set_sustained_performance_mode(bool on)
