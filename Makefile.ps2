@@ -147,6 +147,7 @@ endif
 debug: clean all run
 
 release: all
+	ee-strip -s $(EE_BIN)
 	cp $(EE_BIN) $(TARGET_RELEASE)
 
 #Include preferences
