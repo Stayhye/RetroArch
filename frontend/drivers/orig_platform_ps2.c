@@ -81,33 +81,18 @@ static void create_path_names(void)
          "database/rdb", sizeof(g_defaults.dirs[DEFAULT_DIR_DATABASE]));
    fill_pathname_join(g_defaults.dirs[DEFAULT_DIR_CHEATS], user_path,
          "cheats", sizeof(g_defaults.dirs[DEFAULT_DIR_CHEATS]));
-
-   /* Check if booted from CD/DVD and override writable paths to memory card */
-   if (getBootDeviceID(cwd) == BOOT_DEVICE_CDFS)
-   {
-      fill_pathname_join(g_defaults.path_config, "mc0:/PICO",
-            FILE_PATH_MAIN_CONFIG, sizeof(g_defaults.path_config));
-      strlcpy(g_defaults.dirs[DEFAULT_DIR_MENU_CONFIG], "mc0:/PICO/config", sizeof(g_defaults.dirs[DEFAULT_DIR_MENU_CONFIG]));
-      strlcpy(g_defaults.dirs[DEFAULT_DIR_SRAM], "mc0:/PICO/savefiles", sizeof(g_defaults.dirs[DEFAULT_DIR_SRAM]));
-      strlcpy(g_defaults.dirs[DEFAULT_DIR_SAVESTATE], "mc0:/PICO/savestates", sizeof(g_defaults.dirs[DEFAULT_DIR_SAVESTATE]));
-   }
-   else
-   {
-      fill_pathname_join(g_defaults.dirs[DEFAULT_DIR_MENU_CONFIG], user_path,
-            "config", sizeof(g_defaults.dirs[DEFAULT_DIR_MENU_CONFIG]));
-      fill_pathname_join(g_defaults.dirs[DEFAULT_DIR_SRAM], user_path,
-            "savefiles", sizeof(g_defaults.dirs[DEFAULT_DIR_SRAM]));
-      fill_pathname_join(g_defaults.dirs[DEFAULT_DIR_SAVESTATE], user_path,
-            "savestates", sizeof(g_defaults.dirs[DEFAULT_DIR_SAVESTATE]));
-   }
-
+   fill_pathname_join(g_defaults.dirs[DEFAULT_DIR_MENU_CONFIG], user_path,
+         "config", sizeof(g_defaults.dirs[DEFAULT_DIR_MENU_CONFIG]));
    fill_pathname_join(g_defaults.dirs[DEFAULT_DIR_CORE_ASSETS], user_path,
          "downloads", sizeof(g_defaults.dirs[DEFAULT_DIR_CORE_ASSETS]));
    fill_pathname_join(g_defaults.dirs[DEFAULT_DIR_PLAYLIST], user_path,
          "playlists", sizeof(g_defaults.dirs[DEFAULT_DIR_PLAYLIST]));
    fill_pathname_join(g_defaults.dirs[DEFAULT_DIR_REMAP], g_defaults.dirs[DEFAULT_DIR_MENU_CONFIG],
          "remaps", sizeof(g_defaults.dirs[DEFAULT_DIR_REMAP]));
-
+   fill_pathname_join(g_defaults.dirs[DEFAULT_DIR_SRAM], user_path,
+         "savefiles", sizeof(g_defaults.dirs[DEFAULT_DIR_SRAM]));
+   fill_pathname_join(g_defaults.dirs[DEFAULT_DIR_SAVESTATE], user_path,
+         "savestates", sizeof(g_defaults.dirs[DEFAULT_DIR_SAVESTATE]));
    fill_pathname_join(g_defaults.dirs[DEFAULT_DIR_SYSTEM], user_path,
          "system", sizeof(g_defaults.dirs[DEFAULT_DIR_SYSTEM]));
    fill_pathname_join(g_defaults.dirs[DEFAULT_DIR_CACHE], user_path,
@@ -122,12 +107,8 @@ static void create_path_names(void)
    /* history and main config */
    strlcpy(g_defaults.dirs[DEFAULT_DIR_CONTENT_HISTORY],
          user_path, sizeof(g_defaults.dirs[DEFAULT_DIR_CONTENT_HISTORY]));
-   
-   if (getBootDeviceID(cwd) != BOOT_DEVICE_CDFS)
-   {
-      fill_pathname_join(g_defaults.path_config, user_path,
-            FILE_PATH_MAIN_CONFIG, sizeof(g_defaults.path_config));
-   }
+   fill_pathname_join(g_defaults.path_config, user_path,
+         FILE_PATH_MAIN_CONFIG, sizeof(g_defaults.path_config));
 
 #ifndef IS_SALAMANDER
    dir_check_defaults("custom.ini");
@@ -160,34 +141,13 @@ static void reset_IOP()
 bool getMountInfo(char *path, char *mountPoint, char *partition, char *newCWD)
 {
    struct string_list *str_list = string_split(path, ":");
-
    if (str_list->size < 3)
-   {
-      string_list_free(str_list);
       return false;
-   }
 
-   /* Build partition string: "device:path" using strlcpy offsets */
-   size_t len = strlcpy(partition, str_list->elems[0].data, 50);
-   if (len < 50) {
-      len += strlcpy(partition + len, ":", 50 - len);
-      if (len < 50)
-         strlcpy(partition + len, str_list->elems[1].data, 50 - len);
-   }
+   sprintf(partition, "%s:%s", str_list->elems[0].data, str_list->elems[1].data);
+   sprintf(mountPoint, "%s:", str_list->elems[2].data);
+   sprintf(newCWD, "%s%s", mountPoint, str_list->size == 4 ? str_list->elems[3].data : "");
 
-   /* Build mountPoint string: "mount:" using strlcpy offset */
-   len = strlcpy(mountPoint, str_list->elems[2].data, 10);
-   if (len < 10)
-      strlcpy(mountPoint + len, ":", 10 - len);
-
-   /* Build newCWD string using strlcpy offset */
-   len = strlcpy(newCWD, mountPoint, FILENAME_MAX);
-   if (len < FILENAME_MAX)
-      strlcpy(newCWD + len,
-            str_list->size >= 4 ? str_list->elems[3].data : "",
-            FILENAME_MAX - len);
-
-   string_list_free(str_list);
    return true;
 }
 
@@ -284,9 +244,9 @@ static void deinit_drivers(bool deinit_filesystem, bool deinit_powerOff)
       umount_hdd_partition(mountPoint);
 
       deinit_hdd_driver(false);
-      deinit_dev9_driver();
       deinit_cdfs_driver();
       deinit_mx4sio_driver(true);
+      deinit_dev9_driver();
       deinit_usb_driver(true);
       deinit_memcard_driver(true);
       deinit_fileXio_driver();
@@ -311,7 +271,7 @@ static void frontend_ps2_get_env(int *argc, char *argv[],
    create_path_names();
 
 #ifndef IS_SALAMANDER
-   if (argv[1] && *argv[1])
+   if (!string_is_empty(argv[1]))
    {
       static char path[FILENAME_MAX] = {0};
       struct rarch_main_wrap      *args =
@@ -465,11 +425,52 @@ static void frontend_ps2_exitspawn(char *s, size_t len, char *args)
    frontend_ps2_exec(s, should_load_content);
 }
 
+static int frontend_ps2_get_rating(void) { return 4; }
+
 enum frontend_architecture frontend_ps2_get_arch(void)
 {
    return FRONTEND_ARCH_MIPS;
 }
 
+static uint64_t frontend_ps2_get_total_mem(void) { return 32*1024*1024; }
+
+/* Crude try-and-fail approach, in lack of a better solution. */
+static uint64_t frontend_ps2_get_free_mem(void)
+{
+  uint64_t free_mem;
+  size_t s0 = 32*1024*1024;
+  void* p1;
+  void* p2;
+  void* p3;
+
+  while (s0 && (p1 = malloc(s0)) == NULL)
+    s0 >>= 1;
+
+  free_mem = s0;
+
+  s0 = 32*1024*1024;
+
+  while (s0 && (p2 = malloc(s0)) == NULL)
+    s0 >>= 1;
+
+  free_mem += s0;
+
+  s0 = 32*1024*1024;
+
+  while (s0 && (p3 = malloc(s0)) == NULL)
+    s0 >>= 1;
+
+  free_mem += s0;
+
+  if (p1)
+    free(p1);
+  if (p2)
+    free(p2);
+  if (p3)
+    free(p3);
+
+  return free_mem;
+}
 
 static int frontend_ps2_parse_drive_list(void *data, bool load_content)
 {
@@ -555,10 +556,13 @@ frontend_ctx_driver_t frontend_ctx_ps2 = {
    NULL,                         /* shutdown */
    NULL,                         /* get_name */
    NULL,                         /* get_os */
+   frontend_ps2_get_rating,      /* get_rating */
    NULL,                         /* load_content */
    frontend_ps2_get_arch,        /* get_architecture */
    NULL,                         /* get_powerstate */
    frontend_ps2_parse_drive_list,/* parse_drive_list */
+   frontend_ps2_get_total_mem,   /* get_total_mem */
+   frontend_ps2_get_free_mem,    /* get_free_mem */
    NULL,                         /* install_signal_handler */
    NULL,                         /* get_sighandler_state */
    NULL,                         /* set_sighandler_state */
@@ -567,13 +571,14 @@ frontend_ctx_driver_t frontend_ctx_ps2 = {
    NULL,                         /* detach_console */
    NULL,                         /* get_lakka_version */
    NULL,                         /* set_screen_brightness */
+   NULL,                         /* watch_path_for_changes */
+   NULL,                         /* check_for_path_changes */
    NULL,                         /* set_sustained_performance_mode */
    NULL,                         /* get_cpu_model_name */
    NULL,                         /* get_user_language */
    NULL,                         /* is_narrator_running */
    NULL,                         /* accessibility_speak */
    NULL,                         /* set_gamemode */
-   NULL, /* get_display_type */
    "ps2",                        /* ident */
    NULL                          /* get_video_driver */
 };
