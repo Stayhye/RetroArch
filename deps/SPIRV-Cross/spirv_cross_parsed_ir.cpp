@@ -1005,9 +1005,8 @@ ParsedIR::LoopLock::LoopLock(uint32_t *lock_)
 }
 
 ParsedIR::LoopLock::LoopLock(LoopLock &&other) SPIRV_CROSS_NOEXCEPT
-    : lock(other.lock)
 {
-	other.lock = nullptr;
+	*this = std::move(other);
 }
 
 ParsedIR::LoopLock &ParsedIR::LoopLock::operator=(LoopLock &&other) SPIRV_CROSS_NOEXCEPT

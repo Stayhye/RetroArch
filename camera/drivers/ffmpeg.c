@@ -14,16 +14,12 @@
 *  If not, see <http://www.gnu.org/licenses/>.
 */
 
-#include <libavformat/version.h>
-#if LIBAVFORMAT_VERSION_MAJOR >= 58
-
 #include <libretro.h>
 
 #include <memalign.h>
 #include <retro_common_api.h>
 #include <retro_assert.h>
 #include <rthreads/rthreads.h>
-#include <retro_atomic.h>
 #include <lists/string_list.h>
 #include <string/stdstring.h>
 
@@ -45,10 +41,6 @@ extern "C" {
 #include "../../configuration.h"
 #include "../../verbosity.h"
 
-/* The libavdevice input format the camera comes from. A build may name
- * it already - a test harness points it at lavfi, which gives the
- * whole pipeline a synthetic camera and needs no device. */
-#ifndef FFMPEG_CAMERA_DEFAULT_BACKEND
 #ifdef ANDROID
 #define FFMPEG_CAMERA_DEFAULT_BACKEND "android_camera"
 #elif defined(__linux__)
@@ -62,35 +54,23 @@ extern "C" {
 #else
 #define FFMPEG_CAMERA_DEFAULT_BACKEND "lavfi"
 #endif
-#endif
-
-/* lavf 59 (FFmpeg 5.0) made the demuxer/codec discovery API const-correct:
- * av_find_input_format() returns const AVInputFormat*, avformat_open_input()
- * accepts one, and av_find_best_stream() takes const AVCodec**. Older
- * versions use mutable pointers throughout, so a single const-qualified
- * declaration cannot satisfy both. */
-#if LIBAVFORMAT_VERSION_MAJOR >= 59
-typedef const AVInputFormat ffmpeg_camera_input_format_t;
-typedef const AVCodec ffmpeg_camera_codec_t;
-#else
-typedef AVInputFormat ffmpeg_camera_input_format_t;
-typedef AVCodec ffmpeg_camera_codec_t;
-#endif
 
 typedef struct ffmpeg_camera
 {
    sthread_t *poll_thread;
    AVFormatContext *format_context;
    AVCodecContext *decoder_context;
-   ffmpeg_camera_codec_t *decoder; /* owned by ffmpeg, don't free it */
-   ffmpeg_camera_input_format_t *input_format; /* owned by ffmpeg, don't free it */
+   const AVCodec *decoder;
+   const AVInputFormat *input_format; /* owned by ffmpeg, don't free it */
    AVDictionary *options;
    AVPacket *packet;
    AVFrame *camera_frame;
-   unsigned requested_dims;          /* VIDEO_SCALE_PACK */
+   unsigned requested_width;
+   unsigned requested_height;
    uint8_t *target_planes[4];
    int target_linesizes[4];
-   unsigned target_dims;             /* VIDEO_SCALE_PACK */
+   unsigned target_width;
+   unsigned target_height;
    struct SwsContext *scale_context;
 
    /* "name" for the camera device.
@@ -101,14 +81,7 @@ typedef struct ffmpeg_camera
    uint8_t *target_buffers[2];
    size_t target_buffer_length;
    slock_t *target_buffer_lock;
-   /* The poll thread's loop condition: the main thread sets it in
-    * stop(), the thread reads it every turn, and nothing else is
-    * held on either side - target_buffer_lock covers the frame, not
-    * this. It was a volatile bool, which is not a synchronisation
-    * primitive: it stops the compiler caching the load and orders
-    * nothing, so the thread has no guarantee of seeing what the main
-    * thread wrote before it. */
-   retro_atomic_int_t done;
+   volatile bool done;
    uint8_t *active_buffer;
 } ffmpeg_camera_t;
 
@@ -118,7 +91,8 @@ static int ffmpeg_camera_get_initial_options(
    const AVInputFormat *backend,
    AVDictionary **options,
    uint64_t caps,
-   unsigned dims
+   unsigned width,
+   unsigned height
 )
 {
    int ret = 0;
@@ -132,11 +106,10 @@ static int ffmpeg_camera_get_initial_options(
 #endif
 
    /* If the core is letting the frontend pick the size... */
-   if (VIDEO_SCALE_W(dims) != 0 && VIDEO_SCALE_H(dims) != 0)
+   if (width != 0 && height != 0)
    {
       char dimensions[128];
-      snprintf(dimensions, sizeof(dimensions), "%ux%u",
-            VIDEO_SCALE_W(dims), VIDEO_SCALE_H(dims));
+      snprintf(dimensions, sizeof(dimensions), "%ux%u", width, height);
 
       ret = av_dict_set(options, "video_size", dimensions, 0);
 
@@ -213,13 +186,12 @@ static int ffmpeg_camera_open_device(ffmpeg_camera_t *ffmpeg)
       char dimensions[128];
 
       /* Set video size if requested */
-      if (     VIDEO_SCALE_W(ffmpeg->requested_dims) != 0
-            && VIDEO_SCALE_H(ffmpeg->requested_dims) != 0)
+      if (ffmpeg->requested_width != 0 && ffmpeg->requested_height != 0)
       {
          /* Use a resolution that the device likely supports */
          /* Common resolutions: 640x480, 1280x720, 1920x1080 */
-         unsigned width = VIDEO_SCALE_W(ffmpeg->requested_dims);
-         unsigned height = VIDEO_SCALE_H(ffmpeg->requested_dims);
+         unsigned width = ffmpeg->requested_width;
+         unsigned height = ffmpeg->requested_height;
 
          /* If the requested resolution is too small, use a minimum supported size */
          if (width < 640 || height < 480)
@@ -227,8 +199,7 @@ static int ffmpeg_camera_open_device(ffmpeg_camera_t *ffmpeg)
             width = 640;
             height = 480;
             RARCH_LOG("[FFMPEG] Requested resolution %ux%u too small, using %ux%u instead.\n",
-                     VIDEO_SCALE_W(ffmpeg->requested_dims),
-                     VIDEO_SCALE_H(ffmpeg->requested_dims), width, height);
+                     ffmpeg->requested_width, ffmpeg->requested_height, width, height);
          }
 
          snprintf(dimensions, sizeof(dimensions), "%ux%u", width, height);
@@ -318,7 +289,7 @@ done:
    return ret;
 }
 
-static void *ffmpeg_camera_init(const char *device, uint64_t caps, unsigned dims)
+static void *ffmpeg_camera_init(const char *device, uint64_t caps, unsigned width, unsigned height)
 {
    ffmpeg_camera_t *ffmpeg = NULL;
    AVDeviceInfoList *device_list = NULL;
@@ -339,7 +310,8 @@ static void *ffmpeg_camera_init(const char *device, uint64_t caps, unsigned dims
       return NULL;
    }
 
-   ffmpeg->requested_dims   = dims;
+   ffmpeg->requested_width  = width;
+   ffmpeg->requested_height = height;
 
    avdevice_register_all();
    RARCH_LOG("[FFMPEG] Initialized libavdevice.\n");
@@ -353,27 +325,13 @@ static void *ffmpeg_camera_init(const char *device, uint64_t caps, unsigned dims
 
    RARCH_LOG("[FFMPEG] Using camera backend: %s (%s, flags=0x%x).\n", ffmpeg->input_format->name, ffmpeg->input_format->long_name, ffmpeg->input_format->flags);
 
-   ret = ffmpeg_camera_get_initial_options(ffmpeg->input_format, &ffmpeg->options, caps, dims);
+   ret = ffmpeg_camera_get_initial_options(ffmpeg->input_format, &ffmpeg->options, caps, width, height);
    if (ret < 0)
    {
       char msg[AV_ERROR_MAX_STRING_SIZE];
       av_make_error_string(msg, AV_ERROR_MAX_STRING_SIZE, ret);
       RARCH_ERR("[FFMPEG] Failed to get initial options: %s.\n", msg);
       goto error;
-   }
-
-   /* A device the frontend named is the device, and enumeration is
-    * skipped: what the setting says is a source url for the backend
-    * in use, which is the only thing this driver could do with it.
-    * It used to be ignored outright - the argument was taken and
-    * never read, so a user who picked a camera got whichever one
-    * enumerated first. */
-   if (!string_is_empty(device))
-   {
-      strlcpy(ffmpeg->url, device, sizeof(ffmpeg->url));
-      RARCH_LOG("[FFMPEG] Using the device the frontend asked for: %s.\n",
-            ffmpeg->url);
-      goto have_device;
    }
 
    num_sources = avdevice_list_input_sources(ffmpeg->input_format, NULL, ffmpeg->options, &device_list);
@@ -415,7 +373,6 @@ static void *ffmpeg_camera_init(const char *device, uint64_t caps, unsigned dims
 
    ffmpeg_camera_get_source_url(ffmpeg, device_list->devices[0]);
 #endif
-have_device:
    RARCH_LOG("[FFMPEG] Using video input device: %s (%s, flags=0x%x).\n", ffmpeg->input_format->name, ffmpeg->input_format->long_name, ffmpeg->input_format->flags);
 
    avdevice_free_list_devices(&device_list);
@@ -561,19 +518,14 @@ static bool ffmpeg_camera_start(void *data)
       goto error;
    }
 
-   ffmpeg->target_dims = VIDEO_SCALE_PACK(
-         VIDEO_SCALE_W(ffmpeg->requested_dims)
-         ? VIDEO_SCALE_W(ffmpeg->requested_dims)
-         : (unsigned)ffmpeg->decoder_context->width,
-         VIDEO_SCALE_H(ffmpeg->requested_dims)
-         ? VIDEO_SCALE_H(ffmpeg->requested_dims)
-         : (unsigned)ffmpeg->decoder_context->height);
+   ffmpeg->target_width = ffmpeg->requested_width ? ffmpeg->requested_width : (unsigned)ffmpeg->decoder_context->width;
+   ffmpeg->target_height = ffmpeg->requested_height ? ffmpeg->requested_height : (unsigned)ffmpeg->decoder_context->height;
 
    target_buffer_length = av_image_alloc(
       ffmpeg->target_planes,
       ffmpeg->target_linesizes,
-      VIDEO_SCALE_W(ffmpeg->target_dims),
-      VIDEO_SCALE_H(ffmpeg->target_dims),
+      ffmpeg->target_width,
+      ffmpeg->target_height,
       AV_PIX_FMT_BGRA,
       1
    );
@@ -612,8 +564,8 @@ static bool ffmpeg_camera_start(void *data)
       ffmpeg->decoder_context->width,
       ffmpeg->decoder_context->height,
       ffmpeg->decoder_context->pix_fmt,
-      VIDEO_SCALE_W(ffmpeg->target_dims),
-      VIDEO_SCALE_H(ffmpeg->target_dims),
+      ffmpeg->target_width,
+      ffmpeg->target_height,
       AV_PIX_FMT_BGRA,
       SWS_BILINEAR,
       NULL, NULL, NULL
@@ -649,14 +601,6 @@ static void ffmpeg_camera_stop(void *data)
 {
    ffmpeg_camera_t *ffmpeg = (ffmpeg_camera_t*)data;
 
-   /* The thread first. It is the other user of the decoder - it sends
-    * every packet it reads and receives every frame - and an
-    * AVCodecContext takes one user at a time, so the flush below
-    * cannot happen while the thread is still in there. This used to
-    * flush and then join. */
-   retro_atomic_store_release_int(&ffmpeg->done, 1);
-   sthread_join(ffmpeg->poll_thread); /* wait for the thread to finish, then free it */
-
    if (!ffmpeg->format_context)
    {
       RARCH_LOG("[FFMPEG] Camera %s is already stopped, no flush needed.\n", ffmpeg->url);
@@ -673,6 +617,8 @@ static void ffmpeg_camera_stop(void *data)
    }
 
    /* these functions are noops for NULL pointers */
+   ffmpeg->done = true;
+   sthread_join(ffmpeg->poll_thread); /* wait for the thread to finish, then free it */
    ffmpeg->poll_thread = NULL;
 
    slock_free(ffmpeg->target_buffer_lock);
@@ -687,7 +633,8 @@ static void ffmpeg_camera_stop(void *data)
    ffmpeg->target_buffers[0] = NULL;
    ffmpeg->target_buffers[1] = NULL;
    ffmpeg->target_buffer_length = 0;
-   ffmpeg->target_dims = 0;
+   ffmpeg->target_width = 0;
+   ffmpeg->target_height = 0;
 
    av_frame_free(&ffmpeg->camera_frame);
    av_freep(&ffmpeg->target_buffers[0]);
@@ -706,7 +653,7 @@ static void ffmpeg_camera_poll_thread(void *data)
    if (!ffmpeg)
       return;
 
-   while (!retro_atomic_load_acquire_int(&ffmpeg->done))
+   while (!ffmpeg->done)
    {
       int ret = av_read_frame(ffmpeg->format_context, ffmpeg->packet);
       /* Read the raw data from the camera. If that fails... */
@@ -781,8 +728,8 @@ static void ffmpeg_camera_poll_thread(void *data)
          (const uint8_t *const *)ffmpeg->target_planes,
          ffmpeg->target_linesizes,
          AV_PIX_FMT_BGRA,
-         VIDEO_SCALE_W(ffmpeg->target_dims),
-         VIDEO_SCALE_H(ffmpeg->target_dims),
+         ffmpeg->target_width,
+         ffmpeg->target_height,
          1
       );
       if (ret >= 0)
@@ -823,9 +770,7 @@ static bool ffmpeg_camera_poll(void *data,
    }
 
    slock_lock(ffmpeg->target_buffer_lock);
-   frame_raw_cb((uint32_t*)ffmpeg->active_buffer,
-         VIDEO_SCALE_W(ffmpeg->target_dims), VIDEO_SCALE_H(ffmpeg->target_dims),
-         ffmpeg->target_linesizes[0]);
+   frame_raw_cb((uint32_t*)ffmpeg->active_buffer, ffmpeg->target_width, ffmpeg->target_height, ffmpeg->target_linesizes[0]);
    slock_unlock(ffmpeg->target_buffer_lock);
 
    return true;
@@ -839,5 +784,3 @@ camera_driver_t camera_ffmpeg = {
    ffmpeg_camera_poll,
    "ffmpeg",
 };
-
-#endif /* LIBAVFORMAT_VERSION_MAJOR >= 58 */

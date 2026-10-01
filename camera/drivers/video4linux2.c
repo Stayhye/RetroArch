@@ -59,7 +59,8 @@ typedef struct video4linux
    int fd;
    struct buffer *buffers;
    unsigned n_buffers;
-   unsigned dims;               /* VIDEO_SCALE_PACK */
+   unsigned width;
+   unsigned height;
    size_t pitch;
 
    struct scaler_ctx scaler;
@@ -184,8 +185,8 @@ static bool init_device(void *data)
    }
 
    fmt.type                = V4L2_BUF_TYPE_VIDEO_CAPTURE;
-   fmt.fmt.pix.width       = VIDEO_SCALE_W(v4l->dims);
-   fmt.fmt.pix.height      = VIDEO_SCALE_H(v4l->dims);
+   fmt.fmt.pix.width       = v4l->width;
+   fmt.fmt.pix.height      = v4l->height;
    fmt.fmt.pix.pixelformat = V4L2_PIX_FMT_YUYV;
    fmt.fmt.pix.field       = V4L2_FIELD_NONE;
 
@@ -196,13 +197,9 @@ static bool init_device(void *data)
    }
 
    /* VIDIOC_S_FMT may change width, height and pitch. */
-   if (!VIDEO_SCALE_FITS(fmt.fmt.pix.width, fmt.fmt.pix.height))
-   {
-      RARCH_ERR("[V4L2] The device frame is too large.\n");
-      return false;
-   }
-   v4l->dims   = VIDEO_SCALE_PACK(fmt.fmt.pix.width, fmt.fmt.pix.height);
-   v4l->pitch  = MAX(fmt.fmt.pix.bytesperline, fmt.fmt.pix.width * 2);
+   v4l->width  = fmt.fmt.pix.width;
+   v4l->height = fmt.fmt.pix.height;
+   v4l->pitch  = MAX(fmt.fmt.pix.bytesperline, v4l->width * 2);
 
    /* Sanity check to see if our assumptions are met.
     * It is possible to support whatever the device gives us,
@@ -221,8 +218,7 @@ static bool init_device(void *data)
       return false;
    }
 
-   RARCH_LOG("[V4L2] Device: %ux%u.\n",
-         VIDEO_SCALE_W(v4l->dims), VIDEO_SCALE_H(v4l->dims));
+   RARCH_LOG("[V4L2] Device: %ux%u.\n", v4l->width, v4l->height);
 
    return init_mmap(v4l);
 }
@@ -290,7 +286,7 @@ static void v4l_free(void *data)
 }
 
 static void *v4l_init(const char *device, uint64_t caps,
-      unsigned dims)
+      unsigned width, unsigned height)
 {
    video4linux_t *v4l = NULL;
 
@@ -307,7 +303,8 @@ static void *v4l_init(const char *device, uint64_t caps,
    strlcpy(v4l->dev_name, device ? device : "/dev/video0",
          sizeof(v4l->dev_name));
 
-   v4l->dims   = dims;
+   v4l->width  = width;
+   v4l->height = height;
    v4l->ready  = false;
 
    if (!path_is_character_special(v4l->dev_name))
@@ -330,8 +327,7 @@ static void *v4l_init(const char *device, uint64_t caps,
       goto error;
 
    v4l->buffer_output = (uint32_t*)
-      malloc((size_t)VIDEO_SCALE_W(v4l->dims) * VIDEO_SCALE_H(v4l->dims)
-            * sizeof(uint32_t));
+      malloc(v4l->width * v4l->height * sizeof(uint32_t));
 
    if (!v4l->buffer_output)
    {
@@ -339,12 +335,12 @@ static void *v4l_init(const char *device, uint64_t caps,
       goto error;
    }
 
-   v4l->scaler.in_width   = v4l->scaler.out_width  = VIDEO_SCALE_W(v4l->dims);
-   v4l->scaler.in_height  = v4l->scaler.out_height = VIDEO_SCALE_H(v4l->dims);
+   v4l->scaler.in_width   = v4l->scaler.out_width = v4l->width;
+   v4l->scaler.in_height  = v4l->scaler.out_height = v4l->height;
    v4l->scaler.in_fmt     = SCALER_FMT_YUYV;
    v4l->scaler.out_fmt    = SCALER_FMT_ARGB8888;
    v4l->scaler.in_stride  = v4l->pitch;
-   v4l->scaler.out_stride = VIDEO_SCALE_W(v4l->dims) * 4;
+   v4l->scaler.out_stride = v4l->width * 4;
 
    if (!scaler_ctx_gen_filter(&v4l->scaler))
    {
@@ -406,8 +402,8 @@ static bool v4l_poll(void *data,
    if (preprocess_image(data))
    {
       if (frame_raw_cb)
-         frame_raw_cb(v4l->buffer_output, VIDEO_SCALE_W(v4l->dims),
-               VIDEO_SCALE_H(v4l->dims), VIDEO_SCALE_W(v4l->dims) * 4);
+         frame_raw_cb(v4l->buffer_output, v4l->width,
+               v4l->height, v4l->width * 4);
       return true;
    }
 
