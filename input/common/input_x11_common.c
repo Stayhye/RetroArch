@@ -15,7 +15,6 @@
  */
 
 #include <libretro.h>
-#include <retro_atomic.h>
 
 #include "input_x11_common.h"
 
@@ -29,40 +28,41 @@ enum x11_mouse_btn_flags
    X11_MOUSE_BTN_5    = (1 << 5)
 };
 
-/* X11_MOUSE_* bits. Set by button events in the event pump, which runs
- * on the video thread under the threaded wrapper, and read (the wheel
- * bits also cleared) by the input driver on the runloop thread, so
- * every access is a single atomic operation on the word. */
-static retro_atomic_int_t g_x11_mouse_flags;
-
-/* Reads a wheel bit and clears it in the same operation, so a notch
- * the event pump latches between the two is not lost. */
-static int16_t x_mouse_take_wheel(int bit)
-{
-   return (int16_t)(retro_atomic_fetch_and_int(&g_x11_mouse_flags, ~bit) & bit);
-}
+/* TODO/FIXME - static globals */
+static uint8_t g_x11_mouse_flags = 0;
 
 int16_t x_mouse_state_wheel(unsigned id)
 {
+   int16_t ret = 0;
+
    switch (id)
    {
       case RETRO_DEVICE_ID_MOUSE_WHEELUP:
-         return x_mouse_take_wheel(X11_MOUSE_WU_BTN);
+         ret                = (g_x11_mouse_flags & X11_MOUSE_WU_BTN);
+         g_x11_mouse_flags &= ~X11_MOUSE_WU_BTN;
+         break;
       case RETRO_DEVICE_ID_MOUSE_WHEELDOWN:
-         return x_mouse_take_wheel(X11_MOUSE_WD_BTN);
+         ret                = (g_x11_mouse_flags & X11_MOUSE_WD_BTN);
+         g_x11_mouse_flags &= ~X11_MOUSE_WD_BTN;
+         break;
       case RETRO_DEVICE_ID_MOUSE_HORIZ_WHEELUP:
-         return x_mouse_take_wheel(X11_MOUSE_HWU_BTN);
+         ret                = (g_x11_mouse_flags & X11_MOUSE_HWU_BTN);
+         g_x11_mouse_flags &= ~X11_MOUSE_HWU_BTN;
+         break;
       case RETRO_DEVICE_ID_MOUSE_HORIZ_WHEELDOWN:
-         return x_mouse_take_wheel(X11_MOUSE_HWD_BTN);
+         ret                = (g_x11_mouse_flags & X11_MOUSE_HWD_BTN);
+         g_x11_mouse_flags &= ~X11_MOUSE_HWD_BTN;
+         break;
       case RETRO_DEVICE_ID_MOUSE_BUTTON_4:
-         return (int16_t)(retro_atomic_load_relaxed_int(
-                  &g_x11_mouse_flags) & X11_MOUSE_BTN_4);
+         ret                = (g_x11_mouse_flags & X11_MOUSE_BTN_4);
+         break;
       case RETRO_DEVICE_ID_MOUSE_BUTTON_5:
-         return (int16_t)(retro_atomic_load_relaxed_int(
-                  &g_x11_mouse_flags) & X11_MOUSE_BTN_5);
+         ret                = (g_x11_mouse_flags & X11_MOUSE_BTN_5);
+         break;
+
    }
 
-   return 0;
+   return ret;
 }
 
 void x_input_poll_wheel(XButtonEvent *event, bool latch)
@@ -70,18 +70,18 @@ void x_input_poll_wheel(XButtonEvent *event, bool latch)
    switch (event->button)
    {
       case 4:
-         retro_atomic_fetch_or_int(&g_x11_mouse_flags, X11_MOUSE_WU_BTN);
+         g_x11_mouse_flags |= X11_MOUSE_WU_BTN;
          break;
       case 5:
-         retro_atomic_fetch_or_int(&g_x11_mouse_flags, X11_MOUSE_WD_BTN);
+         g_x11_mouse_flags |= X11_MOUSE_WD_BTN;
          break;
       case 6:
          /* Scroll wheel left == HORIZ_WHEELDOWN */
-         retro_atomic_fetch_or_int(&g_x11_mouse_flags, X11_MOUSE_HWD_BTN);
+         g_x11_mouse_flags |= X11_MOUSE_HWD_BTN;
          break;
       case 7:
          /* Scroll wheel right == HORIZ_WHEELUP */
-         retro_atomic_fetch_or_int(&g_x11_mouse_flags, X11_MOUSE_HWU_BTN);
+         g_x11_mouse_flags |= X11_MOUSE_HWU_BTN;
          break;
       case 8:
          /* Extra buttons are regular press-release events,
@@ -90,10 +90,10 @@ void x_input_poll_wheel(XButtonEvent *event, bool latch)
          switch (event->type)
          {
             case ButtonPress:
-               retro_atomic_fetch_or_int(&g_x11_mouse_flags, X11_MOUSE_BTN_4);
+               g_x11_mouse_flags |= X11_MOUSE_BTN_4;
                break;
             case ButtonRelease:
-               retro_atomic_fetch_and_int(&g_x11_mouse_flags, ~X11_MOUSE_BTN_4);
+               g_x11_mouse_flags &= ~X11_MOUSE_BTN_4;
                break;
          }
          break;
@@ -102,10 +102,10 @@ void x_input_poll_wheel(XButtonEvent *event, bool latch)
          switch (event->type)
          {
             case ButtonPress:
-               retro_atomic_fetch_or_int(&g_x11_mouse_flags, X11_MOUSE_BTN_5);
+               g_x11_mouse_flags |= X11_MOUSE_BTN_5;
                break;
             case ButtonRelease:
-               retro_atomic_fetch_and_int(&g_x11_mouse_flags, ~X11_MOUSE_BTN_5);
+               g_x11_mouse_flags &= ~X11_MOUSE_BTN_5;
                break;
          }
          break;

@@ -31,7 +31,7 @@
 
 RETRO_BEGIN_DECLS
 
-#define MENU_LABEL_MAX_LENGTH 1024
+#define MENU_LABEL_MAX_LENGTH 512
 
 #define MENU_SEARCH_FILTER_MAX_TERMS  8
 #define MENU_SEARCH_FILTER_MAX_LENGTH 64
@@ -87,9 +87,7 @@ enum menu_entry_flags
 typedef struct menu_ctx_list
 {
    const char  *path;
-   /* Borrowed from the menu stack, not owned; see
-    * menu_entries_append(). */
-   const char  *fullpath;
+   char        *fullpath;
    const char  *label;
    file_list_t *list;
    void        *entry;
@@ -156,24 +154,9 @@ typedef struct menu_file_list_cbs
          const char *label, char *s, size_t len,
          const char *path,
          char *s2, size_t len2);
-   /* Lazily allocated; NULL until a search term is actually pushed.
-    * Held by value this was 520 of the struct's 656 bytes, carried by
-    * every entry of every list, while only one cbs in the whole menu
-    * can ever be asked for it -- menu_entries_search_get_terms_internal()
-    * reads it from the top entry of the menu stack and nowhere else.
-    * Freed by menu_entries_cbs_free(), which file_list_t dispatches to
-    * through its actiondata_free hook. */
-   menu_search_terms_t *search;
+   menu_search_terms_t search;
    enum msg_hash_enums enum_idx;
-   /* When the generic sublabel handler is bound from the data map,
-    * this carries the description enum to look up. */
-   enum msg_hash_enums sublabel_enum;
-   /* When the generic title handler is bound from the data map,
-    * these carry the title enum and formatting variant. */
-   enum msg_hash_enums title_enum;
-   uint8_t title_variant;
    bool checked;
-   uint8_t file_extension_state; /* enum menu_file_browser_extension_state */
 } menu_file_list_cbs_t;
 
 size_t menu_entries_get_title(char *s, size_t len);
@@ -204,9 +187,6 @@ bool menu_entries_search_pop(void);
 
 menu_search_terms_t *menu_entries_search_get_terms(void);
 
-/* file_list_t::actiondata_free hook for menu-owned lists. */
-void menu_entries_cbs_free(void *actiondata);
-
 /* Convenience function: Appends list of current
  * search terms to specified string */
 void menu_entries_search_append_terms_string(char *s, size_t len);
@@ -231,8 +211,6 @@ bool menu_entries_list_search(const char *needle, size_t *idx);
  */
 void menu_entry_get(menu_entry_t *entry, size_t stack_idx,
       size_t i, void *userdata, bool use_representation);
-
-size_t menu_file_browser_stem_length(const char *path);
 
 int menu_entry_action(
       menu_entry_t *entry, size_t i, enum menu_action action);

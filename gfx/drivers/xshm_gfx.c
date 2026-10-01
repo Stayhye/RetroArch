@@ -73,14 +73,14 @@ static void *xshm_init(const video_info_t *video,
 #endif
    attributes.border_pixel = 0;
    g_x11_win               = XCreateWindow(g_x11_dpy, parent,
-			     0, 0, VIDEO_SCALE_W(video->dims), VIDEO_SCALE_H(video->dims),
+			     0, 0, video->width, video->height,
 			     0, 24, CopyFromParent, NULL, CWBorderPixel, &attributes);
    XSetWindowBackground(g_x11_dpy, g_x11_win, 0);
    XMapWindow(g_x11_dpy, g_x11_win);
 
    if (xshm->use_shm)
    {
-      xshm->shmInfo.shmid = shmget(IPC_PRIVATE, sizeof(uint32_t) * VIDEO_SCALE_AREA(video->dims),
+      xshm->shmInfo.shmid = shmget(IPC_PRIVATE, sizeof(uint32_t) * video->width * video->height,
 				   IPC_CREAT | 0600);
       if (xshm->shmInfo.shmid < 0)
          abort();/* seems like an OOM situation... let's just blow up. */
@@ -90,26 +90,26 @@ static void *xshm_init(const video_info_t *video,
       XShmAttach(g_x11_dpy, &xshm->shmInfo);
       XSync(g_x11_dpy, False);/* no idea why this is required, but I get weird errors without it. */
       xshm->image = XShmCreateImage(g_x11_dpy, NULL, 24, ZPixmap,
-				    xshm->shmInfo.shmaddr, &xshm->shmInfo, VIDEO_SCALE_W(video->dims), VIDEO_SCALE_H(video->dims));
+				    xshm->shmInfo.shmaddr, &xshm->shmInfo, video->width, video->height);
       xshm->fbptr = (uint8_t*)xshm->shmInfo.shmaddr;
    }
    else
    {
-      size_t pitch = VIDEO_SCALE_W(video->dims) * 4;
-      void *data   = malloc (pitch * VIDEO_SCALE_H(video->dims));
+      size_t pitch = video->width * 4;
+      void *data   = malloc (pitch * video->height);
       if (!data)
          abort(); /* seems like an OOM situation... let's just blow up. */
       xshm->image  = XCreateImage(g_x11_dpy, NULL, 24, ZPixmap, 0,
-				 (char *) data, VIDEO_SCALE_W(video->dims),
-				 VIDEO_SCALE_H(video->dims), 8, pitch);
+				 (char *) data, video->width,
+				 video->height, 8, pitch);
       xshm->fbptr  = (uint8_t*)data;
       XSync(g_x11_dpy, False);
    }
 
    xshm->gc     = XCreateGC(g_x11_dpy, g_x11_win, 0, NULL);
 
-   xshm->width  = VIDEO_SCALE_W(video->dims);
-   xshm->height = VIDEO_SCALE_H(video->dims);
+   xshm->width  = video->width;
+   xshm->height = video->height;
 
    if (!x11_input_ctx_new(true))
       goto error;
@@ -134,12 +134,10 @@ static void *xshm_init(const video_info_t *video,
    return NULL;
 }
 
-static bool xshm_frame(void *data, const void *frame,
-      unsigned dims, uint64_t frame_count,
+static bool xshm_frame(void *data, const void *frame, unsigned width,
+      unsigned height, uint64_t frame_count,
       unsigned pitch, const char *msg, video_frame_info_t *video_info)
 {
-   unsigned width = VIDEO_SCALE_W(dims);
-   unsigned height = VIDEO_SCALE_H(dims);
    unsigned y;
    xshm_t      *xshm  = (xshm_t*)data;
 #ifdef HAVE_MENU
@@ -175,11 +173,11 @@ static void xshm_poke_set_aspect_ratio(void *data, unsigned aspect_ratio_idx) { 
 static void xshm_poke_apply_state_changes(void *data) { }
 static void xshm_poke_set_texture_frame(void *data,
       const void *frame, bool rgb32,
-      unsigned dims, float alpha) { }
+      unsigned width, unsigned height, float alpha) { }
 static void xshm_poke_texture_enable(void *data,
       bool enable, bool full_screen) { }
 static void xshm_poke_set_osd_msg(void *data,
-      const char *msg, size_t msg_len,
+      const char *msg,
       const struct font_params *params, void *font) { }
 static void xshm_show_mouse(void *data, bool state) { }
 static void xshm_grab_mouse_toggle(void *data) { }
@@ -210,11 +208,10 @@ static video_poke_interface_t xshm_video_poke_interface = {
    NULL, /* get_current_shader */
    NULL, /* get_current_software_framebuffer */
    NULL, /* get_hw_render_interface */
-   NULL, /* set_hdr_menu_nits */
+   NULL, /* set_hdr_max_nits */
    NULL, /* set_hdr_paper_white_nits */
-   NULL, /* set_hdr_expand_gamut */
-   NULL, /* set_hdr_scanlines */
-   NULL  /* set_hdr_subpixel_layout */
+   NULL, /* set_hdr_contrast */
+   NULL  /* set_hdr_expand_gamut */
 };
 
 static void xshm_get_poke_interface(void *data,
@@ -240,13 +237,12 @@ video_driver_t video_xshm = {
    NULL, /* set_rotation */
    NULL, /* viewport_info */
    NULL, /* read_viewport */
+   NULL, /* read_frame_raw */
 #ifdef HAVE_OVERLAY
    NULL, /* get_overlay_interface */
 #endif
    xshm_get_poke_interface,
    NULL, /* wrap_type_to_enum */
-   NULL, /* shader_load_begin */
-   NULL, /* shader_load_step */
 #ifdef HAVE_GFX_WIDGETS
    NULL  /* gfx_widgets_enabled */
 #endif

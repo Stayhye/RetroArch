@@ -263,9 +263,13 @@ static bool sdl_dingux_rumble_update(Shake_Device *device,
    {
       if (effect->active)
       {
-         if (Shake_Stop(device, effect->id) != SHAKE_OK)
+         if (Shake_Stop(device, effect->id) == SHAKE_OK)
+         {
+            effect->active = false;
+            return true;
+         }
+         else
             return false;
-         effect->active = false;
       }
 
       return true;
@@ -290,9 +294,13 @@ static bool sdl_dingux_rumble_update(Shake_Device *device,
    /* If effect is currently idle, activate it */
    if (!effect->active)
    {
-      if (Shake_Play(device, effect->id) != SHAKE_OK)
+      if (Shake_Play(device, effect->id) == SHAKE_OK)
+      {
+         effect->active = true;
+         return true;
+      }
+      else
          return false;
-      effect->active = true;
    }
 
    return true;

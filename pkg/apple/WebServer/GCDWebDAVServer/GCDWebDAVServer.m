@@ -33,7 +33,6 @@
 
 // Requires "HEADER_SEARCH_PATHS = $(SDKROOT)/usr/include/libxml2" in Xcode build settings
 #import <libxml/parser.h>
-#import <CommonCrypto/CommonDigest.h>
 
 #import "GCDWebDAVServer.h"
 
@@ -53,8 +52,6 @@ typedef NS_ENUM(NSInteger, DAVProperties) {
   kDAVProperty_CreationDate = (1 << 1),
   kDAVProperty_LastModified = (1 << 2),
   kDAVProperty_ContentLength = (1 << 3),
-  kDAVProperty_ETag = (1 << 4),
-  kDAVProperty_OCChecksums = (1 << 5),
   kDAVAllProperties = kDAVProperty_ResourceType | kDAVProperty_CreationDate | kDAVProperty_LastModified | kDAVProperty_ContentLength
 };
 
@@ -426,31 +423,6 @@ static inline xmlNodePtr _XMLChildWithName(xmlNodePtr child, const xmlChar* name
   return NULL;
 }
 
-static NSString* _ComputeMD5ForFile(NSString* path) {
-  NSFileHandle* handle = [NSFileHandle fileHandleForReadingAtPath:path];
-  if (!handle)
-    return nil;
-  CC_MD5_CTX ctx;
-  CC_MD5_Init(&ctx);
-  while (1) {
-    @autoreleasepool {
-      NSData* chunk = [handle readDataOfLength:65536];
-      if (chunk.length == 0)
-        break;
-      CC_MD5_Update(&ctx, chunk.bytes, (CC_LONG)chunk.length);
-    }
-  }
-  [handle closeFile];
-  unsigned char digest[CC_MD5_DIGEST_LENGTH];
-  CC_MD5_Final(digest, &ctx);
-  return [NSString stringWithFormat:
-    @"%02x%02x%02x%02x%02x%02x%02x%02x%02x%02x%02x%02x%02x%02x%02x%02x",
-    digest[0], digest[1], digest[2], digest[3],
-    digest[4], digest[5], digest[6], digest[7],
-    digest[8], digest[9], digest[10], digest[11],
-    digest[12], digest[13], digest[14], digest[15]];
-}
-
 - (void)_addPropertyResponseForItem:(NSString*)itemPath resource:(NSString*)resourcePath properties:(DAVProperties)properties xmlString:(NSMutableString*)xmlString {
 #pragma clang diagnostic push
 #pragma clang diagnostic ignored "-Wdeprecated-declarations"
@@ -485,18 +457,6 @@ static NSString* _ComputeMD5ForFile(NSString* path) {
 
       if ((properties & kDAVProperty_ContentLength) && !isDirectory && [attributes objectForKey:NSFileSize]) {
         [xmlString appendFormat:@"<D:getcontentlength>%llu</D:getcontentlength>", [attributes fileSize]];
-      }
-
-      if (((properties & kDAVProperty_ETag) || (properties & kDAVProperty_OCChecksums)) && isFile) {
-        NSString* md5 = _ComputeMD5ForFile(itemPath);
-        if (md5) {
-          if (properties & kDAVProperty_ETag) {
-            [xmlString appendFormat:@"<D:getetag>\"%@\"</D:getetag>", md5];
-          }
-          if (properties & kDAVProperty_OCChecksums) {
-            [xmlString appendFormat:@"<oc:checksums><oc:checksum>MD5:%@</oc:checksum></oc:checksums>", md5];
-          }
-        }
       }
 
       [xmlString appendString:@"</D:prop>"];
@@ -542,10 +502,6 @@ static NSString* _ComputeMD5ForFile(NSString* path) {
             properties |= kDAVProperty_LastModified;
           } else if (!xmlStrcmp(node->name, (const xmlChar*)"getcontentlength")) {
             properties |= kDAVProperty_ContentLength;
-          } else if (!xmlStrcmp(node->name, (const xmlChar*)"getetag")) {
-            properties |= kDAVProperty_ETag;
-          } else if (!xmlStrcmp(node->name, (const xmlChar*)"checksums")) {
-            properties |= kDAVProperty_OCChecksums;
           } else {
             [self logWarning:@"Unknown DAV property requested \"%s\"", node->name];
           }
@@ -588,7 +544,7 @@ static NSString* _ComputeMD5ForFile(NSString* path) {
   }
 
   NSMutableString* xmlString = [NSMutableString stringWithString:@"<?xml version=\"1.0\" encoding=\"utf-8\" ?>"];
-  [xmlString appendString:@"<D:multistatus xmlns:D=\"DAV:\" xmlns:oc=\"http://owncloud.org/ns\">\n"];
+  [xmlString appendString:@"<D:multistatus xmlns:D=\"DAV:\">\n"];
   if (![relativePath hasPrefix:@"/"]) {
     relativePath = [@"/" stringByAppendingString:relativePath];
   }

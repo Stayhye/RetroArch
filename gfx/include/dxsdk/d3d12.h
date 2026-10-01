@@ -1,6 +1,3 @@
-/* SAL compatibility shim for legacy MSVC and some MinGW-w64 */
-#include "dxsdk_sal_compat.h"
-
 /*-------------------------------------------------------------------------------------
  *
  * Copyright (c) Microsoft Corporation

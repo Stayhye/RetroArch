@@ -7,7 +7,6 @@
 //
 
 #import "WebServer.h"
-#import "../../../verbosity.h"
 
 @implementation WebServer
 
@@ -41,7 +40,6 @@
 }
 
 -(void)startServers {
-    RARCH_LOG("[WebServer] Starting servers (WebDAV on 8080, HTTP on 80)\n");
     if ( _webDAVServer.isRunning ) {
         [_webDAVServer stop];
     }
@@ -49,8 +47,7 @@
         GCDWebServerOption_ServerName : @"RetroArch",
         GCDWebServerOption_BonjourName : @"RetroArch",
         GCDWebServerOption_BonjourType : @"_webdav._tcp",
-        GCDWebServerOption_Port : @(8080),
-        GCDWebServerOption_AutomaticallySuspendInBackground : @NO
+        GCDWebServerOption_Port : @(8080)
     };
     [_webDAVServer startWithOptions:webDAVSeverOptions error:nil];
 
@@ -61,16 +58,13 @@
         GCDWebServerOption_ServerName : @"RetroArch",
         GCDWebServerOption_BonjourName : @"RetroArch",
         GCDWebServerOption_BonjourType : @"_http._tcp",
-        GCDWebServerOption_Port : @(80),
-        GCDWebServerOption_AutomaticallySuspendInBackground : @NO
+        GCDWebServerOption_Port : @(80)
     };
     [_webUploader startWithOptions:webSeverOptions error:nil];
 }
 
 -(void)stopServers {
-    RARCH_LOG("[WebServer] Stopping servers\n");
     [_webUploader stop];
-    [_webDAVServer stop];
 }
 
 @end

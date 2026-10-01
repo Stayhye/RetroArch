@@ -14,7 +14,6 @@
  *  If not, see <http://www.gnu.org/licenses/>.
  */
 
-#include <memory/mem_stats.h>
 #include <stdio.h>
 #include <string.h>
 
@@ -32,9 +31,6 @@
 #endif
 
 #include "frontend_driver.h"
-#ifdef __MACH__
-#include <TargetConditionals.h>
-#endif
 
 #ifndef __WINRT__
 #if defined(WINAPI_FAMILY) && WINAPI_FAMILY == WINAPI_FAMILY_PHONE_APP
@@ -53,10 +49,13 @@ static frontend_ctx_driver_t frontend_ctx_null = {
    NULL,                         /* shutdown */
    NULL,                         /* get_name */
    NULL,                         /* get_os */
+   NULL,                         /* get_rating */
    NULL,                         /* load_content */
    NULL,                         /* get_architecture */
    NULL,                         /* get_powerstate */
    NULL,                         /* parse_drive_list */
+   NULL,                         /* get_mem_total */
+   NULL,                         /* get_mem_free */
    NULL,                         /* install_signal_handler */
    NULL,                         /* get_sighandler_state */
    NULL,                         /* set_sighandler_state */
@@ -65,19 +64,20 @@ static frontend_ctx_driver_t frontend_ctx_null = {
    NULL,                         /* detach_console */
    NULL,                         /* get_lakka_version */
    NULL,                         /* set_screen_brightness */
+   NULL,                         /* watch_path_for_changes */
+   NULL,                         /* check_for_path_changes */
    NULL,                         /* set_sustained_performance_mode */
    NULL,                         /* get_cpu_model_name */
    NULL,                         /* get_user_language */
    NULL,                         /* is_narrator_running */
    NULL,                         /* accessibility_speak */
    NULL,                         /* set_gamemode */
-   NULL,                         /* get_display_type */
    "null",
    NULL,                         /* get_video_driver */
 };
 
 static frontend_ctx_driver_t *frontend_ctx_drivers[] = {
-#if defined(__EMSCRIPTEN__)
+#if defined(EMSCRIPTEN)
    &frontend_ctx_emscripten,
 #endif
 #if defined(__PS3__)
@@ -179,42 +179,42 @@ size_t frontend_driver_get_core_extension(char *s, size_t len)
 {
 #ifdef HAVE_DYNAMIC
 #ifdef _WIN32
-   return strlcpy_lit(s, "dll", len);
-#elif (TARGET_OS_IPHONE && defined(HAVE_FRAMEWORKS)) || (TARGET_OS_OSX && defined(HAVE_APPLE_STORE))
-   return strlcpy_lit(s, "framework", len);
+   return strlcpy(s, "dll", len);
+#elif (defined(IOS) && defined(HAVE_FRAMEWORKS)) || (defined(OSX) && defined(HAVE_APPLE_STORE))
+   return strlcpy(s, "framework", len);
 #elif defined(__APPLE__) || defined(__MACH__)
-   return strlcpy_lit(s, "dylib" ,len);
+   return strlcpy(s, "dylib" ,len);
 #else
-   return strlcpy_lit(s, "so", len);
+   return strlcpy(s, "so", len);
 #endif
 #else
 #if defined(PSP)
-   return strlcpy_lit(s, "pbp", len);
+   return strlcpy(s, "pbp", len);
 #elif defined(ORBIS) || defined(VITA) || defined(__PS3__)
-   return strlcpy_lit(s, "self|bin", len);
+   return strlcpy(s, "self|bin", len);
 #elif defined(PS2)
-   return strlcpy_lit(s, "elf", len);
+   return strlcpy(s, "elf", len);
 #elif defined(_XBOX1)
-   return strlcpy_lit(s, "xbe", len);
+   return strlcpy(s, "xbe", len);
 #elif defined(_XBOX360)
-   return strlcpy_lit(s, "xex", len);
+   return strlcpy(s, "xex", len);
 #elif defined(GEKKO)
-   return strlcpy_lit(s, "dol", len);
+   return strlcpy(s, "dol", len);
 #elif defined(HW_WUP)
-   return strlcpy_lit(s, "rpx|elf", len);
+   return strlcpy(s, "rpx|elf", len);
 #elif defined(__linux__)
-   return strlcpy_lit(s, "elf", len);
+   return strlcpy(s, "elf", len);
 #elif defined(HAVE_LIBNX)
-   return strlcpy_lit(s, "nro", len);
+   return strlcpy(s, "nro", len);
 #elif defined(DJGPP)
-   return strlcpy_lit(s, "exe", len);
+   return strlcpy(s, "exe", len);
 #elif defined(_3DS)
    if (envIsHomebrew())
-      return strlcpy_lit(s, "3dsx", len);
-   return strlcpy_lit(s, "cia", len);
-#elif defined(__EMSCRIPTEN__)
+      return strlcpy(s, "3dsx", len);
+   return strlcpy(s, "cia", len);
+#elif defined(EMSCRIPTEN)
    /* may not contain the core */
-   return strlcpy_lit(s, "core", len);
+   return strlcpy(s, "core", len);
 #else
    return 0;
 #endif
@@ -228,40 +228,40 @@ bool frontend_driver_get_salamander_basename(char *s, size_t len)
 #else
 
 #if defined(PSP)
-   strlcpy_lit(s, "EBOOT.PBP", len);
+   strlcpy(s, "EBOOT.PBP", len);
    return true;
 #elif defined(ORBIS)
-   strlcpy_lit(s, "eboot.bin", len);
+   strlcpy(s, "eboot.bin", len);
    return true;
 #elif defined(VITA)
-   strlcpy_lit(s, "eboot.bin", len);
+   strlcpy(s, "eboot.bin", len);
    return true;
 #elif defined(PS2)
-   strlcpy_lit(s, "raboot.elf", len);
+   strlcpy(s, "raboot.elf", len);
    return true;
 #elif defined(__PSL1GHT__) || defined(__PS3__)
-   strlcpy_lit(s, "EBOOT.BIN", len);
+   strlcpy(s, "EBOOT.BIN", len);
    return true;
 #elif defined(_XBOX1)
-   strlcpy_lit(s, "default.xbe", len);
+   strlcpy(s, "default.xbe", len);
    return true;
 #elif defined(_XBOX360)
-   strlcpy_lit(s, "default.xex", len);
+   strlcpy(s, "default.xex", len);
    return true;
 #elif defined(HW_RVL)
-   strlcpy_lit(s, "boot.dol", len);
+   strlcpy(s, "boot.dol", len);
    return true;
 #elif defined(HW_WUP)
-   strlcpy_lit(s, "retroarch.rpx", len);
+   strlcpy(s, "retroarch.rpx", len);
    return true;
 #elif defined(_3DS)
-   strlcpy_lit(s, "retroarch.core", len);
+   strlcpy(s, "retroarch.core", len);
    return true;
 #elif defined(DJGPP)
-   strlcpy_lit(s, "retrodos.exe", len);
+   strlcpy(s, "retrodos.exe", len);
    return true;
 #elif defined(SWITCH)
-   strlcpy_lit(s, "retroarch_switch.nro", len);
+   strlcpy(s, "retroarch_switch.nro", len);
    return true;
 #else
    return false;
@@ -467,7 +467,23 @@ const void *frontend_driver_get_cpu_architecture_str(char *s, size_t len)
    return frontend;
 }
 
+uint64_t frontend_driver_get_total_memory(void)
+{
+   frontend_state_t *frontend_st   = &frontend_driver_st;
+   frontend_ctx_driver_t *frontend = frontend_st->current_frontend_ctx;
+   if (frontend && frontend->get_total_mem)
+      return frontend->get_total_mem();
+   return 0;
+}
 
+uint64_t frontend_driver_get_free_memory(void)
+{
+   frontend_state_t *frontend_st   = &frontend_driver_st;
+   frontend_ctx_driver_t *frontend = frontend_st->current_frontend_ctx;
+   if (frontend && frontend->get_free_mem)
+      return frontend->get_free_mem();
+   return 0;
+}
 
 void frontend_driver_install_signal_handler(void)
 {
@@ -540,6 +556,32 @@ void frontend_driver_destroy_signal_handler_state(void)
    frontend_ctx_driver_t *frontend = frontend_st->current_frontend_ctx;
    if (frontend && frontend->destroy_signal_handler_state)
       frontend->destroy_signal_handler_state();
+}
+
+bool frontend_driver_can_watch_for_changes(void)
+{
+   frontend_state_t *frontend_st   = &frontend_driver_st;
+   frontend_ctx_driver_t *frontend = frontend_st->current_frontend_ctx;
+   return frontend && frontend->watch_path_for_changes;
+}
+
+void frontend_driver_watch_path_for_changes(
+      struct string_list *list, int flags,
+      path_change_data_t **change_data)
+{
+   frontend_state_t *frontend_st   = &frontend_driver_st;
+   frontend_ctx_driver_t *frontend = frontend_st->current_frontend_ctx;
+   if (frontend && frontend->watch_path_for_changes)
+      frontend->watch_path_for_changes(list, flags, change_data);
+}
+
+bool frontend_driver_check_for_path_changes(path_change_data_t *change_data)
+{
+   frontend_state_t *frontend_st   = &frontend_driver_st;
+   frontend_ctx_driver_t *frontend = frontend_st->current_frontend_ctx;
+   if (frontend && frontend->check_for_path_changes)
+      return frontend->check_for_path_changes(change_data);
+   return false;
 }
 
 void frontend_driver_set_sustained_performance_mode(bool on)

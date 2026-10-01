@@ -30,7 +30,8 @@ typedef struct
 {
    gfx_ctx_vulkan_data_t vk;
    int swap_interval;
-   unsigned dims;                /* VIDEO_SCALE_PACK */
+   unsigned width;
+   unsigned height;
    unsigned refresh_rate_x1000;
 } khr_display_ctx_data_t;
 
@@ -49,10 +50,11 @@ static void gfx_ctx_khr_display_destroy(void *data)
 }
 
 static void gfx_ctx_khr_display_get_video_size(void *data,
-      unsigned *dims)
+      unsigned *width, unsigned *height)
 {
    khr_display_ctx_data_t *khr = (khr_display_ctx_data_t*)data;
-   *dims = khr->dims;
+   *width                      = khr->width;
+   *height                     = khr->height;
 }
 
 static float gfx_ctx_khr_display_get_refresh_rate(void *data)
@@ -90,14 +92,15 @@ error:
 }
 
 static void gfx_ctx_khr_display_check_window(void *data, bool *quit,
-      bool *resize, unsigned *dims)
+      bool *resize, unsigned *width, unsigned *height)
 {
    khr_display_ctx_data_t *khr = (khr_display_ctx_data_t*)data;
    *resize                     = (khr->vk.flags & VK_DATA_FLAG_NEED_NEW_SWAPCHAIN) ? true : false;
 
-   if (khr->dims != *dims)
+   if (khr->width != *width || khr->height != *height)
    {
-      *dims                   = khr->dims;
+      *width                   = khr->width;
+      *height                  = khr->height;
       *resize                  = true;
    }
 
@@ -105,29 +108,31 @@ static void gfx_ctx_khr_display_check_window(void *data, bool *quit,
       *quit                    = true;
 }
 
-static bool gfx_ctx_khr_display_set_resize(void *data, unsigned dims)
+static bool gfx_ctx_khr_display_set_resize(void *data,
+      unsigned width, unsigned height)
 {
    khr_display_ctx_data_t *khr = (khr_display_ctx_data_t*)data;
 
-   khr->dims                   = dims;
+   khr->width                  = width;
+   khr->height                 = height;
 
-   if (!vulkan_create_swapchain(&khr->vk, dims, khr->swap_interval))
+   if (!vulkan_create_swapchain(&khr->vk, khr->width, khr->height,
+            khr->swap_interval))
    {
       RARCH_ERR("[Vulkan] Failed to update swapchain.\n");
       return false;
    }
 
    if (khr->vk.flags & VK_DATA_FLAG_CREATED_NEW_SWAPCHAIN)
-   {
       vulkan_acquire_next_image(&khr->vk);
-      khr->vk.context.flags   |=  VK_CTX_FLAG_INVALID_SWAPCHAIN;
-   }
+
+   khr->vk.context.flags      |=  VK_CTX_FLAG_INVALID_SWAPCHAIN;
    khr->vk.flags              &= ~VK_DATA_FLAG_NEED_NEW_SWAPCHAIN;
    return true;
 }
 
 static bool gfx_ctx_khr_display_set_video_mode(void *data,
-      unsigned dims,
+      unsigned width, unsigned height,
       bool fullscreen)
 {
    struct vulkan_display_surface_info info;
@@ -136,20 +141,27 @@ static bool gfx_ctx_khr_display_set_video_mode(void *data,
    unsigned video_monitor_index   = settings->uints.video_monitor_index;
    unsigned refresh_rate_x1000    = settings->floats.video_refresh_rate * 1000;
 
-   /* Windowed asks for no particular mode: the largest one. */
-   info.dims                      = fullscreen ? dims : 0;
+   if (!fullscreen)
+   {
+      width                       = 0;
+      height                      = 0;
+   }
+
+   info.width                     = width;
+   info.height                    = height;
    info.monitor_index             = video_monitor_index;
    info.refresh_rate_x1000        = refresh_rate_x1000;
 
    if (!vulkan_surface_create(&khr->vk, VULKAN_WSI_DISPLAY, &info, NULL,
-            0, khr->swap_interval))
+            0, 0, khr->swap_interval))
    {
       RARCH_ERR("[Vulkan] Failed to create KHR_display surface.\n");
       gfx_ctx_khr_display_destroy(data);
       return false;
    }
 
-   khr->dims                      = khr->vk.context.swapchain_dims;
+   khr->width                     = khr->vk.context.swapchain_width;
+   khr->height                    = khr->vk.context.swapchain_height;
    khr->refresh_rate_x1000        = info.refresh_rate_x1000;
 
    return true;
@@ -225,23 +237,17 @@ static void gfx_ctx_khr_display_set_swap_interval(void *data,
    }
 }
 
-static bool gfx_ctx_khr_display_presentable(void *data)
-{
-   khr_display_ctx_data_t *khr = (khr_display_ctx_data_t*)data;
-   return khr && khr->vk.swapchain != VK_NULL_HANDLE;
-}
-
 static void gfx_ctx_khr_display_swap_buffers(void *data)
 {
    khr_display_ctx_data_t *khr = (khr_display_ctx_data_t*)data;
    if (khr->vk.context.flags & VK_CTX_FLAG_HAS_ACQUIRED_SWAPCHAIN)
    {
       khr->vk.context.flags &= ~VK_CTX_FLAG_HAS_ACQUIRED_SWAPCHAIN;
-      /* No swapchain - the window is minimised or zero-sized, and
-       * the create is retried in vulkan_acquire_next_image() below,
-       * which throttles that path itself. Nothing to present and
-       * nothing to wait for here. */
-      if (khr->vk.swapchain != VK_NULL_HANDLE)
+      if (khr->vk.swapchain == VK_NULL_HANDLE)
+      {
+         retro_sleep(10);
+      }
+      else
          vulkan_present(&khr->vk, khr->vk.context.current_swapchain_index);
    }
    vulkan_acquire_next_image(&khr->vk);
@@ -297,6 +303,5 @@ const gfx_ctx_driver_t gfx_ctx_khr_display = {
    gfx_ctx_khr_display_get_context_data,
    NULL,                                        /* make_current */
    NULL,                                        /* create_surface */
-   NULL                                         /* destroy_surface */,
-   gfx_ctx_khr_display_presentable
+   NULL                                         /* destroy_surface */
 };

@@ -14,7 +14,6 @@
  */
 
 #include <windows.h>
-#include <mmsystem.h>
 
 #include <libretro.h>
 #include <lists/string_list.h>

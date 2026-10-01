@@ -17,21 +17,9 @@
 #define _WAYLAND_COMMON_H
 
 #include <stdint.h>
-#include <time.h>
 #include <boolean.h>
 
-/* Button and key codes (BTN_LEFT, KEY_ENTER, ...).  FreeBSD ships them in
- * base under dev/evdev/ - do not require the evdev-proto port for them. */
-#if defined(__FreeBSD__)
-#include <dev/evdev/input.h>
-#else
 #include <linux/input.h>
-#endif
-
-#ifdef HAVE_WAYLAND_BACKPORT
-#include "../../gfx/common/wayland_common_backport.h"
-#endif
-
 #include <wayland-client.h>
 #include <wayland-cursor.h>
 
@@ -52,23 +40,15 @@
 #include "../../gfx/common/wayland/idle-inhibit-unstable-v1.h"
 #include "../../gfx/common/wayland/pointer-constraints-unstable-v1.h"
 #include "../../gfx/common/wayland/relative-pointer-unstable-v1.h"
-#include "../../gfx/common/wayland/presentation-time.h"
 #include "../../gfx/common/wayland/single-pixel-buffer-v1.h"
-#include "../../gfx/common/wayland/tearing-control-v1.h"
-#include "../../gfx/common/wayland_color.h"
-
-struct string_list;
 #include "../../gfx/common/wayland/viewporter.h"
 #include "../../gfx/common/wayland/xdg-decoration-unstable-v1.h"
 #include "../../gfx/common/wayland/xdg-shell.h"
 #include "../../gfx/common/wayland/xdg-toplevel-icon-v1.h"
-#include "../../gfx/common/wayland/xdg-toplevel-tag-v1.h"
 
 #ifdef WEBOS
 #include "wayland_common_webos.h"
 #endif
-
-#define WL_SURFACE_SET_BUFFER_SCALE_SINCE_VERSION 3
 
 #define FRACTIONAL_SCALE_V1_DEN 120
 #define FRACTIONAL_SCALE_MULT(v, scale_num) \
@@ -108,8 +88,10 @@ typedef struct output_info
    struct wl_output *output;
    int refresh_rate;
    uint32_t global_id;
-   /* The mode the output is running, packed. */
-   unsigned dims;
+   unsigned width;
+   unsigned height;
+   unsigned physical_width;
+   unsigned physical_height;
    unsigned scale;
    char *make;
    char *model;
@@ -166,12 +148,6 @@ typedef struct data_offer_ctx
   enum wl_data_device_manager_dnd_action supported_actions;
 } data_offer_ctx;
 
-/* Per-backend hook invoked from the common shell-surface configure
- * handlers, between the shared configure processing and the clearing
- * of 'configured'.  EGL uses it to resize/create the wl_egl_window;
- * Vulkan needs no additional action and passes NULL. */
-typedef void (*driver_configure_handler_t)(struct gfx_ctx_wayland_data *wl);
-
 typedef struct gfx_ctx_wayland_data
 {
 #ifdef HAVE_EGL
@@ -185,18 +161,11 @@ typedef struct gfx_ctx_wayland_data
    struct wl_surface *surface;
    struct xdg_surface *xdg_surface;
    struct wp_viewport *viewport;
-   struct wp_presentation *presentation;
    struct wp_fractional_scale_v1 *fractional_scale;
    struct xdg_wm_base *xdg_shell;
    struct xdg_toplevel *xdg_toplevel;
+   struct xdg_toplevel_icon_v1 *xdg_toplevel_icon;
    struct xdg_toplevel_icon_manager_v1 *xdg_toplevel_icon_manager;
-   struct xdg_toplevel_tag_manager_v1 *xdg_toplevel_tag_manager;
-   struct wp_tearing_control_manager_v1 *tearing_control_manager;
-   struct wp_tearing_control_v1 *tearing_control;
-   /* The compositor's colour management, for an HDR GL surface */
-   wl_color_t color;
-   /* The GPUs the GL GPU index chooses from, as published to the menu */
-   struct string_list *gl_gpu_list;
    struct wl_keyboard *wl_keyboard;
    struct wl_pointer  *wl_pointer;
    struct zwp_relative_pointer_v1 *wl_relative_pointer;
@@ -211,16 +180,15 @@ typedef struct gfx_ctx_wayland_data
    struct wl_shell_surface *shell_surface;
    struct wl_webos_shell *webos_shell;
    struct wl_webos_shell_surface *webos_shell_surface;
-#ifdef HAVE_WEBOS_EXTRA_PROTOS
    struct wl_webos_foreign *webos_foreign;
    struct wl_webos_surface_group_compositor *webos_surface_group_compositor;
    struct wl_webos_input_manager *webos_input_manager;
-#endif
 #endif
    data_offer_ctx *current_drag_offer;
 #ifdef HAVE_LIBDECOR_H
    struct libdecor *libdecor_context;
    struct libdecor_frame *libdecor_frame;
+   struct xdg_toplevel_icon_v1 *libdecor_icon;
 #ifdef HAVE_DYLIB
    dylib_t libdecor;
 #define RA_WAYLAND_SYM(rc,fn,params) rc (*fn) params;
@@ -245,7 +213,6 @@ typedef struct gfx_ctx_wayland_data
    input_ctx_wayland_data_t input; /* ptr alignment */
    struct wl_list all_outputs;
    struct wl_list current_outputs;
-   struct wl_list feedbacks;
 
 #ifdef WEBOS
    struct wl_list all_seats;
@@ -256,23 +223,18 @@ typedef struct gfx_ctx_wayland_data
       struct wl_cursor_theme *theme;
       struct wl_surface *surface;
       uint32_t serial;
-      unsigned scale;   /* the scale the theme was loaded at */
       bool visible;
    } cursor;
 
    int num_active_touches;
    int swap_interval;
-   uint64_t last_ust;
-   uint64_t last_msc;
-   uint64_t refresh_interval;
    touch_pos_t active_touch_positions[MAX_TOUCHES]; /* int32_t alignment */
-   clockid_t present_clock_id;
-   /* The surface's size, the buffer behind it, and the size to go
-    * back to when the compositor lets the window float again, each
-    * packed. */
-   unsigned dims;
-   unsigned buffer_dims;
-   unsigned floating_dims;
+   unsigned width;
+   unsigned height;
+   unsigned buffer_width;
+   unsigned buffer_height;
+   unsigned floating_width;
+   unsigned floating_height;
    unsigned last_buffer_scale;
    unsigned pending_buffer_scale;
    unsigned buffer_scale;
@@ -287,40 +249,11 @@ typedef struct gfx_ctx_wayland_data
    bool maximized;
    bool resize;
    bool configured;
-   bool suspended;
-   bool present_clock;
-   bool is_presented;
    bool ignore_configuration;
-   driver_configure_handler_t driver_configure_handler;
-   /* State from xdg_toplevel.configure, held until the compositor's
-    * xdg_surface.configure marks it current (xdg-shell latching). */
-   struct
-   {
-      /* The size asked for, packed; a zero axis leaves the choice
-       * to us. */
-      unsigned dims;
-      bool fullscreen;
-      bool maximized;
-      bool resizing;
-      bool activated;
-      bool floating;
-      bool suspended;
-      bool pending;
-   } cfg_pending;
    bool activated;
    bool reported_display_size;
    bool swap_complete;
-   /* The in-flight frame callback. A webOS surface outlives its
-    * context, so teardown has to cancel this one or the compositor
-    * delivers done into freed memory. */
-   struct wl_callback *frame_cb;
 } gfx_ctx_wayland_data_t;
-
-typedef struct wl_present_feedback
-{
-   struct wp_presentation_feedback *feedback;
-   struct wl_list link;
-} wl_present_feedback_t;
 
 #ifdef HAVE_XKBCOMMON
 /* FIXME: Move this into a header? */
@@ -333,19 +266,7 @@ void free_xkb(void);
 
 void gfx_ctx_wl_show_mouse(void *data, bool state);
 
-/* Loads the cursor theme at the scale the surface is drawn at; does
- * nothing while the loaded one still fits. */
-void gfx_ctx_wl_cursor_load(gfx_ctx_wayland_data_t *wl);
-
 void flush_wayland_fd(void *data);
-
-void wl_request_presentation_feedback(gfx_ctx_wayland_data_t *wl);
-
-void wl_presentation_dispatch_pending(gfx_ctx_wayland_data_t *wl);
-
-void wl_presentation_destroy_feedbacks(gfx_ctx_wayland_data_t *wl);
-
-void wait_for_next_frame(gfx_ctx_wayland_data_t *wl);
 
 extern const struct wl_keyboard_listener keyboard_listener;
 
@@ -360,8 +281,6 @@ extern const struct wl_touch_listener touch_listener;
 extern const struct wl_seat_listener seat_listener;
 
 extern const struct wp_fractional_scale_v1_listener wp_fractional_scale_v1_listener;
-
-extern const struct wp_presentation_listener presentation_listener;
 
 extern const struct wl_surface_listener wl_surface_listener;
 

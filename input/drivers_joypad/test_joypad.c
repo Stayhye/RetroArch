@@ -30,9 +30,6 @@
 #include <string/stdstring.h>
 #include <streams/file_stream.h>
 #include <formats/rjson.h>
-#include <formats/rjson_stream.h>
-
-#include <compat/strl.h>
 
 #include "../../config.def.h"
 #include "../../verbosity.h"
@@ -73,10 +70,7 @@ typedef struct
    bool handled;
 } input_test_step_t;
 
-/* Allocated when the test driver or core actually starts; a static
- * array here is load-resident forever on platforms without demand
- * paging, for a feature almost no session activates. */
-static input_test_step_t *input_test_steps;
+static input_test_step_t input_test_steps[MAX_TEST_STEPS];
 
 static unsigned current_test_step     = 0;
 static unsigned last_test_step        = MAX_TEST_STEPS + 1;
@@ -113,7 +107,7 @@ static bool JTifJSONObjectEndHandler(void* context)
    input_test_steps[current_test_step].param_num = pCtx->param_num;
    input_test_steps[current_test_step].handled   = false;
 
-   if (pCtx->param_str && *pCtx->param_str)
+   if (!string_is_empty(pCtx->param_str))
       strlcpy(
             input_test_steps[current_test_step].param_str, pCtx->param_str,
             sizeof(input_test_steps[current_test_step].param_str));
@@ -154,7 +148,7 @@ static bool JTifJSONNumberHandler(void* context, const char *pValue, size_t len)
 {
    JTifJSONContext *pCtx = (JTifJSONContext*)context;
 
-   if (pCtx->current_entry_uint_val && len && pValue && *pValue)
+   if (pCtx->current_entry_uint_val && len && !string_is_empty(pValue))
       *pCtx->current_entry_uint_val = string_to_unsigned(pValue);
    /* ignore unknown members */
 
@@ -167,7 +161,7 @@ static bool JTifJSONStringHandler(void* context, const char *pValue, size_t len)
 {
    JTifJSONContext *pCtx = (JTifJSONContext*)context;
 
-   if (pCtx->current_entry_str_val && len && pValue && *pValue)
+   if (pCtx->current_entry_str_val && len && !string_is_empty(pValue))
    {
       if (*pCtx->current_entry_str_val)
          free(*pCtx->current_entry_str_val);
@@ -187,35 +181,33 @@ static bool input_test_file_read(const char* file_path)
 {
    bool success            = false;
    JTifJSONContext context = {0};
-   uint8_t *file_buf       = NULL;
-   int64_t file_len        = 0;
+   RFILE *file             = NULL;
    rjson_t* parser;
 
    /* Sanity check */
-   if (!file_path || !*file_path)
+   if (    string_is_empty(file_path)
+       || !path_is_valid(file_path)
+      )
    {
       RARCH_DBG("[Test joypad] No test input file supplied.\n");
       return false;
    }
 
-   /* Read the whole file in one operation: it is tiny and always
-    * parsed in full, so a single open/size/read/close beats a
-    * pre-open stat plus the chunked callback path (which itself
-    * sizes the stream with an extra fstat).  The stat below runs
-    * only to classify a failure. */
-   if (!filestream_read_file(file_path,
-         (void**)&file_buf, &file_len))
+   /* Attempt to open test input file */
+   file = filestream_open(
+         file_path,
+         RETRO_VFS_FILE_ACCESS_READ,
+         RETRO_VFS_FILE_ACCESS_HINT_NONE);
+
+   if (!file)
    {
-      if (!path_is_valid(file_path))
-         RARCH_DBG("[Test joypad] No test input file supplied.\n");
-      else
-         RARCH_ERR("[Test joypad] Failed to open test input file: \"%s\".\n",
-               file_path);
+      RARCH_ERR("[Test joypad] Failed to open test input file: \"%s\".\n",
+            file_path);
       return false;
    }
 
    /* Initialise JSON parser */
-   if (!(parser = rjson_open_buffer(file_buf, (size_t)file_len)))
+   if (!(parser = rjson_open_rfile(file)))
    {
       RARCH_ERR("[Test joypad] Failed to create JSON parser.\n");
       goto end;
@@ -260,8 +252,8 @@ end:
    if (context.param_str)
       free(context.param_str);
 
-   /* Release file contents */
-   free(file_buf);
+   /* Close log file */
+   filestream_close(file);
 
    if (last_test_step >= MAX_TEST_STEPS)
    {
@@ -285,55 +277,28 @@ end:
 /* Test input file handling end */
 /********************************/
 
-static char test_joypad_name_buf[MAX_USERS][256];
-
 static const char *test_joypad_name(unsigned pad)
 {
-   const char *n;
-   char *at;
-   if (pad >= MAX_USERS || (!test_joypads[pad].name
-       || !*test_joypads[pad].name))
+   if (pad >= MAX_USERS || string_is_empty(test_joypads[pad].name))
       return NULL;
-   if (strstr(test_joypads[pad].name, ") "))
-      n = strstr(test_joypads[pad].name, ") ") + 2;
-   else
-      n = test_joypads[pad].name;
-   strlcpy(test_joypad_name_buf[pad], n, sizeof(test_joypad_name_buf[pad]));
-   if ((at = strstr(test_joypad_name_buf[pad], "@@")))
-      *at = '\0';
-   return test_joypad_name_buf[pad];
-}
 
-static const char *test_joypad_phys(unsigned pad)
-{
-   const char *at;
-   if (pad >= MAX_USERS || !test_joypads[pad].name)
-      return NULL;
-   if ((at = strstr(test_joypads[pad].name, "@@")))
-      return at + 2;
-   return NULL;
+   if (strstr(test_joypads[pad].name, ") "))
+      return strstr(test_joypads[pad].name, ") ") + 2;
+   else
+      return test_joypads[pad].name;
 }
 
 static void test_joypad_autodetect_add(unsigned autoconf_pad)
 {
    unsigned int vid = 0;
    unsigned int pid = 0;
-   const char *tmp  = test_joypads[autoconf_pad].name
-                    ? strstr(test_joypads[autoconf_pad].name, "(")
-                    : NULL;
 
-   if (tmp)
-   {
-      vid = (unsigned int)strtoul(tmp + 1, NULL, 16);
-      tmp = strchr(tmp + 1, ':');
-      if (tmp)
-         pid = (unsigned int)strtoul(tmp + 1, NULL, 16);
-   }
+   sscanf(strstr(test_joypads[autoconf_pad].name, "(") + 1, "%04x:%04x", &vid, &pid);
    RARCH_DBG("[Test input] Autoconf vid/pid %x:%x.\n", vid, pid);
 
    input_autoconfigure_connect(
          test_joypad_name(autoconf_pad),
-         NULL, test_joypad_phys(autoconf_pad),
+         NULL, NULL,
          "test",
          autoconf_pad,
          vid,
@@ -352,12 +317,6 @@ static void *test_joypad_init(void *data)
 {
    settings_t *settings = config_get_ptr();
    unsigned i;
-
-   if (!input_test_steps)
-      input_test_steps = (input_test_step_t*)
-            calloc(MAX_TEST_STEPS, sizeof(*input_test_steps));
-   if (!input_test_steps)
-      return NULL;
 
    input_test_file_read(settings->paths.test_input_file_joypad);
    if (last_test_step > MAX_TEST_STEPS)
@@ -514,12 +473,7 @@ static bool test_joypad_query_pad(unsigned pad)
    return (pad < MAX_USERS);
 }
 
-static void test_joypad_destroy(void)
-{
-   if (input_test_steps)
-      free(input_test_steps);
-   input_test_steps = NULL;
-}
+static void test_joypad_destroy(void) { }
 
 input_device_driver_t test_joypad = {
    test_joypad_init,

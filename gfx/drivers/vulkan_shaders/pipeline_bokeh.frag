@@ -1,5 +1,5 @@
 #version 310 es
-precision highp float;
+precision mediump float;
 
 layout(std140, set = 0, binding = 0) uniform UBO
 {

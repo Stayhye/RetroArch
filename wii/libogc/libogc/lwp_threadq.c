@@ -43,8 +43,7 @@ lwp_cntrl* __lwp_threadqueue_firstpriority(lwp_thrqueue *queue)
 
 void __lwp_threadqueue_enqueuefifo(lwp_thrqueue *queue,lwp_cntrl *thethread,u64 timeout)
 {
-	u32 sync_state;
-	u32 level = 0;
+	u32 level,sync_state;
 
 	_CPU_ISR_Disable(level);
 
@@ -79,7 +78,7 @@ void __lwp_threadqueue_enqueuefifo(lwp_thrqueue *queue,lwp_cntrl *thethread,u64 
 
 lwp_cntrl* __lwp_threadqueue_dequeuefifo(lwp_thrqueue *queue)
 {
-	u32 level = 0;
+	u32 level;
 	lwp_cntrl *ret;
 
 	_CPU_ISR_Disable(level);
@@ -113,8 +112,7 @@ lwp_cntrl* __lwp_threadqueue_dequeuefifo(lwp_thrqueue *queue)
 
 void __lwp_threadqueue_enqueuepriority(lwp_thrqueue *queue,lwp_cntrl *thethread,u64 timeout)
 {
-	u32 search_prio, header_idx, prio, block_state, sync_state;
-	u32 level = 0;
+	u32 level,search_prio,header_idx,prio,block_state,sync_state;
 	lwp_cntrl *search_thread;
 	lwp_queue *header;
 	lwp_node *cur_node,*next_node,*prev_node,*search_node;
@@ -241,8 +239,7 @@ synchronize:
 
 lwp_cntrl* __lwp_threadqueue_dequeuepriority(lwp_thrqueue *queue)
 {
-	u32 idx;
-	u32 level = 0;
+	u32 level,idx;
 	lwp_cntrl *newfirstthr,*ret = NULL;
 	lwp_node *newfirstnode,*newsecnode,*last_node,*next_node,*prev_node;
 
@@ -421,7 +418,7 @@ void __lwp_threadqueue_extract(lwp_thrqueue *queue,lwp_cntrl *thethread)
 
 void __lwp_threadqueue_extractfifo(lwp_thrqueue *queue,lwp_cntrl *thethread)
 {
-	u32 level = 0;
+	u32 level;
 
 	_CPU_ISR_Disable(level);
 	if(!__lwp_statewaitthreadqueue(thethread->cur_state)) {
@@ -442,7 +439,7 @@ void __lwp_threadqueue_extractfifo(lwp_thrqueue *queue,lwp_cntrl *thethread)
 
 void __lwp_threadqueue_extractpriority(lwp_thrqueue *queue,lwp_cntrl *thethread)
 {
-	u32 level = 0;
+	u32 level;
 	lwp_cntrl *first;
 	lwp_node *curr,*next,*prev,*new_first,*new_sec,*last;
 

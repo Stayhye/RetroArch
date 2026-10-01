@@ -31,7 +31,6 @@
 #include "../../dynamic.h"
 #include "../../paths.h"
 #include "../../verbosity.h"
-#include <compat/strl.h>
 
 static void frontend_qnx_init(void *data)
 {
@@ -42,6 +41,13 @@ static void frontend_qnx_init(void *data)
 static void frontend_qnx_shutdown(bool unused)
 {
    bps_shutdown();
+}
+
+static int frontend_qnx_get_rating(void)
+{
+   /* TODO/FIXME - look at unique identifier per device and
+    * determine rating for some */
+   return -1;
 }
 
 static void frontend_qnx_get_env_settings(int *argc, char *argv[],
@@ -57,7 +63,7 @@ static void frontend_qnx_get_env_settings(int *argc, char *argv[],
 
    getcwd(workdir, sizeof(workdir));
 
-   if (workdir && *workdir)
+   if (!string_is_empty(workdir))
    {
       assets_path[0]               = '\0';
       data_path[0]                 = '\0';
@@ -74,10 +80,10 @@ static void frontend_qnx_get_env_settings(int *argc, char *argv[],
    }
    else
    {
-      strlcpy_lit(assets_path, "app/native/assets", sizeof(assets_path));
-      strlcpy_lit(data_path, "data", sizeof(data_path));
-      strlcpy_lit(user_path, "shared/misc/retroarch", sizeof(user_path));
-      strlcpy_lit(tmp_path, "tmp", sizeof(user_path));
+      strlcpy(assets_path, "app/native/assets", sizeof(assets_path));
+      strlcpy(data_path, "data", sizeof(data_path));
+      strlcpy(user_path, "shared/misc/retroarch", sizeof(user_path));
+      strlcpy(tmp_path, "tmp", sizeof(user_path));
    }
 
    /* app data */
@@ -152,7 +158,7 @@ static void frontend_qnx_get_env_settings(int *argc, char *argv[],
    }
 
    /* set GLUI as default menu */
-   strlcpy_lit(g_defaults.settings_menu, "glui", sizeof(g_defaults.settings_menu));
+   strlcpy(g_defaults.settings_menu, "glui", sizeof(g_defaults.settings_menu));
 
 #ifndef IS_SALAMANDER
    dir_check_defaults("custom.ini");
@@ -175,10 +181,13 @@ frontend_ctx_driver_t frontend_ctx_qnx = {
    frontend_qnx_shutdown,
    NULL,                         /* get_name */
    NULL,                         /* get_os */
+   frontend_qnx_get_rating,
    NULL,                         /* load_content */
    frontend_qnx_get_arch,        /* get_architecture */
    NULL,                         /* get_powerstate */
    NULL,                         /* parse_drive_list */
+   NULL,                         /* get_total_mem */
+   NULL,                         /* get_free_mem */
    NULL,                         /* install_signal_handler */
    NULL,                         /* get_sighandler_state */
    NULL,                         /* set_sighandler_state */
@@ -187,13 +196,14 @@ frontend_ctx_driver_t frontend_ctx_qnx = {
    NULL,                         /* detach_console */
    NULL,                         /* get_lakka_version */
    NULL,                         /* set_screen_brightness */
+   NULL,                         /* watch_path_for_changes */
+   NULL,                         /* check_for_path_changes */
    NULL,                         /* set_sustained_performance_mode */
    NULL,                         /* get_cpu_model_name */
    NULL,                         /* get_user_language */
    NULL,                         /* is_narrator_running */
    NULL,                         /* accessibility_speak */
    NULL,                         /* set_gamemode        */
-   NULL, /* get_display_type */
    "qnx",                        /* ident               */
    NULL                          /* get_video_driver    */
 };

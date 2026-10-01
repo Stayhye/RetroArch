@@ -147,8 +147,7 @@ endif
 debug: clean all run
 
 release: all
-	mips64r5900el-ps2-elf-strip -s $(EE_BIN)
-	cp $(EE_BIN) $(TARGET_RELEASE)
+	ps2-packer $(EE_BIN) $(TARGET_RELEASE)
 
 #Include preferences
 include $(PS2SDK)/samples/Makefile.pref

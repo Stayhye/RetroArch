@@ -34,8 +34,8 @@ typedef struct
    egl_ctx_data_t egl;
    EGLNativeWindowType native_window;
 #endif
-   unsigned dims;                /* VIDEO_SCALE_PACK */
    bool resize;
+   unsigned width, height;
 } opendingux_ctx_data_t;
 
 static void gfx_ctx_opendingux_destroy(void *data)
@@ -98,24 +98,26 @@ error:
 }
 
 static void gfx_ctx_opendingux_get_video_size(void *data,
-      unsigned *dims)
+      unsigned *width, unsigned *height)
 {
    opendingux_ctx_data_t *viv = (opendingux_ctx_data_t*)data;
-   *dims = viv->dims;
+   *width                     = viv->width;
+   *height                    = viv->height;
 }
 
 static void gfx_ctx_opendingux_check_window(void *data, bool *quit,
-      bool *resize, unsigned *dims)
+      bool *resize, unsigned *width, unsigned *height)
 {
-   unsigned new_dims;
+   unsigned new_width, new_height;
    opendingux_ctx_data_t *viv = (opendingux_ctx_data_t*)data;
 
 #ifdef HAVE_EGL
-   egl_get_video_size(&viv->egl, &new_dims);
+   egl_get_video_size(&viv->egl, &new_width, &new_height);
 
-   if (new_dims != *dims)
+   if (new_width != *width || new_height != *height)
    {
-      *dims  = new_dims;
+      *width  = new_width;
+      *height = new_height;
       *resize = true;
    }
 #endif
@@ -124,11 +126,9 @@ static void gfx_ctx_opendingux_check_window(void *data, bool *quit,
 }
 
 static bool gfx_ctx_opendingux_set_video_mode(void *data,
-      unsigned dims,
+      unsigned width, unsigned height,
       bool fullscreen)
 {
-   unsigned width  = VIDEO_SCALE_W(dims);
-   unsigned height = VIDEO_SCALE_H(dims);
 #ifdef HAVE_EGL
    static const EGLint attribs[] = {
       EGL_CONTEXT_CLIENT_VERSION, 2, /* Use version 2, even for GLES3. */
@@ -143,13 +143,14 @@ static bool gfx_ctx_opendingux_set_video_mode(void *data,
    if (!height || !fullscreen)
       height                     = 1024;
 
-   viv->dims                     = VIDEO_SCALE_PACK(width, height);
+   viv->width                    = width;
+   viv->height                   = height;
 
 #ifdef HAVE_EGL
    if (!egl_create_context(&viv->egl, attribs))
       goto error;
    viv->native_window = 0;
-   if (!egl_create_surface(&viv->egl, (void*)viv->native_window))
+   if (!egl_create_surface(&viv->egl, viv->native_window))
       goto error;
 #endif
 
@@ -224,7 +225,7 @@ static bool gfx_ctx_opendingux_create_surface(void *data)
 {
 #ifdef HAVE_EGL
    opendingux_ctx_data_t *viv = (opendingux_ctx_data_t*)data;
-   return egl_create_surface(&viv->egl, (void*)viv->native_window);
+   return egl_create_surface(&viv->egl, viv->native_window);
 #else
    return false;
 #endif

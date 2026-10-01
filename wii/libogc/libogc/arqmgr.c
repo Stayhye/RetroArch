@@ -88,8 +88,7 @@ void ARQM_Init(u32 arambase,s32 len)
 
 u32 ARQM_PushData(void *buffer,s32 len)
 {
-	u32 rlen;
-	u32 level = 0;
+	u32 rlen,level;
 	ARQM_Info *ptr;
 
 	if(((u32)buffer)&0x1f || len<=0) return 0;
@@ -115,7 +114,7 @@ u32 ARQM_PushData(void *buffer,s32 len)
 
 void ARQM_Pop()
 {
-	u32 level = 0;
+	u32 level;
 
 	_CPU_ISR_Disable(level);
 
@@ -133,8 +132,7 @@ u32 ARQM_GetZeroBuffer()
 
 u32 ARQM_GetStackPointer()
 {
-	u32 tmp;
-	u32 level = 0;
+	u32 level,tmp;
 
 	_CPU_ISR_Disable(level)
 	tmp = __ARQMStackPointer[__ARQMStackLocation];
@@ -145,8 +143,7 @@ u32 ARQM_GetStackPointer()
 
 u32 ARQM_GetFreeSize()
 {
-	u32 tmp;
-	u32 level = 0;
+	u32 level,tmp;
 
 	_CPU_ISR_Disable(level)
 	tmp = __ARQMFreeBytes;

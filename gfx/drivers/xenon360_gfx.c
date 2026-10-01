@@ -190,12 +190,10 @@ static void *xenon360_init(const video_info_t *video,
 }
 
 static bool xenon360_frame(void *data,
-      const void *frame, unsigned dims,
+      const void *frame, unsigned width, unsigned height,
       uint64_t frame_count, unsigned pitch, const char *msg,
       video_frame_info_t *video_info)
 {
-   unsigned width = VIDEO_SCALE_W(dims);
-   unsigned height = VIDEO_SCALE_H(dims);
    unsigned y;
    uint16_t *dest;
    const uint16_t *src;
@@ -286,13 +284,11 @@ video_driver_t video_xenon360 = {
    NULL, /* set_rotation */
    NULL, /* viewport_info */
    NULL, /* read_viewport */
+   NULL, /* read_frame_raw */
 #ifdef HAVE_OVERLAY
    NULL, /* get_overlay_interface */
 #endif
    xenon360_get_poke_interface,
-   NULL, /* wrap_type_to_enum */
-   NULL, /* shader_load_begin */
-   NULL, /* shader_load_step */
 #ifdef HAVE_GFX_WIDGETS
    NULL  /* gfx_widgets_enabled */
 #endif

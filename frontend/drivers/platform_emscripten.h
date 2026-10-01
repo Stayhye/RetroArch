@@ -80,10 +80,12 @@ void platform_emscripten_command_reply(const char *msg, size_t len);
 size_t platform_emscripten_command_read(char **into, size_t max_len);
 
 /**
- * Get the real screen dimensions of the canvas on the page, packed
- * with VIDEO_SCALE_PACK.
+ * Get the real screen dimensions of the canvas on the page.
+ *
+ * @param width Pointer to store canvas width
+ * @param height Pointer to store canvas height
  */
-unsigned platform_emscripten_get_canvas_dims(void);
+void platform_emscripten_get_canvas_size(int *width, int *height);
 
 /**
  * Get the ratio of CSS pixels to real screen pixels. Useful for input scaling.
@@ -184,9 +186,10 @@ void platform_emscripten_set_wake_lock(bool state);
  * Try to set the real screen dimensions of the canvas.
  * Will only work if explicitly enabled by the embedder.
  *
- * @param dims New size, packed with VIDEO_SCALE_PACK
+ * @param width New width
+ * @param height New height
  */
-void platform_emscripten_set_canvas_size(unsigned dims);
+void platform_emscripten_set_canvas_size(int width, int height);
 
 /**
  * Get the browser that the program is running in.

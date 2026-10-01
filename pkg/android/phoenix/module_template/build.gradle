@@ -1,17 +1,11 @@
 apply plugin: 'com.android.dynamic-feature'
 
 android {
-  namespace "com.retroarch.modules.%CORE_NAME%"
-
-  compileSdkVersion 36
-  buildToolsVersion "36.0.0"
-
+  compileSdkVersion 29
   defaultConfig {
     minSdkVersion 21
-    targetSdkVersion 36
+    targetSdkVersion 29
   }
-
-  ndkVersion "29.0.14206865"
 
   flavorDimensions "variant"
 
@@ -32,13 +26,10 @@ android {
       }
     }
     playStoreNormal {
-      minSdkVersion 21
-      targetSdkVersion 36
       dimension "variant"
     }
     playStorePlus {
       minSdkVersion 26
-      targetSdkVersion 36
       dimension "variant"
     }
   }

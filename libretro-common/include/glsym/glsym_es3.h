@@ -1,8 +1,5 @@
 #ifndef RGLGEN_DECL_H__
 #define RGLGEN_DECL_H__
-#ifdef __MACH__
-#include <TargetConditionals.h>
-#endif
 #ifdef __cplusplus
 extern "C" {
 #endif
@@ -25,7 +22,7 @@ typedef void *GLeglImageOES;
 #if !defined(GL_OES_fixed_point) && !defined(HAVE_OPENGLES2)
 typedef GLint GLfixed;
 #endif
-#if TARGET_OS_OSX && !defined(MAC_OS_X_VERSION_10_7)
+#if defined(OSX) && !defined(MAC_OS_X_VERSION_10_7)
 typedef long long int GLint64;
 typedef unsigned long long int GLuint64;
 typedef unsigned long long int GLuint64EXT;

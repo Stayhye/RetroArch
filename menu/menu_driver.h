@@ -41,7 +41,7 @@
 #include "menu_shader.h"
 #include "../gfx/gfx_animation.h"
 #include "../gfx/gfx_display.h"
-#include "../gfx/gfx_thumbnail.h"
+#include "../gfx/gfx_thumbnail_path.h"
 #include "../gfx/font_driver.h"
 #include "../performance_counters.h"
 
@@ -58,7 +58,7 @@ RETRO_BEGIN_DECLS
 
 #define SCROLL_INDEX_SIZE          (2 * (26 + 2) + 1)
 
-#ifdef __EMSCRIPTEN__
+#ifdef EMSCRIPTEN
 /* This task reads a variable that is set asynchronously, so the first check might fail.
  * Check more often because it is cheap and to avoid a long period of missing power info. */
 #define POWERSTATE_CHECK_INTERVAL  1000000
@@ -67,9 +67,7 @@ RETRO_BEGIN_DECLS
 #endif
 
 #define DATETIME_CHECK_INTERVAL    1000000
-/* Single-click playlist button hold: entry drawing stays
- * suppressed for this long (us) after the click */
-#define MENU_DRAW_ENTRY_DELAY      500000
+#define MENU_DRAW_ENTRY_DELAY      30
 
 #define MENU_LIST_GET(list, idx) ((list) ? ((list)->menu_stack[(idx)]) : NULL)
 
@@ -108,7 +106,6 @@ enum menu_settings_type
    MENU_PLAYLISTS_TAB,
    MENU_SETTING_DROPDOWN_ITEM,
    MENU_SETTING_DROPDOWN_ITEM_RESOLUTION,
-   MENU_SETTING_DROPDOWN_ITEM_CRT_SUPER_RESOLUTION,
    MENU_SETTING_DROPDOWN_ITEM_VIDEO_SHADER_PARAM,
    MENU_SETTING_DROPDOWN_ITEM_VIDEO_SHADER_PRESET_PARAM,
    MENU_SETTING_DROPDOWN_ITEM_VIDEO_SHADER_NUM_PASS,
@@ -117,9 +114,6 @@ enum menu_settings_type
    MENU_SETTING_DROPDOWN_ITEM_PLAYLIST_RIGHT_THUMBNAIL_MODE,
    MENU_SETTING_DROPDOWN_ITEM_PLAYLIST_LEFT_THUMBNAIL_MODE,
    MENU_SETTING_DROPDOWN_ITEM_PLAYLIST_SORT_MODE,
-   MENU_SETTING_DROPDOWN_ITEM_SCAN_METHOD,
-   MENU_SETTING_DROPDOWN_ITEM_SCAN_USE_DB,
-   MENU_SETTING_DROPDOWN_ITEM_SCAN_DB_SELECT,
    MENU_SETTING_DROPDOWN_ITEM_MANUAL_CONTENT_SCAN_SYSTEM_NAME,
    MENU_SETTING_DROPDOWN_ITEM_MANUAL_CONTENT_SCAN_CORE_NAME,
    MENU_SETTING_DROPDOWN_ITEM_DISK_INDEX,
@@ -255,7 +249,7 @@ enum menu_settings_type
    MENU_SETTINGS_INPUT_BEGIN,
    MENU_SETTINGS_INPUT_END = MENU_SETTINGS_INPUT_BEGIN + RARCH_CUSTOM_BIND_LIST_END + 7,
    MENU_SETTINGS_INPUT_DESC_BEGIN,
-   MENU_SETTINGS_INPUT_DESC_END = MENU_SETTINGS_INPUT_DESC_BEGIN + (RARCH_ANALOG_BIND_LIST_END * MAX_USERS),
+   MENU_SETTINGS_INPUT_DESC_END = MENU_SETTINGS_INPUT_DESC_BEGIN + ((RARCH_FIRST_CUSTOM_BIND + 8) * MAX_USERS),
    MENU_SETTINGS_INPUT_DESC_KBD_BEGIN,
    MENU_SETTINGS_INPUT_DESC_KBD_END = MENU_SETTINGS_INPUT_DESC_KBD_BEGIN + (RARCH_MAX_KEYS * MAX_USERS),
    MENU_SETTINGS_REMAPPING_PORT_BEGIN,
@@ -287,9 +281,6 @@ enum menu_settings_type
    MENU_SETTING_ACTION_PLAYLIST_MANAGER_CLEAN_PLAYLIST,
    MENU_SETTING_ACTION_PLAYLIST_MANAGER_REFRESH_PLAYLIST,
 
-   MENU_SETTING_SCAN_METHOD,
-   MENU_SETTING_SCAN_USE_DB,
-   MENU_SETTING_SCAN_DB_SELECT,
    MENU_SETTING_MANUAL_CONTENT_SCAN_DIR,
    MENU_SETTING_MANUAL_CONTENT_SCAN_SYSTEM_NAME,
    MENU_SETTING_MANUAL_CONTENT_SCAN_CORE_NAME,
@@ -323,7 +314,6 @@ enum menu_settings_type
    MENU_SETTING_ACTION_REMAP_FILE_FLUSH,
 
    MENU_SETTING_ACTION_CONTENTLESS_CORE_RUN,
-   MENU_SETTING_ACTION_STATE_SLOT_RUN,
 
    MENU_SETTINGS_LAST
 };
@@ -350,7 +340,7 @@ typedef struct menu_ctx_driver
    void  (*set_texture)(void *data);
    /* Render a messagebox to the screen. */
    void  (*render_messagebox)(void *data, const char *msg);
-   void  (*render)(void *data, unsigned dims, bool is_idle);
+   void  (*render)(void *data, unsigned width, unsigned height, bool is_idle);
    void  (*frame)(void *data, video_frame_info_t *video_info);
    /* Initializes the menu driver. (setup) */
    void* (*init)(void**, bool);
@@ -408,8 +398,7 @@ typedef struct menu_ctx_driver
    void (*update_thumbnail_image)(void *data);
    void (*refresh_thumbnail_image)(void *data, size_t i);
    void (*set_thumbnail_content)(void *data, const char *s);
-   int  (*osk_ptr_at_pos)(void *data, int x, int y, unsigned dims);
-   bool (*osk_pointer_over_textbox)(void *data, int x, int y, unsigned dims);
+   int  (*osk_ptr_at_pos)(void *data, int x, int y, unsigned width, unsigned height);
    void (*update_savestate_thumbnail_path)(void *data, unsigned i);
    void (*update_savestate_thumbnail_image)(void *data);
    int (*pointer_down)(void *data, unsigned x, unsigned y, unsigned ptr,
@@ -422,12 +411,6 @@ typedef struct menu_ctx_driver
    /* This will be invoked whenever a menu entry action
     * (menu_entry_action()) is performed */
    int (*entry_action)(void *userdata, menu_entry_t *entry, size_t i, enum menu_action action);
-   /* Move the list itself by the given number of mouse wheel
-    * notches, negative towards the top, leaving the selection
-    * where it is. Drivers whose list position *is* the selection
-    * leave this NULL and keep getting MENU_ACTION_UP/DOWN.
-    * Returns false when the driver cannot scroll right now. */
-   bool (*wheel_scroll)(void *userdata, int notches);
 } menu_ctx_driver_t;
 
 typedef struct
@@ -449,7 +432,6 @@ typedef struct
       unsigned                unsigned_var;
    } scratchpad;
    unsigned rpl_entry_selection_ptr;
-   int16_t state_slot_run;
 
 #if defined(HAVE_CG) || defined(HAVE_GLSL) || defined(HAVE_SLANG) || defined(HAVE_HLSL)
    /* Used to cache the type and directory
@@ -486,23 +468,12 @@ typedef struct
    char db_playlist_file[PATH_MAX_LENGTH];
    char filebrowser_label[NAME_MAX_LENGTH];
    char detect_content_path[PATH_MAX_LENGTH];
-
-   /* The Content Downloader directory the user last stepped into. */
-   char core_content_dir[NAME_MAX_LENGTH];
 } menu_handle_t;
 
 struct menu_state
 {
    /* Timers */
    retro_time_t current_time_us;
-   /* Time of the input poll whose state menu_event() reads this
-    * frame, and of the poll taken for the next frame. The menu
-    * collects its input before polling, so the state it acts on is
-    * one poll old; navigation auto-repeat measures a hold between
-    * polls so that a stall after the last poll is not counted as
-    * time the button was held. */
-   retro_time_t input_time_us;
-   retro_time_t input_poll_time_us;
    retro_time_t powerstate_last_time_us;
    retro_time_t datetime_last_time_us;
    retro_time_t input_last_time_us;
@@ -542,11 +513,11 @@ struct menu_state
    } scroll;
 
    /* unsigned alignment */
+   unsigned input_dialog_kb_type;
    unsigned input_dialog_kb_idx;
    unsigned input_driver_flushing_input;
    menu_dialog_t dialog_st;
    enum menu_action prev_action;
-   enum menu_input_dialog_kb_text_type input_dialog_kb_text_type;
 #ifdef HAVE_RUNAHEAD
    unsigned int runahead_mode;
 #endif
@@ -569,23 +540,12 @@ struct menu_state
     * since RETRO_ENVIRONMENT_SHUTDOWN will cause
     * RARCH_PATH_CONTENT to be cleared */
    char pending_env_shutdown_content_path[PATH_MAX_LENGTH];
-   /* Path of a configuration file whose load has been deferred
-    * (see MENU_ST_FLAG_PENDING_CONFIG_REPLACE). The actual
-    * config_replace() is performed from runloop_check_state(),
-    * never from within menu iteration */
-   char pending_config_path[PATH_MAX_LENGTH];
 
 #ifdef HAVE_MENU
    char input_dialog_kb_label_setting[256];
    char input_dialog_kb_label[256];
 #endif
    unsigned char kb_key_state[RETROK_LAST];
-
-   /* The entry generic_menu_iterate() looks at once a frame. Here
-    * rather than on its stack: a menu_entry_t is 3872 bytes, which put
-    * that frame at 4312 where this tree allows four thousand. One is
-    * looked at a time, on the thread that iterates. */
-   menu_entry_t iterate_entry;
 };
 
 typedef struct menu_content_ctx_defer_info
@@ -651,26 +611,6 @@ typedef struct
 #if defined(HAVE_LIBRETRODB)
 explore_state_t *menu_explore_build_list(const char *directory_playlist,
       const char *directory_database);
-
-/* The explore index built in resumable steps.  begin() opens the
- * playlist directory; step() advances the build, consulting @within
- * between work items when non-NULL (a playlist entry, an RDB item, a
- * category sort) - returns 1 when complete, 0 when the budget ran out
- * (call again), -1 on failure; end() returns the finished state and
- * frees the handle; abort() abandons a build at any point.
- * menu_explore_build_list() is begin + one unbudgeted step + end. */
-typedef struct explore_build explore_build_t;
-explore_build_t *menu_explore_build_begin(const char *directory_playlist,
-      const char *directory_database);
-int menu_explore_build_step(explore_build_t *b,
-      bool (*within)(void*), void *ud);
-explore_state_t *menu_explore_build_end(explore_build_t *b);
-void menu_explore_build_abort(explore_build_t *b);
-/* The index's identity for verification: the same collection built in
- * one go and in steps hashes the same (NULL: the installed index); and
- * its size (NULL: the installed index too). */
-uint32_t menu_explore_state_hash(const explore_state_t *state);
-size_t menu_explore_state_entry_count(const explore_state_t *state);
 uintptr_t menu_explore_get_entry_icon(unsigned type);
 ssize_t menu_explore_get_entry_playlist_index(unsigned type,
       playlist_t **playlist, const struct playlist_entry **entry,
@@ -694,10 +634,6 @@ void menu_driver_frame(bool menu_is_alive, video_frame_info_t *video_info);
 int menu_driver_deferred_push_content_list(file_list_t *list);
 
 bool menu_driver_init(bool video_is_threaded);
-
-/* Rebuilds the menu driver's GPU-side context (textures, fonts) against
- * the running video driver, releasing the old one first. */
-void menu_driver_context_rebuild(void);
 
 retro_time_t menu_driver_get_current_time(void);
 
@@ -820,11 +756,6 @@ void menu_update_runahead_mode(void);
 
 size_t menu_playlist_random_selection(
       size_t selection, bool is_explore_list);
-
-void menu_dialog_confirm_set(struct menu_state *menu_st,
-      unsigned msg, unsigned cmd);
-void menu_dialog_confirm_clear(struct menu_state *menu_st);
-void menu_dialog_confirm(struct menu_state *menu_st);
 
 extern const menu_ctx_driver_t *menu_ctx_drivers[];
 

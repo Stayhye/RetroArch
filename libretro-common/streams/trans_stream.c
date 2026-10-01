@@ -73,9 +73,7 @@ const struct trans_stream_backend* trans_stream_get_zlib_deflate_backend(void)
 #if HAVE_ZLIB
    return &zlib_deflate_backend;
 #else
-   /* No zlib: use the built-in clean-room DEFLATE backend so compression
-    * paths keep working. */
-   return &deflate_deflate_backend;
+   return NULL;
 #endif
 }
 
@@ -84,18 +82,8 @@ const struct trans_stream_backend* trans_stream_get_zlib_inflate_backend(void)
 #if HAVE_ZLIB
    return &zlib_inflate_backend;
 #else
-   return &deflate_inflate_backend;
+   return NULL;
 #endif
-}
-
-const struct trans_stream_backend* trans_stream_get_deflate_deflate_backend(void)
-{
-   return &deflate_deflate_backend;
-}
-
-const struct trans_stream_backend* trans_stream_get_deflate_inflate_backend(void)
-{
-   return &deflate_inflate_backend;
 }
 
 const struct trans_stream_backend* trans_stream_get_pipe_backend(void)

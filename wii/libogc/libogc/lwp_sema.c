@@ -11,17 +11,14 @@ void __lwp_sema_initialize(lwp_sema *sema,lwp_semattr *attrs,u32 init_count)
 
 u32 __lwp_sema_surrender(lwp_sema *sema,u32 id)
 {
-	u32 level = 0;
-	u32 ret;
+	u32 level,ret;
 	lwp_cntrl *thethread;
 
 	ret = LWP_SEMA_SUCCESSFUL;
 	if((thethread=__lwp_threadqueue_dequeue(&sema->wait_queue))) return ret;
 	else {
 		_CPU_ISR_Disable(level);
-		/* Pre-patch was `<= max_cnt`, which let count reach max_cnt+1
-		 * (i.e. exceed the maximum) before the else-branch tripped. */
-		if(sema->count<sema->attrs.max_cnt)
+		if(sema->count<=sema->attrs.max_cnt)
 			++sema->count;
 		else
 			ret = LWP_SEMA_MAXCNT_EXCEEDED;

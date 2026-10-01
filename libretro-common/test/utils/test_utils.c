@@ -1,7 +1,7 @@
 /* Copyright  (C) 2021 The RetroArch team
  *
  * ---------------------------------------------------------------------------------------
- * The following license statement only applies to this file (test_utils.c).
+ * The following license statement only applies to this file (test_stdstring.c).
  * ---------------------------------------------------------------------------------------
  *
  * Permission is hereby granted, free of charge,
@@ -25,7 +25,7 @@
 #include <stdlib.h>
 #include <stdio.h>
 
-#include <lrc_hash.h>
+#include <utils/md5.h>
 #include <encodings/crc32.h>
 #include <streams/file_stream.h>
 

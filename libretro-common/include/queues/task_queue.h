@@ -55,24 +55,6 @@ enum task_style
 
 typedef struct retro_task retro_task_t;
 
-/* Execution-context contract, relied on throughout tasks/:
- *
- * The handler runs on the task runner's context - the single worker
- * thread when the threaded runner is active, the pumping thread
- * otherwise. Because the threaded runner has exactly one worker,
- * handlers never race each other; but a handler must confine its
- * writes to its own task's state (and to data whose ownership was
- * transferred into it at push), because everything else here runs
- * elsewhere.
- *
- * The callback and cleanup run on whichever thread retires the
- * queue - task_queue_check() or a task_queue_wait() - which in
- * RetroArch is the main thread. File-scope statics in task files
- * (pending flags, result caches, handoff pointers) are therefore
- * written only from push-side code and callbacks, never from
- * handlers: that main-affinity, not any lock, is what makes them
- * safe. A handler that wrote one would race the main thread. */
-
 /** @copydoc retro_task::callback */
 typedef void (*retro_task_callback_t)(retro_task_t *task,
       void *task_data,
@@ -86,9 +68,7 @@ typedef bool (*retro_task_finder_t)(retro_task_t *task,
       void *userdata);
 
 /**
- * Displays a message output by a task. An empty message signals
- * completion to an attached frontend when notification text is suppressed.
- * It must update task lifetime state without displaying a notification.
+ * Displays a message output by a task.
  */
 typedef void (*retro_task_queue_msg_t)(retro_task_t *task,
       const char *msg,
@@ -140,37 +120,7 @@ enum retro_task_flags
     * If set, the task queue will not call \c progress_cb
     * and will not display any messages from this task.
     */
-   RETRO_TASK_FLG_MUTE             = (1 << 3),
-   /**
-    * Set by the pusher to promise that \c handler touches nothing
-    * but the task itself - its own state, and the task_set_* and
-    * task_get_* accessors - and nothing that outlives the queue or
-    * is torn down with it: no logging, no pushing other tasks, no
-    * subsystem the frontend frees on the way out.
-    *
-    * In exchange, if \c task_queue_deinit() finds the worker still
-    * inside this task's handler after its bound, it stops waiting:
-    * the task is taken off the queue and the worker is left to
-    * finish the handler on its own. \c callback and \c cleanup never
-    * run, so whatever they would have released stays allocated; the
-    * task itself is freed when the handler returns. Meant for
-    * handlers that can
-    * block in an OS call for arbitrarily long, such as a device
-    * enumeration.
-    */
-   RETRO_TASK_FLG_DETACHABLE       = (1 << 4),
-   /**
-    * Set by the pusher before \c task_queue_push: \c handler runs on
-    * the thread that calls \c task_queue_check - the frontend's main
-    * thread - under every runner, never on the worker.  For work that
-    * must happen there (calls into the core, the drivers, the menu)
-    * yet wants a task's lifetime: pushed, found, cancelled, retired
-    * through \c callback and \c cleanup like any other.  It runs
-    * inside the check's handler budget, so a handler that returns
-    * unfinished is called again on a later check, as on the
-    * unthreaded runner.  Not changed after the push.
-    */
-   RETRO_TASK_FLG_MAIN_THREAD      = (1 << 5)
+   RETRO_TASK_FLG_MUTE             = (1 << 3)
 };
 
 /**
@@ -259,13 +209,7 @@ struct retro_task
     * Human-readable details about an error that occurred while running the task.
     * Should be created and assigned within \c handler if there was an error.
     * Will be cleaned up by the task queue with \c free() upon this task's completion.
-    *
-    * If \c handler may set this more than once on the same task,
-    * call \c task_free_error before the subsequent \c task_set_error
-    * to avoid leaking the previous string.
-    *
     * @see task_set_error
-    * @see task_free_error
     */
    char *error;
 
@@ -286,14 +230,8 @@ struct retro_task
     * May be \c NULL,
     * but if not then it will be disposed of by the task system with \c free()
     * upon this task's completion.
-    *
-    * Can be modified or replaced at any time, but \c task_set_title
-    * does \em not free the previous value: callers must call
-    * \c task_free_title first to avoid leaking the prior title.
-    *
+    * Can be modified or replaced at any time.
     * @see strdup
-    * @see task_set_title
-    * @see task_free_title
     */
    char *title;
 
@@ -469,48 +407,18 @@ void task_queue_retriever_info_free(task_retriever_info_t *list);
  */
 void task_queue_cancel_task(void *task);
 
-typedef struct task_progress_snapshot
-{
-   char *title;
-   char *error;
-   uint8_t flags;
-   int8_t progress;
-} task_progress_snapshot_t;
-
-/* Copies display properties under their lock. The caller must keep the
- * task alive during this call and free the snapshot's title and error.
- * On allocation failure returns false with both strings set to NULL;
- * flags and progress remain valid. */
-bool task_get_progress_snapshot(const retro_task_t *task,
-      task_progress_snapshot_t *snapshot);
-
 void task_set_flags(retro_task_t *task, uint8_t flags, bool set);
 
 /**
  * Sets \c task::error to the given value.
  * Thread-safe if the task queue is threaded.
  *
- * Ownership of \c error transfers to the task; the task system
- * will \c free() it when the task completes (or via
- * \c task_free_error).  \c error must therefore point to memory
- * obtained via \c malloc / \c strdup / similar -- string
- * literals or stack buffers will cause an invalid free later.
- *
- * @warning This does \em not free the previous error message.
- * When replacing an already-set error, callers \em must call
- * \c task_free_error first to avoid a leak:
- * @code
- *    task_free_error(task);
- *    task_set_error(task, strdup("New error"));
- * @endcode
- * Alternatively, guard with \c task_get_error so the second
- * \c task_set_error is skipped when an error is already set.
- *
  * @param task The task to modify.
  * Behavior is undefined if \c NULL.
  * @param error The error message to set.
  * @see retro_task::error
- * @see task_free_error
+ * @warning This does not free the existing error message.
+ * The caller must do that itself.
  */
 void task_set_error(retro_task_t *task, char *error);
 
@@ -529,25 +437,13 @@ void task_set_progress(retro_task_t *task, int8_t progress);
  * Sets \c task::title to the given value.
  * Thread-safe if the task queue is threaded.
  *
- * Ownership of \c title transfers to the task; the task system
- * will \c free() it when the task completes (or via
- * \c task_free_title).  \c title must therefore point to memory
- * obtained via \c malloc / \c strdup / similar -- string
- * literals or stack buffers will cause an invalid free later.
- *
- * @warning This does \em not free the previous title.  When
- * replacing an already-set title, callers \em must call
- * \c task_free_title first to avoid a leak:
- * @code
- *    task_free_title(task);
- *    task_set_title(task, strdup("New title"));
- * @endcode
- *
  * @param task The task to modify.
  * Behavior is undefined if \c NULL.
  * @param title The title to set.
  * @see retro_task::title
  * @see task_free_title
+ * @warning This does not free the existing title.
+ * The caller must do that itself.
  */
 void task_set_title(retro_task_t *task, char *title);
 
@@ -570,15 +466,6 @@ void task_set_data(retro_task_t *task, void *data);
  * @see task_set_title
  */
 void task_free_title(retro_task_t *task);
-
-/**
- * Frees the \c task's error message, if any.
- * Thread-safe if the task queue is threaded.
- *
- * @param task The task to modify.
- * @see task_set_error
- */
-void task_free_error(retro_task_t *task);
 
 /**
  * Returns \c task::error.
@@ -662,15 +549,6 @@ void task_queue_unset_threaded(void);
 bool task_queue_is_threaded(void);
 
 /**
- * Asks that the task worker thread, once spawned, be placed on the
- * fast cores of a mixed-core processor (see sthread_prefer_fast_cores).
- * Takes effect at the next task_queue_init(); a worker already running
- * is not moved. Off by default. No effect where the queue runs on the
- * caller's thread or on GCD.
- */
-void task_queue_set_prefer_fast_cores(bool prefer);
-
-/**
  * Calls the function given in \c find_data for each task
  * until it returns \c true for one of them,
  * or until all tasks have been searched.
@@ -744,26 +622,6 @@ bool task_queue_push(retro_task_t *task);
 void task_queue_wait(retro_task_condition_fn_t cond, void* data);
 
 /**
- * task_queue_wait_timeout:
- * @cond              : Condition to keep waiting on; waiting ends when
- *                      it returns false, as with task_queue_wait().
- * @data              : Userdata passed to @cond.
- * @timeout_usec      : Upper bound on the wait, in microseconds.
- *
- * As task_queue_wait(), but gives up after @timeout_usec rather than
- * waiting indefinitely.  For waits that depend on something outside
- * the machine - a network round trip, say - where "never" is a
- * reachable outcome and hanging the frontend is not an acceptable
- * response to it.
- *
- * @return true when @cond is no longer satisfied, i.e. the thing
- * being waited for finished; false when the timeout was reached with
- * @cond still true, so the caller must handle not having it.
- */
-bool task_queue_wait_timeout(retro_task_condition_fn_t cond, void *data,
-      retro_time_t timeout_usec);
-
-/**
  * Marks all tasks in the queue as cancelled.
  *
  * The tasks won't immediately be terminated;
@@ -813,67 +671,6 @@ void task_queue_deinit(void);
  * @see retro_task_queue_msg_t
  */
 void task_queue_init(bool threaded, retro_task_queue_msg_t msg_push);
-
-/**
- * Bounds what one task_queue_check() may do on the calling thread,
- * which is the thread that also drives the frame loop.
- *
- * Retirement: finished tasks are retired (progress push, callback,
- * cleanup, free) on the checking thread, and a burst of completions -
- * a thumbnail scan, a bulk download - used to retire in one call
- * however long the callbacks took. With a budget, a check retires at
- * least one task, then stops once @retire_max tasks or @retire_usec
- * microseconds have gone by; the rest stay queued, still findable,
- * for the next check.
- *
- * Handlers (unthreaded queue only): task handlers run on the checking
- * thread, one call per running task per check. With a budget, a check
- * runs at least one due handler, then stops once @handler_usec has
- * gone by; the tasks not run keep their place at the front of the
- * queue so the list rotates rather than starving its tail. On the
- * threaded queue handlers run on the worker and this bound is unused.
- *
- * Zero for any bound means unbounded, which is the default and the
- * behaviour before budgets existed.
- *
- * task_queue_wait() and task_queue_wait_timeout() loop on the check,
- * so a budget slows a blocking wait but never changes what it waits
- * for.
- */
-void task_queue_set_budget(retro_time_t retire_usec, unsigned retire_max,
-      retro_time_t handler_usec);
-
-/**
- * Called when a task handler occupies the calling thread for longer
- * than the configured budget.
- *
- * @param task The task whose handler ran long.
- * @param usec How long the handler call took, in microseconds.
- * @see task_queue_set_slow_handler_cb
- */
-typedef void (*retro_task_slow_handler_t)(retro_task_t *task,
-      retro_time_t usec);
-
-/**
- * Report task handlers that occupy the calling thread too long.
- *
- * This measures every handler that runs on the thread calling
- * task_queue_check() - the frame loop's thread: all of them on the
- * unthreaded queue, and the RETRO_TASK_FLG_MAIN_THREAD ones on the
- * threaded queue.  There, a handler that does not return within a
- * frame's worth of time is a visible stall, and the queue is the
- * only place that can attribute one to a specific task.  Handlers
- * on the worker are not measured: taking a long time there is the
- * point.
- *
- * @param cb Called for each handler invocation exceeding
- * \c budget_usec, or \c NULL to disable the check (the default -
- * with no callback registered, no clock is read).
- * @param budget_usec Threshold in microseconds; values below 1
- * are treated as 1.
- */
-void task_queue_set_slow_handler_cb(retro_task_slow_handler_t cb,
-      retro_time_t budget_usec);
 
 /**
  * Allocates and initializes a new task.

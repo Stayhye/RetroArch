@@ -39,7 +39,8 @@ typedef struct
 #ifdef HAVE_EGL
    egl_ctx_data_t egl;
 #endif
-   unsigned fb_dims;
+   unsigned fb_width;
+   unsigned fb_height;
 } emscripten_ctx_data_t;
 
 static void gfx_ctx_emscripten_swap_interval(void *data, int interval)
@@ -48,25 +49,30 @@ static void gfx_ctx_emscripten_swap_interval(void *data, int interval)
 }
 
 static void gfx_ctx_emscripten_check_window(void *data, bool *quit,
-      bool *resize, unsigned *dims)
+      bool *resize, unsigned *width, unsigned *height)
 {
+   int input_width;
+   int input_height;
    emscripten_ctx_data_t *emscripten = (emscripten_ctx_data_t*)data;
-   unsigned canvas_dims              = platform_emscripten_get_canvas_dims();
 
-   *resize          = (emscripten->fb_dims != canvas_dims);
-   *dims            = emscripten->fb_dims = canvas_dims;
-   *quit            = false;
+   platform_emscripten_get_canvas_size(&input_width, &input_height);
+
+   *resize = (emscripten->fb_width != input_width || emscripten->fb_height != input_height);
+   *width  = emscripten->fb_width  = (unsigned)input_width;
+   *height = emscripten->fb_height = (unsigned)input_height;
+   *quit   = false;
 }
 
 static void gfx_ctx_emscripten_get_video_size(void *data,
-      unsigned *dims)
+      unsigned *width, unsigned *height)
 {
    emscripten_ctx_data_t *emscripten = (emscripten_ctx_data_t*)data;
 
    if (!emscripten)
       return;
 
-   *dims = emscripten->fb_dims;
+   *width  = emscripten->fb_width;
+   *height = emscripten->fb_height;
 }
 
 static bool gfx_ctx_emscripten_get_metrics(void *data,
@@ -105,7 +111,6 @@ static void *gfx_ctx_emscripten_init(void *video_driver)
 {
 #ifdef HAVE_EGL
    unsigned width, height;
-   unsigned dims = 0;
    EGLint major, minor;
    EGLint n;
    static const EGLint attribute_list[] =
@@ -153,11 +158,10 @@ static void *gfx_ctx_emscripten_init(void *video_driver)
    if (!egl_create_surface(&emscripten->egl, 0))
       goto error;
 
-   egl_get_video_size(&emscripten->egl, &dims);
-   width                 = VIDEO_SCALE_W(dims);
-   height                = VIDEO_SCALE_H(dims);
+   egl_get_video_size(&emscripten->egl, &width, &height);
 
-   emscripten->fb_dims   = dims;
+   emscripten->fb_width  = width;
+   emscripten->fb_height = height;
    RARCH_LOG("[EMSCRIPTEN/EGL] Dimensions: %ux%u.\n", width, height);
 #endif
 
@@ -168,11 +172,11 @@ error:
 }
 
 static bool gfx_ctx_emscripten_set_video_mode(void *data,
-      unsigned dims, bool fullscreen)
+      unsigned width, unsigned height, bool fullscreen)
 {
    platform_emscripten_set_fullscreen_state(fullscreen);
    if (!fullscreen)
-      platform_emscripten_set_canvas_size(dims);
+      platform_emscripten_set_canvas_size(width, height);
 
    g_egl_inited = true;
    return true;

@@ -23,18 +23,8 @@
 #include <stdlib.h>
 #include <string.h>
 
+#include <streams/file_stream.h>
 #include <formats/rbmp.h>
-#include <gfx/scaler/pixconv.h>
-
-/* This TU is a pure encoder: bytes in -> bytes out.  It has no stream
- * or VFS dependency of any kind - the only includes are the C library
- * and its own header - so it can be vendored as a single file.  The
- * primary entry point is rbmp_save_image_string() (exact-size heap
- * buffer); rbmp_row_size() and rbmp_encode_row() expose the row
- * primitives for callers that stream rows to a sink of their own.
- * The intfstream writer rbmp_save_image_stream() and the legacy
- * path-based rbmp_save_image() both live in file/rbmp_file.c, built
- * on those primitives. */
 
 void form_bmp_header(uint8_t *header,
       unsigned width, unsigned height,
@@ -116,10 +106,11 @@ void form_bmp_header(uint8_t *header,
    header[53] = 0;
 }
 
-size_t rbmp_row_size(unsigned width, enum rbmp_source_type type)
+static bool write_header_bmp(RFILE *file, unsigned width, unsigned height, bool is32bpp)
 {
-   unsigned bpp = (type == RBMP_SOURCE_TYPE_ARGB8888) ? 4 : 3;
-   return ((size_t)width * bpp + 3) & ~(size_t)3;
+   uint8_t header[54];
+   form_bmp_header(header, width, height, is32bpp);
+   return filestream_write(file, header, sizeof(header)) == sizeof(header);
 }
 
 static void dump_line_565_to_24(uint8_t *line, const uint16_t *src, unsigned width)
@@ -128,10 +119,13 @@ static void dump_line_565_to_24(uint8_t *line, const uint16_t *src, unsigned wid
 
    for (i = 0; i < width; i++)
    {
-      uint32_t pixel = pixconv_rgb565_to_xrgb8888(*src++);
-      *line++        = (uint8_t)(pixel);
-      *line++        = (uint8_t)(pixel >>  8);
-      *line++        = (uint8_t)(pixel >> 16);
+      uint16_t pixel = *src++;
+      uint8_t b = (pixel >>  0) & 0x1f;
+      uint8_t g = (pixel >>  5) & 0x3f;
+      uint8_t r = (pixel >> 11) & 0x1f;
+      *line++   = (b << 3) | (b >> 2);
+      *line++   = (g << 2) | (g >> 4);
+      *line++   = (r << 3) | (r >> 2);
    }
 }
 
@@ -148,109 +142,95 @@ static void dump_line_32_to_24(uint8_t *line, const uint32_t *src, unsigned widt
    }
 }
 
-/* Produce one padded output row.  Returns either @line (row was
- * converted/padded into the scratch buffer) or @src directly when the
- * source row can be emitted as-is, letting callers skip a copy. */
-static const uint8_t *rbmp_fill_row(uint8_t *line, const uint8_t *src,
-      unsigned width, size_t line_size, unsigned pitch,
-      enum rbmp_source_type type)
+static void dump_content(RFILE *file, const void *frame,
+      int width, int height, int pitch, enum rbmp_source_type type)
 {
-   size_t copy;
+   int j;
+   size_t line_size;
+   uint8_t *line       = NULL;
+   int bytes_per_pixel = (type==RBMP_SOURCE_TYPE_ARGB8888?4:3);
+   union
+   {
+      const uint8_t *u8;
+      const uint16_t *u16;
+      const uint32_t *u32;
+   } u;
+
+   u.u8      = (const uint8_t*)frame;
+   line_size = (width * bytes_per_pixel + 3) & ~3;
 
    switch (type)
    {
-      case RBMP_SOURCE_TYPE_ARGB8888:
-         /* ARGB8888 byte order matches the output and a 32bpp row is
-          * naturally 4-byte aligned, so no padding exists. */
-         return src;
       case RBMP_SOURCE_TYPE_BGR24:
-         /* BGR24 byte order matches the output; only row padding may
-          * need to be synthesised.  Rows are handed to the writer
-          * as-is only when the stride equals the padded row size;
-          * otherwise copy exactly the row payload (never the stride,
-          * which may be negative or wider than the row) and zero the
-          * padding so tightly-allocated source buffers are never read
-          * past their final row. */
-         if ((int)pitch >= 0 && (size_t)pitch == line_size)
-            return src;
-         copy = (size_t)width * 3;
-         if ((int)pitch >= 0 && (size_t)pitch < copy)
-            copy = (size_t)pitch;
-         memcpy(line, src, copy);
-         memset(line + copy, 0, line_size - copy);
-         return line;
+         {
+            /* BGR24 byte order input matches output. Can directly copy, but... need to make sure we pad it. */
+            uint32_t zeros = 0;
+            int padding    = (int)(line_size-pitch);
+            for (j = 0; j < height; j++, u.u8 += pitch)
+            {
+               filestream_write(file, u.u8, pitch);
+               if (padding != 0)
+                  filestream_write(file, &zeros, padding);
+            }
+         }
+         break;
+      case RBMP_SOURCE_TYPE_ARGB8888:
+         /* ARGB8888 byte order input matches output. Can directly copy. */
+         for (j = 0; j < height; j++, u.u8 += pitch)
+            filestream_write(file, u.u8, line_size);
+         return;
+      default:
+         break;
+   }
+
+   /* allocate line buffer, and initialize the final four bytes to zero, for deterministic padding */
+   if (!(line = (uint8_t*)malloc(line_size)))
+      return;
+   *(uint32_t*)(line + line_size - 4) = 0;
+
+   switch (type)
+   {
       case RBMP_SOURCE_TYPE_XRGB888:
-         dump_line_32_to_24(line, (const uint32_t*)(const void*)src, width);
+         for (j = 0; j < height; j++, u.u8 += pitch)
+         {
+            dump_line_32_to_24(line, u.u32, width);
+            filestream_write(file, line, line_size);
+         }
          break;
       case RBMP_SOURCE_TYPE_RGB565:
-         dump_line_565_to_24(line, (const uint16_t*)(const void*)src, width);
+         for (j = 0; j < height; j++, u.u8 += pitch)
+         {
+            dump_line_565_to_24(line, u.u16, width);
+            filestream_write(file, line, line_size);
+         }
          break;
       default:
-         /* Unknown source type: emit a zeroed (black) row so the file
-          * still matches the size declared in its header.  (The old
-          * path-based writer emitted a header-only, truncated file
-          * here.) */
-         memset(line, 0, line_size);
-         return line;
+         break;
    }
 
-   /* Deterministic 0-3 bytes of row padding for the converted formats. */
-   memset(line + (size_t)width * 3, 0, line_size - (size_t)width * 3);
-   return line;
+   /* Free allocated line buffer */
+   free(line);
 }
 
-const uint8_t *rbmp_encode_row(uint8_t *line, const void *row,
-      unsigned width, unsigned pitch, enum rbmp_source_type type)
-{
-   if (!line || !row || !width)
-      return NULL;
-   return rbmp_fill_row(line, (const uint8_t*)row, width,
-         rbmp_row_size(width, type), pitch, type);
-}
-
-uint8_t *rbmp_save_image_string(
+bool rbmp_save_image(
+      const char *filename,
       const void *frame,
-      unsigned width, unsigned height, unsigned pitch,
-      enum rbmp_source_type type,
-      size_t *out_len)
+      unsigned width, unsigned height,
+      unsigned pitch, enum rbmp_source_type type)
 {
-   unsigned j;
-   size_t line_size;
-   size_t _len;
-   uint8_t *buf       = NULL;
-   uint8_t *dst       = NULL;
-   const uint8_t *src = (const uint8_t*)frame;
-   /* pitch travels through the public API as unsigned (historical),
-    * but callers pass negative strides to walk bottom-up sources
-    * top-down; reinterpret it as signed for the row walk, exactly as
-    * the old RFILE-based writer did. */
-   int s_pitch        = (int)pitch;
+   bool ret    = false;
+   RFILE *file = filestream_open(filename,
+         RETRO_VFS_FILE_ACCESS_WRITE,
+         RETRO_VFS_FILE_ACCESS_HINT_NONE);
+   if (!file)
+      return false;
 
-   if (!frame || !out_len || !width || !height)
-      return NULL;
+   ret = write_header_bmp(file, width, height, type==RBMP_SOURCE_TYPE_ARGB8888);
 
-   line_size = rbmp_row_size(width, type);
+   if (ret)
+      dump_content(file, frame, width, height, pitch, type);
 
-   /* BMP output size is exact and fixed:
-    * 54-byte header + line_size * height rows. */
-   if (line_size > ((size_t)-1 - 54) / height)
-      return NULL;
-   _len      = 54 + line_size * height;
+   filestream_close(file);
 
-   if (!(buf = (uint8_t*)malloc(_len)))
-      return NULL;
-
-   form_bmp_header(buf, width, height, type == RBMP_SOURCE_TYPE_ARGB8888);
-
-   dst = buf + 54;
-   for (j = 0; j < height; j++, src += s_pitch, dst += line_size)
-   {
-      const uint8_t *row = rbmp_fill_row(dst, src, width,
-            line_size, pitch, type);
-      if (row != dst)
-         memcpy(dst, row, line_size);
-   }
-
-   *out_len = _len;
-   return buf;
+   return ret;
 }

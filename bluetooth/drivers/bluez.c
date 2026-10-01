@@ -15,6 +15,7 @@
 #include <dbus/dbus.h>
 #include <compat/strl.h>
 #include <configuration.h>
+#include <retro_timers.h>
 #include <string/stdstring.h>
 
 #include "../bluetooth_driver.h"
@@ -53,10 +54,6 @@ typedef struct
     struct device_info_vector_list *devices;
     char adapter[256];
     DBusConnection* dbus_connection;
-    /* Discovery started by scan_begin, on the connection it keeps open
-     * until scan_end: BlueZ ends a client's discovery when the client's
-     * connection goes. */
-    bool scanning;
     bool bluez_cache[256];
     int bluez_cache_counter[256];
 } bluez_t;
@@ -66,18 +63,10 @@ static void *bluez_init (void)
    return calloc(1, sizeof(bluez_t));
 }
 
-static void bluez_dbus_disconnect(bluez_t *bluez);
-
 static void bluez_free (void *data)
 {
-   bluez_t *bluez = (bluez_t*)data;
-   if (!bluez)
-      return;
-   /* A scan freed between begin and end still holds its connection. */
-   bluez_dbus_disconnect(bluez);
-   if (bluez->devices)
-      device_info_vector_list_free(bluez->devices);
-   free(bluez);
+   if (data)
+      free(data);
 }
 
 static int
@@ -492,14 +481,12 @@ static void bluez_dbus_disconnect(bluez_t *bluez)
    bluez->dbus_connection = NULL;
 }
 
-/* Starts discovery and returns; scan_end stops it at the end of the
- * scan window. The window used to be a ten-second sleep in here. */
-static void bluez_scan_begin(void *data)
+static void bluez_scan(void *data)
 {
+   DBusError err;
    DBusMessage *reply;
    bluez_t *bluez = (bluez_t*)data;
 
-   bluez->scanning = false;
    bluez_dbus_connect(bluez);
 
    if (get_managed_objects(bluez, &reply))
@@ -521,21 +508,7 @@ static void bluez_scan_begin(void *data)
    if (adapter_discovery(bluez, "StartDiscovery"))
       return;
 
-   bluez->scanning = true;
-}
-
-static void bluez_scan_end(void *data)
-{
-   DBusMessage *reply;
-   bluez_t *bluez = (bluez_t*)data;
-
-   /* A begin that failed part way left nothing running. */
-   if (!bluez->scanning)
-   {
-      bluez_dbus_disconnect(bluez);
-      return;
-   }
-   bluez->scanning = false;
+   retro_sleep(10000);
 
    /* Stop discovery */
    if (adapter_discovery(bluez, "StopDiscovery"))
@@ -659,8 +632,7 @@ static bool bluez_remove_device(void *data, unsigned i)
 bluetooth_driver_t bluetooth_bluez = {
    bluez_init,
    bluez_free,
-   bluez_scan_begin,
-   bluez_scan_end,
+   bluez_scan,
    bluez_get_devices,
    bluez_device_is_connected,
    bluez_device_get_sublabel,

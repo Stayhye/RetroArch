@@ -94,24 +94,17 @@ static int action_select_default(
 
    if (action != MENU_ACTION_NOOP)
    {
-      /* menu_entry_t carries the entry's path/label/value strings
-       * inline -- several KiB even at console path lengths -- so it
-       * is heap-held here rather than framed on the menu task stack. */
-      menu_entry_t *entry = (menu_entry_t*)malloc(sizeof(*entry));
+      menu_entry_t entry;
+      MENU_ENTRY_INITIALIZE(entry);
 
-      if (!entry)
-         return -1;
-      MENU_ENTRY_INITIALIZE((*entry));
-
-      entry->flags |= MENU_ENTRY_FLAG_PATH_ENABLED
-                    | MENU_ENTRY_FLAG_LABEL_ENABLED;
+      entry.flags |= MENU_ENTRY_FLAG_PATH_ENABLED
+                   | MENU_ENTRY_FLAG_LABEL_ENABLED;
       /* Note: If menu_entry_action() is modified,
        * will have to verify that these parameters
        * remain unused... */
-      menu_entry_get(entry, 0, idx, NULL, false);
+      menu_entry_get(&entry, 0, idx, NULL, false);
 
-      ret = menu_entry_action(entry, idx, action);
-      free(entry);
+      ret = menu_entry_action(&entry, idx, action);
    }
 
    task_queue_check();
@@ -125,8 +118,7 @@ static int action_select_path_use_directory(const char *path,
    return action_ok_path_use_directory(path, label, type, idx, 0 /* unused */);
 }
 
-static int action_select_core_setting(const char *path,
-      const char *label, unsigned type,
+static int action_select_core_setting(const char *path, const char *label, unsigned type,
       size_t idx, size_t entry_idx)
 {
    return action_ok_core_option_dropdown_list(path, label, type, idx, 0);

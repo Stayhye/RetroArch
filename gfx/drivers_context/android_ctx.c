@@ -96,19 +96,8 @@ static void *android_gfx_ctx_init(void *video_driver)
    android_ctx_data_t        *and       = (android_ctx_data_t*)
       calloc(1, sizeof(*and));
 
-   /* Separate the two checks so the combined bail doesn't leak
-    * 'and' when it succeeded but android_app was NULL.  In the
-    * pre-patch form both conditions shared one return without
-    * a free.  Also fixed the return value: the pre-patch
-    * 'return false' was 'return 0' which is NULL for a void*-
-    * returning function but sloppy; use NULL explicitly. */
-   if (!and)
-      return NULL;
-   if (!android_app)
-   {
-      free(and);
-      return NULL;
-   }
+   if (!android_app || !and)
+      return false;
 
 #ifdef HAVE_OPENGLES
    if (g_es3)
@@ -148,41 +137,43 @@ error:
 }
 
 static void android_gfx_ctx_get_video_size(void *data,
-      unsigned *dims)
+      unsigned *width, unsigned *height)
 {
 #ifdef HAVE_EGL
    android_ctx_data_t *and  = (android_ctx_data_t*)data;
-   egl_get_video_size(&and->egl, dims);
+   egl_get_video_size(&and->egl, width, height);
 #endif
 }
 
 static void android_gfx_ctx_check_window(void *data, bool *quit,
-      bool *resize, unsigned *dims)
+      bool *resize, unsigned *width, unsigned *height)
 {
-   unsigned new_dims       = 0;
+   unsigned new_width       = 0;
+   unsigned new_height      = 0;
    android_ctx_data_t *and  = (android_ctx_data_t*)data;
 
    *quit                    = false;
 
 #ifdef HAVE_EGL
-   egl_get_video_size(&and->egl, &new_dims);
+   egl_get_video_size(&and->egl, &new_width, &new_height);
 #endif
 
-   if (new_dims != *dims)
+   if (new_width != *width || new_height != *height)
    {
       RARCH_LOG("[Android] Resizing (%u x %u) -> (%u x %u).\n",
-              VIDEO_SCALE_W(*dims), VIDEO_SCALE_H(*dims),
-              VIDEO_SCALE_W(new_dims), VIDEO_SCALE_H(new_dims));
+              *width, *height, new_width, new_height);
 
-      *dims  = new_dims;
+      *width  = new_width;
+      *height = new_height;
       *resize = true;
    }
 }
 
-static bool android_gfx_ctx_set_resize(void *data, unsigned dims) { return false; }
+static bool android_gfx_ctx_set_resize(void *data,
+      unsigned width, unsigned height) { return false; }
 
 static bool android_gfx_ctx_set_video_mode(void *data,
-      unsigned dims,
+      unsigned width, unsigned height,
       bool fullscreen)
 {
 #if defined(HAVE_OPENGLES)
@@ -316,7 +307,7 @@ const gfx_ctx_driver_t gfx_ctx_android = {
    NULL, /* get_video_output_size */
    NULL, /* get_video_output_prev */
    NULL, /* get_video_output_next */
-   NULL, /* get_metrics - handled by display server */
+   android_display_get_metrics,
    NULL,
    NULL, /* update_title */
    android_gfx_ctx_check_window,

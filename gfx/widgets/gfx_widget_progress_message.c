@@ -14,8 +14,6 @@
  *  You should have received a copy of the GNU General Public License along with RetroArch.
  *  If not, see <http://www.gnu.org/licenses/>.
  */
-#include <compat/strl.h>
-#include <string/stdstring.h>
 
 #include "../gfx_widgets.h"
 #include "../gfx_animation.h"
@@ -118,12 +116,12 @@ static void gfx_widget_progress_message_fadeout(void *userdata)
    animation_entry.cb           = gfx_widget_progress_message_fadeout_cb;
    animation_entry.userdata     = state;
 
-   gfx_animation_push_widget(&animation_entry);
+   gfx_animation_push(&animation_entry);
 }
 
 /* Widget interface */
 
-static void gfx_widget_set_progress_message_state(
+void gfx_widget_set_progress_message(
       const char *message, unsigned duration,
       unsigned priority, int8_t progress)
 {
@@ -136,7 +134,7 @@ static void gfx_widget_set_progress_message_state(
    uintptr_t timer_tag                        = (uintptr_t)&state->timer;
 
    /* Ensure we have a valid message string */
-   if (!message || !*message)
+   if (string_is_empty(message))
       return;
 
    /* If widget is currently active, ignore new
@@ -156,30 +154,21 @@ static void gfx_widget_set_progress_message_state(
          1.0f);
 
    /* Kill any existing timer/animation */
-   gfx_animation_kill_widget_by_tag(&timer_tag);
-   gfx_animation_kill_widget_by_tag(&alpha_tag);
+   gfx_animation_kill_by_tag(&timer_tag);
+   gfx_animation_kill_by_tag(&alpha_tag);
 
    /* Start new message timer */
    timer.duration = duration;
    timer.cb       = gfx_widget_progress_message_fadeout;
    timer.userdata = state;
 
-   gfx_animation_timer_start_widget(&state->timer, &timer);
+   gfx_animation_timer_start(&state->timer, &timer);
 
    /* Set initial widget opacity */
    state->alpha  = 1.0f;
 
    /* Set 'active' flag */
    state->active = true;
-}
-
-void gfx_widget_set_progress_message(
-      const char *message, unsigned duration,
-      unsigned priority, int8_t progress)
-{
-   gfx_widgets_state_lock();
-   gfx_widget_set_progress_message_state(message, duration, priority, progress);
-   gfx_widgets_state_unlock();
 }
 
 /* Widget layout() */
@@ -191,8 +180,8 @@ static void gfx_widget_progress_message_layout(
    float bar_padding;
    dispgfx_widget_t *p_dispwidget             = (dispgfx_widget_t*)data;
    gfx_widget_progress_message_state_t *state = &p_w_progress_message_st;
-   unsigned last_video_width                  = VIDEO_SCALE_W(p_dispwidget->last_video_dims);
-   unsigned last_video_height                 = VIDEO_SCALE_H(p_dispwidget->last_video_dims);
+   unsigned last_video_width                  = p_dispwidget->last_video_width;
+   unsigned last_video_height                 = p_dispwidget->last_video_height;
    unsigned widget_padding                    = p_dispwidget->simple_widget_padding;
    gfx_widget_font_data_t *font_regular       = &p_dispwidget->gfx_widget_fonts.regular;
 
@@ -234,8 +223,8 @@ static void gfx_widget_progress_message_frame(void *data, void *user_data)
       video_frame_info_t *video_info       = (video_frame_info_t*)data;
       dispgfx_widget_t *p_dispwidget       = (dispgfx_widget_t*)user_data;
 
-      unsigned video_width                 = VIDEO_SCALE_W(video_info->dims);
-      unsigned video_height                = VIDEO_SCALE_H(video_info->dims);
+      unsigned video_width                 = video_info->width;
+      unsigned video_height                = video_info->height;
       void *userdata                       = video_info->userdata;
       gfx_display_t *p_disp                = (gfx_display_t*)video_info->disp_userdata;
 
@@ -253,11 +242,14 @@ static void gfx_widget_progress_message_frame(void *data, void *user_data)
       gfx_display_draw_quad(
             p_disp,
             userdata,
-            VIDEO_SCALE_PACK(video_width, video_height),
+            video_width,
+            video_height,
             state->widget_x,
             state->widget_y,
-            VIDEO_SCALE_PACK(state->widget_width, state->widget_height),
-            VIDEO_SCALE_PACK(video_width, video_height),
+            state->widget_width,
+            state->widget_height,
+            video_width,
+            video_height,
             backdrop_color,
             NULL);
 
@@ -267,11 +259,14 @@ static void gfx_widget_progress_message_frame(void *data, void *user_data)
       gfx_display_draw_quad(
             p_disp,
             userdata,
-            VIDEO_SCALE_PACK(video_width, video_height),
+            video_width,
+            video_height,
             state->bar_bg_x,
             state->bar_bg_y,
-            VIDEO_SCALE_PACK(state->bar_bg_width, state->bar_bg_height),
-            VIDEO_SCALE_PACK(video_width, video_height),
+            state->bar_bg_width,
+            state->bar_bg_height,
+            video_width,
+            video_height,
             state->bar_bg_color,
             NULL);
 
@@ -290,11 +285,14 @@ static void gfx_widget_progress_message_frame(void *data, void *user_data)
       gfx_display_draw_quad(
             p_disp,
             userdata,
-            VIDEO_SCALE_PACK(video_width, video_height),
+            video_width,
+            video_height,
             state->bar_x,
             state->bar_y,
-            VIDEO_SCALE_PACK(bar_width, state->bar_height),
-            VIDEO_SCALE_PACK(video_width, video_height),
+            bar_width,
+            state->bar_height,
+            video_width,
+            video_height,
             bar_color,
             NULL);
 
@@ -304,7 +302,8 @@ static void gfx_widget_progress_message_frame(void *data, void *user_data)
             state->message,
             state->text_x,
             state->text_y,
-            VIDEO_SCALE_PACK(video_width, video_height),
+            video_width,
+            video_height,
             text_color,
             TEXT_ALIGN_CENTER,
             true);
@@ -312,8 +311,7 @@ static void gfx_widget_progress_message_frame(void *data, void *user_data)
       /* If the message queue is active, must flush the
        * text here to avoid overlaps */
       if (msg_queue_size > 0)
-         gfx_widgets_flush_text(VIDEO_SCALE_PACK(video_width,
-               video_height), font_regular);
+         gfx_widgets_flush_text(video_width, video_height, font_regular);
    }
 }
 
@@ -326,8 +324,8 @@ static void gfx_widget_progress_message_free(void)
    uintptr_t timer_tag                        = (uintptr_t)&state->timer;
 
    /* Kill any existing timer / animation */
-   gfx_animation_kill_widget_by_tag(&timer_tag);
-   gfx_animation_kill_widget_by_tag(&alpha_tag);
+   gfx_animation_kill_by_tag(&timer_tag);
+   gfx_animation_kill_by_tag(&alpha_tag);
 
    /* Deactivate widget */
    state->alpha  = 0.0f;
@@ -336,12 +334,6 @@ static void gfx_widget_progress_message_free(void)
 
 /* Widget definition */
 
-static bool gfx_widget_progress_message_visible(void)
-{
-   gfx_widget_progress_message_state_t *state = &p_w_progress_message_st;
-   return state->active;
-}
-
 const gfx_widget_t gfx_widget_progress_message = {
    NULL, /* init */
    gfx_widget_progress_message_free,
@@ -349,6 +341,5 @@ const gfx_widget_t gfx_widget_progress_message = {
    NULL, /* context_destroy */
    gfx_widget_progress_message_layout,
    NULL, /* iterate */
-   gfx_widget_progress_message_frame,
-   gfx_widget_progress_message_visible
+   gfx_widget_progress_message_frame
 };

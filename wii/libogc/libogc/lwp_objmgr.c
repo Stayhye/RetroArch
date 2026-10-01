@@ -45,10 +45,6 @@ void __lwp_objmgr_initinfo(lwp_objinfo *info,u32 max_nodes,u32 node_size)
 	info->obj_blocks = __lwp_wkspace_allocate(info->max_nodes*info->node_size);
 	if(!info->obj_blocks) {
 		__lwp_wkspace_free(local_table);
-		/* Without this, info->local_table dangles at the just-freed
-		 * block. Restore the no-op sentinel so subsequent getter
-		 * calls see an empty table rather than freed memory. */
-		info->local_table = &null_local_table;
 		return;
 	}
 
@@ -69,14 +65,11 @@ void __lwp_objmgr_initinfo(lwp_objinfo *info,u32 max_nodes,u32 node_size)
 
 lwp_obj* __lwp_objmgr_getisrdisable(lwp_objinfo *info,u32 id,u32 *p_level)
 {
-	u32 level = 0;
+	u32 level;
 	lwp_obj *object = NULL;
 
 	_CPU_ISR_Disable(level);
-	/* local_table has max_nodes entries indexed 0..max_nodes-1.
-	 * `max_id >= id` used to allow id == max_id (== max_nodes), one
-	 * past the end. Mirror the bounds check in setlocal(). */
-	if(id<info->max_nodes) {
+	if(info->max_id>=id) {
 		if((object=info->local_table[id])!=NULL) {
 			*p_level = level;
 			return object;
@@ -90,7 +83,7 @@ lwp_obj* __lwp_objmgr_getnoprotection(lwp_objinfo *info,u32 id)
 {
 	lwp_obj *object = NULL;
 
-	if(id<info->max_nodes) {
+	if(info->max_id>=id) {
 		if((object=info->local_table[id])!=NULL) return object;
 	}
 	return NULL;
@@ -100,7 +93,7 @@ lwp_obj* __lwp_objmgr_get(lwp_objinfo *info,u32 id)
 {
 	lwp_obj *object = NULL;
 
-	if(id<info->max_nodes) {
+	if(info->max_id>=id) {
 		__lwp_thread_dispatchdisable();
 		if((object=info->local_table[id])!=NULL) return object;
 		__lwp_thread_dispatchenable();

@@ -26,7 +26,7 @@
 #include <streams/file_stream.h>
 #include <string/stdstring.h>
 
-#include <bearssl.h>
+#include "../../deps/bearssl-0.6/inc/bearssl.h"
 
 struct ssl_state
 {
@@ -42,43 +42,16 @@ static size_t TAs_NUM = 0;
 
 static uint8_t* current_vdn;
 static size_t current_vdn_size;
-/* Set by vdn_append when a realloc() fails during DN accumulation.
- * BearSSL's x509 decoder drives vdn_append as a void-returning
- * callback, so we have no failure channel to hand back mid-decode;
- * instead we latch this flag, skip further appends, and let
- * append_cert_x509 observe it after the decoder returns. */
-static bool current_vdn_failed;
 
 static uint8_t* blobdup(const void * src, size_t len)
 {
    uint8_t *ret = (uint8_t*)malloc(len);
-   /* Pre-patch: no NULL check, so the next line memcpy'd into NULL
-    * on OOM and crashed.  Return NULL and make it the caller's
-    * problem - all three call sites below now propagate the NULL
-    * back out of append_cert_x509. */
-   if (!ret)
-      return NULL;
    memcpy(ret, src, len);
    return ret;
 }
 static void vdn_append(void* dest_ctx, const void * src, size_t len)
 {
-   uint8_t *tmp;
-   if (current_vdn_failed)
-      return;
-   /* Use a tmp pointer: the pre-patch form
-    *     current_vdn = (uint8_t*)realloc(current_vdn, ...)
-    * overwrote current_vdn with NULL on realloc failure, leaking
-    * the original buffer, and the subsequent memcpy then
-    * dereferenced NULL.  The callback signature is 'void' so we
-    * cannot signal to the decoder to stop - we just latch the
-    * flag and short-circuit subsequent invocations. */
-   if (!(tmp = (uint8_t*)realloc(current_vdn, current_vdn_size + len)))
-   {
-      current_vdn_failed = true;
-      return;
-   }
-   current_vdn = tmp;
+   current_vdn = (uint8_t*)realloc(current_vdn, current_vdn_size + len);
    memcpy(current_vdn + current_vdn_size, src, len);
    current_vdn_size += len;
 }
@@ -91,29 +64,12 @@ static bool append_cert_x509(void* x509, size_t len)
 
    current_vdn              = NULL;
    current_vdn_size         = 0;
-   current_vdn_failed       = false;
 
    br_x509_decoder_init(&dc, vdn_append, NULL);
    br_x509_decoder_push(&dc, x509, len);
-
-   /* If any vdn_append realloc failed during decoding, whatever
-    * bytes we did accumulate in current_vdn are incomplete; drop
-    * the DN buffer and abandon this trust anchor. */
-   if (current_vdn_failed)
-   {
-      free(current_vdn);
-      return false;
-   }
-
    pk                       = br_x509_decoder_get_pkey(&dc);
    if (!pk || !br_x509_decoder_isCA(&dc))
-   {
-      /* Pre-existing leak: the original code returned here without
-       * freeing current_vdn.  Ownership had not yet been transferred
-       * to ta->dn.data, so the buffer was orphaned. */
-      free(current_vdn);
       return false;
-   }
 
    ta->dn.len               = current_vdn_size;
    ta->dn.data              = current_vdn;
@@ -127,38 +83,14 @@ static bool append_cert_x509(void* x509, size_t len)
          ta->pkey.key.rsa.n    = blobdup(pk->key.rsa.n, pk->key.rsa.nlen);
          ta->pkey.key.rsa.elen = pk->key.rsa.elen;
          ta->pkey.key.rsa.e    = blobdup(pk->key.rsa.e, pk->key.rsa.elen);
-         /* If either blobdup OOM'd, we cannot install a half-built
-          * trust anchor - BearSSL dereferences ta->pkey during
-          * every handshake against a cert that chains to this TA,
-          * and a NULL .n or .e is a crash. */
-         if (!ta->pkey.key.rsa.n || !ta->pkey.key.rsa.e)
-         {
-            free(ta->pkey.key.rsa.n);
-            free(ta->pkey.key.rsa.e);
-            free(current_vdn);
-            ta->pkey.key.rsa.n = NULL;
-            ta->pkey.key.rsa.e = NULL;
-            ta->dn.data        = NULL;
-            return false;
-         }
          break;
       case BR_KEYTYPE_EC:
          ta->pkey.key_type     = BR_KEYTYPE_EC;
          ta->pkey.key.ec.curve = pk->key.ec.curve;
          ta->pkey.key.ec.qlen  = pk->key.ec.qlen;
          ta->pkey.key.ec.q     = blobdup(pk->key.ec.q, pk->key.ec.qlen);
-         if (!ta->pkey.key.ec.q)
-         {
-            free(current_vdn);
-            ta->dn.data = NULL;
-            return false;
-         }
          break;
       default:
-         /* Pre-existing leak: same pattern as the '!pk || !isCA'
-          * early return above.  current_vdn was orphaned. */
-         free(current_vdn);
-         ta->dn.data = NULL;
          return false;
    }
 
@@ -166,26 +98,24 @@ static bool append_cert_x509(void* x509, size_t len)
    return true;
 }
 
-/* Compacts a PEM body in place, dropping every CR and LF, and
- * NUL-terminates the compacted run so strlen() yields the exact
- * number of base64 characters.  The input is not needed by the
- * caller afterwards, so in-place rewriting is fine. */
 static char* delete_linebreaks(char* in)
 {
    char* iter_in;
    char* iter_out;
-   while (*in == '\n' || *in == '\r')
+   while (*in == '\n')
       in++;
 
-   iter_in  = in;
-   iter_out = in;
+   iter_in = in;
+
+   while (*iter_in != '\n' && *iter_in != '\0')
+      iter_in++;
+   iter_out = iter_in;
    while (*iter_in != '\0')
    {
-      if (*iter_in != '\n' && *iter_in != '\r')
-         *iter_out++ = *iter_in;
-      iter_in++;
+      while (*iter_in == '\n')
+         iter_in++;
+      *iter_out++ = *iter_in++;
    }
-   *iter_out = '\0';
 
    return in;
 }
@@ -206,22 +136,13 @@ static void append_certs_pem_x509(char * certs_pem)
          break;
       cert     += STRLEN_CONST("-----BEGIN CERTIFICATE-----");
       cert_end  = strstr(cert, "-----END CERTIFICATE-----");
-      if (!cert_end)
-         break;
 
       *cert_end = '\0';
       cert      = delete_linebreaks(cert);
 
-      /* unbase64() requires an exact, 4-aligned length.  The compacted
-       * run is shorter than (cert_end - cert) by the number of line
-       * breaks removed, so measure it rather than reusing the span of
-       * the original wrapped body. */
-      cert_bin  = unbase64(cert, (int)strlen(cert), &cert_bin_len);
-      if (cert_bin)
-      {
-         append_cert_x509(cert_bin, cert_bin_len);
-         free(cert_bin);
-      }
+      cert_bin  = unbase64(cert, cert_end-cert, &cert_bin_len);
+      append_cert_x509(cert_bin, cert_bin_len);
+      free(cert_bin);
 
       cert_end++; /* skip the NUL we just added */
    }
@@ -240,26 +161,9 @@ static void initialize(void)
    free(certs_pem);
 }
 
-/* BearSSL's br_ssl_client_init_full (below) always performs full
- * verification and fails closed on a bad chain, which is the REQUIRED
- * policy. The OPTIONAL/DISABLED opt-out has no native BearSSL equivalent
- * (it would need a permissive end_chain X.509 vtable), so this backend
- * keeps verifying whatever mode is selected. */
-void ssl_socket_set_verify_mode(unsigned mode)
-{
-   (void)mode;
-}
-
 void* ssl_socket_init(int fd, const char *domain)
 {
    struct ssl_state *state = (struct ssl_state*)calloc(1, sizeof(*state));
-
-   /* NULL-check before any of the br_ssl_* calls below dereference
-    * state.  The pre-patch form segfaulted on OOM at the first
-    * br_ssl_client_init_full(&state->sc, ...) call.  Caller
-    * (net_http.c line 1030) already NULL-checks our return. */
-   if (!state)
-      return NULL;
 
    initialize();
 
@@ -312,14 +216,6 @@ static bool process_inner(struct ssl_state *state, bool blocking)
    return true;
 }
 
-int ssl_socket_last_error(void *state_data)
-{
-   struct ssl_state *state = (struct ssl_state*)state_data;
-   if (!state)
-      return 0;
-   return br_ssl_engine_last_error(&state->sc.eng);
-}
-
 int ssl_socket_connect(void *state_data,
       void *data, bool timeout_enable, bool nonblock)
 {
@@ -370,14 +266,9 @@ ssize_t ssl_socket_receive_all_nonblocking(void *state_data,
    bear_data = br_ssl_engine_recvapp_buf(&state->sc.eng, &__len);
    if (__len > len)
       __len = len;
-   /* recvapp_buf returns NULL when it has nothing; memcpy() declares
-    * its pointers nonnull even for a zero length, so the copy has to
-    * sit under the same guard as the ack. */
+   memcpy(data_, bear_data, __len);
    if (__len)
-   {
-      memcpy(data_, bear_data, __len);
       br_ssl_engine_recvapp_ack(&state->sc.eng, __len);
-   }
    return __len;
 }
 
@@ -396,13 +287,9 @@ int ssl_socket_receive_all_blocking(void *state_data,
       bear_data = br_ssl_engine_recvapp_buf(&state->sc.eng, &__len);
       if (__len > len)
          __len = len;
-      /* Same as the nonblocking path: bear_data is NULL when the
-       * engine has no plaintext ready, so only copy under the guard. */
+      memcpy(data, bear_data, __len);
       if (__len)
-      {
-         memcpy(data, bear_data, __len);
          br_ssl_engine_recvapp_ack(&state->sc.eng, __len);
-      }
       data += __len;
       len -= __len;
 
@@ -446,62 +333,26 @@ int ssl_socket_send_all_blocking(void *state_data,
    return 1;
 }
 
-/* Takes what fits in the engine's output buffer now and pushes what the
- * socket will take.  0 means the engine is full of records the socket
- * has not taken yet; ssl_socket_flush_nonblocking() moves them on. */
 ssize_t ssl_socket_send_all_nonblocking(void *state_data,
       const void *data_, size_t len, bool no_signal)
 {
    size_t __len;
    uint8_t *bear_data;
    struct ssl_state *state = (struct ssl_state*)state_data;
-   (void)no_signal;
 
-   if (br_ssl_engine_current_state(&state->sc.eng) == BR_SSL_CLOSED)
-      return -1;
    socket_set_block(state->fd, false);
-   /* Make room first: records already sealed go before new ones. */
-   if (!process_inner(state, false))
-      return -1;
    bear_data = br_ssl_engine_sendapp_buf(&state->sc.eng, &__len);
    if (__len > len)
       __len = len;
-   /* sendapp_buf returns NULL with nothing free; memcpy() declares its
-    * pointers nonnull even for a zero length. */
+   memcpy(bear_data, data_, __len);
    if (__len)
    {
-      memcpy(bear_data, data_, __len);
       br_ssl_engine_sendapp_ack(&state->sc.eng, __len);
       br_ssl_engine_flush(&state->sc.eng, false);
-      if (!process_inner(state, false))
-         return -1;
    }
-   return (ssize_t)__len;
-}
-
-int ssl_socket_flush_nonblocking(void *state_data)
-{
-   size_t buflen;
-   struct ssl_state *state = (struct ssl_state*)state_data;
-
-   if (br_ssl_engine_current_state(&state->sc.eng) == BR_SSL_CLOSED)
+   if (!process_inner(state, false))
       return -1;
-   socket_set_block(state->fd, false);
-   br_ssl_engine_flush(&state->sc.eng, false);
-   /* process_inner() sends at most one batch per call and stops when
-    * the socket does; loop while it makes progress. */
-   for (;;)
-   {
-      size_t before;
-      br_ssl_engine_sendrec_buf(&state->sc.eng, &before);
-      if (!before)
-         return 1;
-      if (!process_inner(state, false))
-         return -1;
-      br_ssl_engine_sendrec_buf(&state->sc.eng, &buflen);
-      if (buflen >= before)
-         return 0;
-   }
+   return __len;
 }
 
 void ssl_socket_close(void *state_data)

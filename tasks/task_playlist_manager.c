@@ -24,8 +24,7 @@
 #include <string/stdstring.h>
 #include <lists/string_list.h>
 #include <file/file_path.h>
-#include <formats/rm3u.h>
-#include <formats/rm3u_stream.h>
+#include <formats/m3u_file.h>
 
 #include "tasks_internal.h"
 
@@ -37,8 +36,6 @@
 enum pl_manager_status
 {
    PL_MANAGER_BEGIN = 0,
-   PL_MANAGER_PARSE_RESET_CORE,
-   PL_MANAGER_PARSE_VALIDATE,
    PL_MANAGER_ITERATE_ENTRY_RESET_CORE,
    PL_MANAGER_ITERATE_ENTRY_VALIDATE,
    PL_MANAGER_VALIDATE_END,
@@ -58,59 +55,8 @@ typedef struct pl_manager_handle
    size_t list_index;
    size_t m3u_index;
    playlist_config_t playlist_config; /* size_t alignment */
-   playlist_parse_t *parse;           /* in-flight playlist read */
    enum pl_manager_status status;
 } pl_manager_handle_t;
-
-/* Per-frame I/O window, consulted between batches of parse work.
- *
- * Loading the playlist used to be a single blocking playlist_init()
- * inside one handler invocation - tens of milliseconds of JSON for a
- * large collection, on the thread driving the frame loop whenever
- * Threaded Tasks is off, while the progress bar the user is watching
- * cannot repaint.  The rest of both handlers was already a per-entry
- * state machine; only the load was not. */
-static bool pl_manager_within_budget(void *ud)
-{
-   return task_nbio_slice_within_budget(ud, 0, 0);
-}
-
-/* Advance an in-flight parse under the shared window.
- * Returns 1 when the playlist is ready, 0 while it is still being
- * read, -1 on failure. */
-static int pl_manager_parse_step(pl_manager_handle_t *pl_manager)
-{
-   nbio_budget_t b;
-   int r;
-
-   task_nbio_slice_open(&b);
-   r = playlist_parse_step(pl_manager->parse,
-         pl_manager_within_budget, &b);
-   task_nbio_slice_close(&b);
-
-   if (r == 0)
-      return 0;
-
-   if (r < 0)
-   {
-      playlist_parse_abort(pl_manager->parse);
-      pl_manager->parse = NULL;
-      return -1;
-   }
-
-   pl_manager->playlist   = playlist_parse_end(pl_manager->parse);
-   pl_manager->parse      = NULL;
-
-   if (!pl_manager->playlist)
-      return -1;
-
-   pl_manager->list_size  = playlist_size(pl_manager->playlist);
-
-   if (pl_manager->list_size < 1)
-      return -1;
-
-   return 1;
-}
 
 /*********************/
 /* Utility Functions */
@@ -127,19 +73,10 @@ static void free_pl_manager_handle(pl_manager_handle_t *pl_manager)
       pl_manager->m3u_list = NULL;
    }
 
-   if (pl_manager->playlist_name && *pl_manager->playlist_name)
+   if (!string_is_empty(pl_manager->playlist_name))
    {
       free(pl_manager->playlist_name);
       pl_manager->playlist_name = NULL;
-   }
-
-   /* A parse abandoned part way - the task was cancelled while the
-    * playlist was still being read - owns both the handle and the
-    * partially built playlist. */
-   if (pl_manager->parse)
-   {
-      playlist_parse_abort(pl_manager->parse);
-      pl_manager->parse = NULL;
    }
 
    if (pl_manager->playlist)
@@ -235,21 +172,18 @@ static void task_pl_manager_reset_cores_handler(retro_task_t *task)
          if (!path_is_valid(pl_manager->playlist_config.path))
             goto task_finished;
 
-         if (!(pl_manager->parse = playlist_parse_begin(
-               &pl_manager->playlist_config)))
+         pl_manager->playlist = playlist_init(&pl_manager->playlist_config);
+
+         if (!pl_manager->playlist)
             goto task_finished;
 
-         pl_manager->status = PL_MANAGER_PARSE_RESET_CORE;
-         break;
-      case PL_MANAGER_PARSE_RESET_CORE:
-         {
-            int r = pl_manager_parse_step(pl_manager);
-            if (r < 0)
-               goto task_finished;
-            if (r > 0)
-               /* All good - can start iterating */
-               pl_manager->status = PL_MANAGER_ITERATE_ENTRY_RESET_CORE;
-         }
+         pl_manager->list_size = playlist_size(pl_manager->playlist);
+
+         if (pl_manager->list_size < 1)
+            goto task_finished;
+
+         /* All good - can start iterating */
+         pl_manager->status = PL_MANAGER_ITERATE_ENTRY_RESET_CORE;
          break;
       case PL_MANAGER_ITERATE_ENTRY_RESET_CORE:
          {
@@ -270,9 +204,9 @@ static void task_pl_manager_reset_cores_handler(retro_task_t *task)
                      msg_hash_to_str(MSG_PLAYLIST_MANAGER_RESETTING_CORES),
                      sizeof(task_title));
 
-               if (entry->label && *entry->label)
+               if (!string_is_empty(entry->label))
                   strlcpy(task_title + _len, entry->label, sizeof(task_title) - _len);
-               else if (entry->path && *entry->path)
+               else if (!string_is_empty(entry->path))
                   fill_pathname(task_title + _len, path_basename(entry->path), "",
                         sizeof(task_title) - _len);
 
@@ -351,14 +285,16 @@ bool task_push_pl_manager_reset_cores(const playlist_config_t *playlist_config)
    pl_manager_handle_t *pl_manager = (pl_manager_handle_t*)
       calloc(1, sizeof(pl_manager_handle_t));
    /* Sanity check */
-   if (!playlist_config || !task || !pl_manager || !*playlist_config->path)
+   if (!playlist_config || !task || !pl_manager)
+      goto error;
+   if (string_is_empty(playlist_config->path))
       goto error;
 
    fill_pathname(playlist_name,
          path_basename(playlist_config->path), "",
          sizeof(playlist_name));
 
-   if (!*playlist_name)
+   if (string_is_empty(playlist_name))
       goto error;
 
    /* Concurrent management of the same playlist
@@ -431,19 +367,19 @@ static void pl_manager_validate_core_association(
    if (entry_index >= playlist_size(playlist))
       return;
 
-   if (!core_path || !*core_path)
+   if (string_is_empty(core_path))
       goto reset_core;
 
    /* Handle 'DETECT' entries */
-   if (memcmp(core_path, "DETECT", 7) == 0)
+   if (string_is_equal(core_path, "DETECT"))
    {
-      if (memcmp(core_name, "DETECT", 7) != 0)
+      if (!string_is_equal(core_name, "DETECT"))
          goto reset_core;
    }
    /* Handle 'builtin' entries */
-   else if (memcmp(core_path, "builtin", 8) == 0)
+   else if (string_is_equal(core_path, "builtin"))
    {
-      if (!core_name || !*core_name)
+      if (string_is_empty(core_name))
          goto reset_core;
    }
    /* Handle file path entries */
@@ -456,7 +392,7 @@ static void pl_manager_validate_core_association(
 
       /* Search core info */
       if (    core_info_find(core_path, &core_info)
-          && (core_info->display_name && *core_info->display_name))
+          && !string_is_empty(core_info->display_name))
          strlcpy(core_display_name, core_info->display_name,
                sizeof(core_display_name));
       else
@@ -464,7 +400,7 @@ static void pl_manager_validate_core_association(
 
       /* If core_display_name string is empty, it means the
        * core wasn't found -> reset association */
-      if (!*core_display_name)
+      if (string_is_empty(core_display_name))
          goto reset_core;
 
       /* ...Otherwise, check that playlist entry
@@ -513,21 +449,18 @@ static void task_pl_manager_clean_playlist_handler(retro_task_t *task)
             if (!path_is_valid(pl_manager->playlist_config.path))
                goto task_finished;
 
-            if (!(pl_manager->parse = playlist_parse_begin(
-                  &pl_manager->playlist_config)))
+            pl_manager->playlist = playlist_init(&pl_manager->playlist_config);
+
+            if (!pl_manager->playlist)
                goto task_finished;
 
-            pl_manager->status = PL_MANAGER_PARSE_VALIDATE;
-         }
-         break;
-      case PL_MANAGER_PARSE_VALIDATE:
-         {
-            int r = pl_manager_parse_step(pl_manager);
-            if (r < 0)
+            pl_manager->list_size = playlist_size(pl_manager->playlist);
+
+            if (pl_manager->list_size < 1)
                goto task_finished;
-            if (r > 0)
-               /* All good - can start iterating */
-               pl_manager->status = PL_MANAGER_ITERATE_ENTRY_VALIDATE;
+
+            /* All good - can start iterating */
+            pl_manager->status = PL_MANAGER_ITERATE_ENTRY_VALIDATE;
          }
          break;
       case PL_MANAGER_ITERATE_ENTRY_VALIDATE:
@@ -653,7 +586,7 @@ static void task_pl_manager_clean_playlist_handler(retro_task_t *task)
             {
                /* If this is an M3U file, add it to the
                 * M3U list for later processing */
-               if (rm3u_is_m3u_filestream(entry->path))
+               if (m3u_file_is_m3u(entry->path))
                {
                   union string_list_elem_attr attr;
                   attr.i = 0;
@@ -684,33 +617,33 @@ static void task_pl_manager_clean_playlist_handler(retro_task_t *task)
             const char *m3u_path =
                   pl_manager->m3u_list->elems[pl_manager->m3u_index].data;
 
-            if (m3u_path && *m3u_path)
+            if (!string_is_empty(m3u_path))
             {
-               rm3u_t *m3u = NULL;
+               m3u_file_t *m3u_file = NULL;
 
                /* Update progress display */
                task_set_progress(task, (pl_manager->m3u_index * 100) / pl_manager->m3u_list->size);
 
                /* Load M3U file */
-               m3u = rm3u_load_filestream(m3u_path);
+               m3u_file = m3u_file_init(m3u_path);
 
-               if (m3u)
+               if (m3u_file)
                {
                   size_t i;
 
                   /* Loop over M3U entries */
-                  for (i = 0; i < rm3u_get_size(m3u); i++)
+                  for (i = 0; i < m3u_file_get_size(m3u_file); i++)
                   {
-                     rm3u_entry_t *m3u_entry = NULL;
+                     m3u_file_entry_t *m3u_entry = NULL;
 
                      /* Delete any playlist items matching the
                       * content path of the M3U entry */
-                     if (rm3u_get_entry(m3u, i, &m3u_entry))
+                     if (m3u_file_get_entry(m3u_file, i, &m3u_entry))
                         playlist_delete_by_path(
                               pl_manager->playlist, m3u_entry->full_path);
                   }
 
-                  rm3u_free(m3u);
+                  m3u_file_free(m3u_file);
                }
             }
 
@@ -797,14 +730,16 @@ bool task_push_pl_manager_clean_playlist(
    pl_manager_handle_t *pl_manager = (pl_manager_handle_t*)
       calloc(1, sizeof(pl_manager_handle_t));
    /* Sanity check */
-   if (!playlist_config || !task || !pl_manager || !*playlist_config->path)
+   if (!playlist_config || !task || !pl_manager)
+      goto error;
+   if (string_is_empty(playlist_config->path))
       goto error;
 
    fill_pathname(playlist_name,
          path_basename(playlist_config->path), "",
          sizeof(playlist_name));
 
-   if (!*playlist_name)
+   if (string_is_empty(playlist_name))
       goto error;
 
    /* Concurrent management of the same playlist

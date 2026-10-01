@@ -134,20 +134,20 @@ static gfx_ctx_proc_t gfx_ctx_uwp_get_proc_address(const char* symbol)
 
 static void gfx_ctx_uwp_swap_buffers(void *data) { egl_swap_buffers(&uwp_egl); }
 
-static bool gfx_ctx_uwp_set_resize(void *data, unsigned dims) { return false; }
+static bool gfx_ctx_uwp_set_resize(void *data,
+      unsigned width, unsigned height) { return false; }
 
 static void gfx_ctx_uwp_get_video_size(void *data,
-      unsigned *dims)
+      unsigned *width, unsigned *height)
 {
-   bool quit          = false;
-   bool resize        = false;
-   unsigned win_dims  = 0;
-   win32_check_window(NULL, &quit, &resize, &win_dims);
-   *dims              = win_dims;
+   bool quit   = false;
+   bool resize = false;
+   win32_check_window(NULL, &quit, &resize, width, height);
    if (is_running_on_xbox())
    {
       /* Match the output res to the display resolution */
-      *dims = VIDEO_SCALE_PACK(uwp_get_width(), uwp_get_height());
+      width    = uwp_get_width();
+      height   = uwp_get_height();
    }
 }
 
@@ -180,12 +180,12 @@ static void gfx_ctx_uwp_destroy(void *data)
 }
 
 static bool gfx_ctx_uwp_set_video_mode(void *data,
-      unsigned dims,
+      unsigned width, unsigned height,
       bool fullscreen)
 {
    gfx_ctx_uwp_data_t *uwp = (gfx_ctx_uwp_data_t*)data;
 
-   if (!win32_set_video_mode(NULL, dims, fullscreen))
+   if (!win32_set_video_mode(NULL, width, height, fullscreen))
    {
       RARCH_ERR("[UWP EGL] win32_set_video_mode failed.\n");
    }
@@ -283,7 +283,7 @@ const gfx_ctx_driver_t gfx_ctx_uwp = {
    NULL, /* get video output size */
    NULL, /* get video output prev */
    NULL, /* get video output next */
-   NULL, /* metrics - handled by display server */
+   win32_get_metrics,
    NULL,
    NULL, /* update title */
    win32_check_window,

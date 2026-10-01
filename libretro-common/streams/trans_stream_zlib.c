@@ -24,13 +24,13 @@
 #include <string.h>
 
 #include <zlib.h>
+#include <string/stdstring.h>
 #include <streams/trans_stream.h>
 
 struct zlib_trans_stream
 {
    z_stream z;
    int window_bits;
-   int strategy;
    int level;
    bool inited;
 };
@@ -44,7 +44,6 @@ static void *zlib_deflate_stream_new(void)
    ret->inited      = false;
    ret->level       = 9;
    ret->window_bits = 15;
-   ret->strategy    = Z_DEFAULT_STRATEGY;
 
    ret->z.next_in   = NULL;
    ret->z.avail_in  = 0;
@@ -74,7 +73,6 @@ static void *zlib_inflate_stream_new(void)
       return NULL;
    ret->inited      = false;
    ret->window_bits = MAX_WBITS;
-   ret->strategy    = Z_DEFAULT_STRATEGY;
 
    ret->z.next_in   = NULL;
    ret->z.avail_in  = 0;
@@ -123,11 +121,9 @@ static bool zlib_deflate_define(void *data, const char *prop, uint32_t val)
    if (!data)
       return false;
 
-   if (strcmp(prop, "level") == 0)
+   if (string_is_equal(prop, "level"))
       z->level = (int) val;
-   else if (strcmp(prop, "strategy") == 0)
-      z->strategy = (int) val;
-   else if (strcmp(prop, "window_bits") == 0)
+   else if (string_is_equal(prop, "window_bits"))
       z->window_bits = (int) val;
    else
       return false;
@@ -141,7 +137,7 @@ static bool zlib_inflate_define(void *data, const char *prop, uint32_t val)
    if (!data)
       return false;
 
-   if (strcmp(prop, "window_bits") == 0)
+   if (string_is_equal(prop, "window_bits"))
    {
       z->window_bits = (int) val;
       return true;
@@ -161,7 +157,7 @@ static void zlib_deflate_set_in(void *data, const uint8_t *in, uint32_t in_size)
 
    if (!z->inited)
    {
-      deflateInit2(&z->z, z->level, Z_DEFLATED , z->window_bits, 8,  z->strategy );
+      deflateInit2(&z->z, z->level, Z_DEFLATED , z->window_bits, 8,  Z_DEFAULT_STRATEGY );
       z->inited = true;
    }
 }
@@ -207,7 +203,7 @@ static bool zlib_deflate_trans(
 
    if (!zt->inited)
    {
-      deflateInit2(z, zt->level, Z_DEFLATED , zt->window_bits, 8,  zt->strategy );
+      deflateInit2(z, zt->level, Z_DEFLATED , zt->window_bits, 8,  Z_DEFAULT_STRATEGY );
       zt->inited = true;
    }
 

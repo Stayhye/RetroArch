@@ -16,17 +16,10 @@
 
 #define ALSA_PCM_NEW_HW_PARAMS_API
 #define ALSA_PCM_NEW_SW_PARAMS_API
-#include <errno.h>
-#include <stdlib.h>
-#include <string.h>
-
-#include <retro_atomic.h>
-
 #include <sys/asoundlib.h>
 #include <retro_math.h>
 
 #include "../audio_driver.h"
-#include "../../verbosity.h"
 
 #define MAX_FRAG_SIZE 3072
 #define DEFAULT_RATE 48000
@@ -40,16 +33,10 @@ typedef struct alsa
    uint8_t *buffer_chunk;
    unsigned buffer_index;
    unsigned buffer_ptr;
+   volatile unsigned buffered_blocks;
 
    unsigned buf_size;
    unsigned buf_count;
-   unsigned rate;
-   /* Times the device reported it had run out of audio. Counted where
-    * the status says so, on the write path, which is why it is counted
-    * and not said: a log line there costs part of the margin it is
-    * reporting on. The frontend shows it and logs the total once at
-    * teardown. */
-   retro_atomic_size_t underruns;
    bool nonblock;
    bool has_float;
    bool can_pause;
@@ -59,7 +46,7 @@ typedef struct alsa
 typedef long snd_pcm_sframes_t;
 
 static void *alsa_qsa_init(const char *device,
-      unsigned rate, unsigned latency, 
+      unsigned rate, unsigned latency, unsigned block_frames,
       unsigned *new_rate)
 {
    int err, card, dev, i;
@@ -71,6 +58,8 @@ static void *alsa_qsa_init(const char *device,
       return NULL;
 
    (void)device;
+   (void)rate;
+   (void)latency;
 
    if ((err = snd_pcm_open_preferred(&alsa->pcm, &card, &dev,
                SND_PCM_OPEN_PLAYBACK)) < 0)
@@ -103,11 +92,8 @@ static void *alsa_qsa_init(const char *device,
 
    params.format.interleave = 1;
    params.format.format     = SND_PCM_SFMT_S16_LE;
-   /* The rate the frontend asked for, not a fixed one: a core at
-    * 44.1 kHz was played out at 48 and nothing was told, so the
-    * pitch was off by a tenth for the whole session. */
-   params.format.rate       = rate ? rate : DEFAULT_RATE;
-   params.format.voices     = CHANNELS;
+   params.format.rate       = DEFAULT_RATE;
+   params.format.voices     = 2;
 
    params.start_mode = SND_PCM_START_FULL;
    params.stop_mode  = SND_PCM_STOP_STOP;
@@ -136,31 +122,15 @@ static void *alsa_qsa_init(const char *device,
       goto error;
    }
 
-   /* What the device settled on. The rate it took is the rate the
-    * frontend must resample to; it is reported through new_rate,
-    * which is how every other driver says so. */
-   alsa->rate = params.format.rate;
-   if (new_rate)
-      *new_rate = alsa->rate;
+   if (block_frames)
+      alsa->buf_size = block_frames * 4;
+   else
+      alsa->buf_size = next_pow2(32 * latency);
 
-   /* QNX reports no transfer granularity, so there is nothing for a
-    * block size to be rounded to and the block follows the latency.
-    * It used to take block_frames * 4 - a number a user set for an
-    * Android device's burst, applied here to a different platform. */
-   alsa->buf_size = next_pow2(32 * latency);
-   if (!alsa->buf_size)
-      alsa->buf_size = 256;
+   RARCH_LOG("[ALSA QSA] Buffer size: %u bytes.\n", alsa->buf_size);
 
-   alsa->buf_count = (latency * 4 * alsa->rate + 500) / 1000;
+   alsa->buf_count = (latency * 4 * rate + 500) / 1000;
    alsa->buf_count = (alsa->buf_count + alsa->buf_size / 2) / alsa->buf_size;
-   /* Two at least: the write hands one block to the device and fills
-    * the next, and a count of zero made the allocations below empty
-    * and every write index a read past them. */
-   if (alsa->buf_count < 2)
-      alsa->buf_count = 2;
-
-   RARCH_LOG("[ALSA QSA] Buffer: %u blocks of %u bytes at %u Hz.\n",
-         alsa->buf_count, alsa->buf_size, alsa->rate);
 
    if ((err = snd_pcm_channel_prepare(alsa->pcm,
                SND_PCM_CHANNEL_PLAYBACK)) < 0)
@@ -182,7 +152,6 @@ static void *alsa_qsa_init(const char *device,
       alsa->buffer[i] = alsa->buffer_chunk + i * alsa->buf_size;
 
    alsa->has_float = false;
-   retro_atomic_size_init(&alsa->underruns, 0);
    alsa->can_pause = true;
    RARCH_LOG("[ALSA QSA] Can pause: %s.\n",
          alsa->can_pause ? "yes" : "no");
@@ -190,15 +159,7 @@ static void *alsa_qsa_init(const char *device,
    return alsa;
 
 error:
-   /* NULL, because that is what the frontend tests for. (void*)-1 was
-    * read as a live driver, and the first write dereferenced it. The
-    * device and the allocation went with it, one per failed init. */
-   if (alsa->pcm)
-      snd_pcm_close(alsa->pcm);
-   free(alsa->buffer);
-   free(alsa->buffer_chunk);
-   free(alsa);
-   return NULL;
+   return (void*)-1;
 }
 
 static int check_pcm_status(void *data, int channel_type)
@@ -219,7 +180,7 @@ static int check_pcm_status(void *data, int channel_type)
       }
       else if (status.status == SND_PCM_STATUS_UNDERRUN)
       {
-         retro_atomic_fetch_add_size(&alsa->underruns, 1);
+         RARCH_LOG("[ALSA QSA] check_pcm_status: SNDP_CM_STATUS_UNDERRUN.\n");
          if ((ret = snd_pcm_channel_prepare(alsa->pcm, channel_type)) < 0)
          {
             RARCH_ERR("[ALSA QSA] Invalid state detected for underrun on snd_pcm_channel_prepare: %s.\n",
@@ -258,20 +219,12 @@ static int check_pcm_status(void *data, int channel_type)
    return ret;
 }
 
-/* How many times a blocking write retries a device that says it is
- * full before giving up and reporting what went. A device that has
- * stopped draining - stopped, or gone - would otherwise hold the
- * calling thread for ever, and the caller can do something with a
- * short write. */
-#define QSA_WRITE_RETRIES 128
-
 static ssize_t alsa_qsa_write(void *data, const void *buf, size_t len)
 {
    ssize_t _len = 0;
-   unsigned retries = 0;
    alsa_qsa_t *alsa = (alsa_qsa_t*)data;
 
-   while (len)
+   while (size)
    {
       size_t avail_write = MIN(alsa->buf_size - alsa->buffer_ptr, len);
 
@@ -291,45 +244,21 @@ static ssize_t alsa_qsa_write(void *data, const void *buf, size_t len)
          snd_pcm_sframes_t frames = snd_pcm_write(alsa->pcm,
                alsa->buffer[alsa->buffer_index], alsa->buf_size);
 
+         alsa->buffer_index = (alsa->buffer_index + 1) % alsa->buf_count;
+         alsa->buffer_ptr   = 0;
+
          if (frames <= 0)
          {
             int ret;
 
-            /* The device is full. The block stays where it is - it is
-             * written again on the next call - and the caller is told
-             * how much was taken, which is what a non-blocking write
-             * means. It used to advance the index and clear the
-             * pointer here, which threw the block away and reported
-             * it as written: silent dropouts on every full device,
-             * and in blocking mode a spin that dropped a block a
-             * turn until the caller's length ran out. */
-            /* Bytes taken from the caller are those copied into the
-             * staging; a block staged and not yet given to the device
-             * was taken on this call or an earlier one either way, and
-             * goes out on the next. So the count is _len, and a call
-             * that finds the staging already full and the device
-             * refusing takes nothing and says so. */
             if (frames == -EAGAIN)
-            {
-               if (alsa->nonblock || ++retries > QSA_WRITE_RETRIES)
-                  return _len;
                continue;
-            }
 
             ret = check_pcm_status(alsa, SND_PCM_CHANNEL_PLAYBACK);
 
             if (ret == -EPROTO || ret == -EBADF)
                return -1;
-            if (++retries > QSA_WRITE_RETRIES)
-               return _len;
-            /* Prepared again after an underrun: the block goes out
-             * on the next turn of the loop. */
-            continue;
          }
-
-         alsa->buffer_index = (alsa->buffer_index + 1) % alsa->buf_count;
-         alsa->buffer_ptr   = 0;
-         retries            = 0;
       }
    }
 
@@ -419,26 +348,19 @@ static void alsa_qsa_free(void *data)
    }
 }
 
-/* Room in the driver's own staging, which is what it can take now
- * without waiting on the device. buffered_blocks counted blocks a
- * thread had yet to write and there is no such thread - it was never
- * assigned, so this reported a constant. */
 static size_t alsa_qsa_write_avail(void *data)
 {
    alsa_qsa_t *alsa = (alsa_qsa_t*)data;
-   return alsa->buf_size - alsa->buffer_ptr;
+   size_t avail = (alsa->buf_count -
+         (int)alsa->buffered_blocks - 1) * alsa->buf_size +
+      (alsa->buf_size - (int)alsa->buffer_ptr);
+   return avail;
 }
 
 static size_t alsa_qsa_buffer_size(void *data)
 {
    alsa_qsa_t *alsa = (alsa_qsa_t*)data;
    return alsa->buf_size * alsa->buf_count;
-}
-
-static size_t alsa_qsa_underruns(void *data)
-{
-   alsa_qsa_t *alsa = (alsa_qsa_t*)data;
-   return alsa ? retro_atomic_load_acquire_size(&alsa->underruns) : 0;
 }
 
 audio_driver_t audio_alsa = {
@@ -455,8 +377,5 @@ audio_driver_t audio_alsa = {
    NULL,
    alsa_qsa_write_avail,
    alsa_qsa_buffer_size,
-   NULL, /* write_raw */
-   NULL, /* wait_writable */
-   NULL, /* frames_consumed */
-   alsa_qsa_underruns
+   NULL /* write_raw */
 };

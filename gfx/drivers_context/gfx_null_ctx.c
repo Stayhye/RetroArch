@@ -19,20 +19,22 @@
 #include "../../retroarch.h"
 
 static void gfx_ctx_null_get_video_size(
-      void *data, unsigned *dims)
+      void *data, unsigned *width, unsigned *height)
 {
 #ifdef VITA
-   *dims = VIDEO_SCALE_PACK(960, 544);
+   *width  = 960;
+   *height = 544;
 #else
-   *dims = VIDEO_SCALE_PACK(320, 240);
+   *width  = 320;
+   *height = 240;
 #endif
 }
 
 static void gfx_ctx_null_swap_interval(void *data, int interval) { }
 static void gfx_ctx_null_check_window(void *data, bool *quit,
-      bool *resize, unsigned *dims) { }
+      bool *resize, unsigned *width, unsigned *height) { }
 static bool gfx_ctx_null_set_video_mode(void *data,
-      unsigned dims,
+      unsigned width, unsigned height,
       bool fullscreen) { return true; }
 static void gfx_ctx_null_destroy(void *data) { }
 static void gfx_ctx_null_input_driver(void *data,

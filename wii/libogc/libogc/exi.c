@@ -155,7 +155,7 @@ static s32 __exi_probe(s32 nChn)
 {
 	u64 time;
 	s32 ret = 1;
-	u32 level = 0;
+	u32 level;
 	u32 val;
 	exibus_priv *exi = &eximap[nChn];
 	_CPU_ISR_Disable(level);
@@ -193,7 +193,7 @@ static s32 __exi_probe(s32 nChn)
 static s32 __exi_attach(s32 nChn,EXICallback ext_cb)
 {
 	s32 ret;
-	u32 level = 0;
+	u32 level;
 	exibus_priv *exi = &eximap[nChn];
 	_CPU_ISR_Disable(level);
 	ret = 0;
@@ -212,7 +212,7 @@ static s32 __exi_attach(s32 nChn,EXICallback ext_cb)
 
 s32 EXI_Lock(s32 nChn,s32 nDev,EXICallback unlockCB)
 {
-	u32 level = 0;
+	u32 level;
 	struct _lck_dev *lckd;
 	exibus_priv *exi = &eximap[nChn];
 	_CPU_ISR_Disable(level);
@@ -241,8 +241,7 @@ s32 EXI_Lock(s32 nChn,s32 nDev,EXICallback unlockCB)
 
 s32 EXI_Unlock(s32 nChn)
 {
-	u32 dev;
-	u32 level = 0;
+	u32 level,dev;
 	EXICallback cb;
 	struct _lck_dev *lckd;
 	exibus_priv *exi = &eximap[nChn];
@@ -276,7 +275,7 @@ s32 EXI_Unlock(s32 nChn)
 s32 EXI_Select(s32 nChn,s32 nDev,s32 nFrq)
 {
 	u32 val;
-	u32 level = 0;
+	u32 level;
 	exibus_priv *exi = &eximap[nChn];
 	_CPU_ISR_Disable(level);
 
@@ -316,7 +315,7 @@ s32 EXI_SelectSD(s32 nChn,s32 nDev,s32 nFrq)
 {
 	u32 val,id;
 	s32 ret;
-	u32 level = 0;
+	u32 level;
 	exibus_priv *exi = &eximap[nChn];
 	_CPU_ISR_Disable(level);
 
@@ -358,7 +357,7 @@ s32 EXI_SelectSD(s32 nChn,s32 nDev,s32 nFrq)
 s32 EXI_Deselect(s32 nChn)
 {
 	u32 val;
-	u32 level = 0;
+	u32 level;
 	exibus_priv *exi = &eximap[nChn];
 	_CPU_ISR_Disable(level);
 
@@ -390,8 +389,7 @@ s32 EXI_Sync(s32 nChn)
 {
 	u8 *buf;
 	s32 ret;
-	u32 i, cnt, val;
-	u32 level = 0;
+	u32 level,i,cnt,val;
 	exibus_priv *exi = &eximap[nChn];
 	while(_exiReg[nChn*5+3]&0x0001);
 
@@ -416,7 +414,7 @@ s32 EXI_Sync(s32 nChn)
 
 s32 EXI_Imm(s32 nChn,void *pData,u32 nLen,u32 nMode,EXICallback tc_cb)
 {
-	u32 level = 0;
+	u32 level;
 	u32 value,i;
 	exibus_priv *exi = &eximap[nChn];
 	_CPU_ISR_Disable(level);
@@ -469,7 +467,7 @@ s32 EXI_ImmEx(s32 nChn,void *pData,u32 nLen,u32 nMode)
 
 s32 EXI_Dma(s32 nChn,void *pData,u32 nLen,u32 nMode,EXICallback tc_cb)
 {
-	u32 level = 0;
+	u32 level;
 	exibus_priv *exi = &eximap[nChn];
 	_CPU_ISR_Disable(level);
 
@@ -512,8 +510,7 @@ s32 EXI_GetID(s32 nChn,s32 nDev,u32 *nId)
 {
 	u64 idtime = 0;
 	s32 ret,lck;
-	u32 reg;
-	u32 level = 0;
+	u32 reg,level;
 	exibus_priv *exi = &eximap[nChn];
 
 	if(nChn<EXI_CHANNEL_2 && nDev==EXI_DEVICE_0) {
@@ -561,7 +558,7 @@ s32 EXI_GetID(s32 nChn,s32 nDev,u32 *nId)
 s32 EXI_Attach(s32 nChn,EXICallback ext_cb)
 {
 	s32 ret;
-	u32 level = 0;
+	u32 level;
 	exibus_priv *exi = &eximap[nChn];
 	EXI_Probe(nChn);
 
@@ -576,7 +573,7 @@ s32 EXI_Attach(s32 nChn,EXICallback ext_cb)
 
 s32 EXI_Detach(s32 nChn)
 {
-	u32 level = 0;
+	u32 level;
 	s32 ret = 1;
 	exibus_priv *exi = &eximap[nChn];
 	_CPU_ISR_Disable(level);
@@ -593,7 +590,7 @@ s32 EXI_Detach(s32 nChn)
 
 EXICallback EXI_RegisterEXICallback(s32 nChn,EXICallback exi_cb)
 {
-	u32 level = 0;
+	u32 level;
 	EXICallback old = NULL;
 	exibus_priv *exi = &eximap[nChn];
 	_CPU_ISR_Disable(level);

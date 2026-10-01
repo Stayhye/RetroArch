@@ -176,12 +176,9 @@ get_all_cores
 appstore_cores=(
     2048
     a5200
-    amiarcadia
     anarch
-    applewin
     ardens
     atari800
-    azahar
     b2
     #blastem
     bluemsx
@@ -211,7 +208,6 @@ appstore_cores=(
     gearboy
     gearcoleco
     geargrafx
-    gearlynx
     gearsystem
     genesis_plus_gx
     genesis_plus_gx_wide
@@ -221,7 +217,6 @@ appstore_cores=(
     gw
     handy
     holani
-    jollycv
     kronos
     mednafen_ngp
     mednafen_pce
@@ -241,17 +236,14 @@ appstore_cores=(
     mrboom
     mu
     mupen64plus_next
-    native32emu
     neocd
     nestopia
     noods
     np2kai
     numero
     nxengine
-    o2em
     opera
     pcsx_rearmed
-    pd777
     picodrive
     #play
     pocketcdg
@@ -265,11 +257,9 @@ appstore_cores=(
     quicknes
     race
     reminiscence
-    rustynes
     sameboy
     sameduck
     scummvm
-    skyemu
     smsplus
     snes9x
     snes9x2005
@@ -279,10 +269,8 @@ appstore_cores=(
     stella2023
     tgbdual
     theodore
-    tia
     tic80
     tyrquake
-    uzem
     vba_next
     vbam
     vecx

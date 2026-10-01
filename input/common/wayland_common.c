@@ -36,7 +36,6 @@
 #include "wayland_common.h"
 
 #include "../input_keymaps.h"
-#include "wayland_cursor.h"
 #include "../../frontend/frontend_driver.h"
 #include "../../verbosity.h"
 
@@ -91,7 +90,6 @@ static void wl_keyboard_handle_leave(void *data,
    memset(wl->input.key_state, 0, sizeof(wl->input.key_state));
 }
 
-#ifndef WEBOS
 static void wl_keyboard_handle_key(void *data,
       struct wl_keyboard *keyboard,
       uint32_t serial,
@@ -135,7 +133,6 @@ static void wl_keyboard_handle_key(void *data,
          input_keymaps_translate_keysym_to_rk(keysym),
          0, 0, RETRO_DEVICE_KEYBOARD);
 }
-#endif
 
 static void wl_keyboard_handle_modifiers(void *data,
       struct wl_keyboard *keyboard,
@@ -159,62 +156,30 @@ static void wl_keyboard_handle_repeat_info(void *data,
     * repeat working. We'll have to do it on our own. */
 }
 
-void gfx_ctx_wl_cursor_load(gfx_ctx_wayland_data_t *wl)
-{
-   struct wl_cursor_theme *theme;
-   unsigned scale = wl_cursor_scale(wl->fractional_scale != NULL,
-         wl->buffer_scale, wl->fractional_scale_num,
-            wl->cursor.surface
-         && wl_surface_get_version(wl->cursor.surface)
-            >= WL_SURFACE_SET_BUFFER_SCALE_SINCE_VERSION);
-
-   if ((wl->cursor.theme && wl->cursor.scale == scale) || !wl->shm)
-      return;
-
-   if (!(theme = wl_cursor_theme_load(getenv("XCURSOR_THEME"),
-               wl_cursor_size(getenv("XCURSOR_SIZE")) * scale, wl->shm)))
-      return;
-
-   if (wl->cursor.theme)
-      wl_cursor_theme_destroy(wl->cursor.theme);
-   wl->cursor.theme          = theme;
-   wl->cursor.default_cursor = wl_cursor_theme_get_cursor(theme, "left_ptr");
-   wl->cursor.scale          = scale;
-}
-
 void gfx_ctx_wl_show_mouse(void *data, bool state)
 {
    gfx_ctx_wayland_data_t *wl = (gfx_ctx_wayland_data_t*)data;
    if (!wl->wl_pointer)
       return;
 
-   if (!state)
-      wl_pointer_set_cursor(wl->wl_pointer, wl->cursor.serial, NULL, 0, 0);
-   else if (wl->cursor_shape_device)
-      wp_cursor_shape_device_v1_set_shape(
-         wl->cursor_shape_device, wl->cursor.serial, WP_CURSOR_SHAPE_DEVICE_V1_SHAPE_DEFAULT);
-   else
-   {
-      /* No cursor-shape-v1: the theme is ours to draw, at the scale the
-       * surface is on now. */
-      gfx_ctx_wl_cursor_load(wl);
-      if (wl->cursor.default_cursor)
+   if (state)
+      if (wl->cursor_shape_device)
+         wp_cursor_shape_device_v1_set_shape(
+            wl->cursor_shape_device, wl->cursor.serial, WP_CURSOR_SHAPE_DEVICE_V1_SHAPE_DEFAULT);
+      else
       {
          struct wl_cursor_image *image = wl->cursor.default_cursor->images[0];
-         int scale                     = (int)wl->cursor.scale;
          wl_pointer_set_cursor(wl->wl_pointer,
                wl->cursor.serial, wl->cursor.surface,
-               image->hotspot_x / scale, image->hotspot_y / scale);
+               image->hotspot_x, image->hotspot_y);
          wl_surface_attach(wl->cursor.surface,
                wl_cursor_image_get_buffer(image), 0, 0);
-         if (     wl_surface_get_version(wl->cursor.surface)
-               >= WL_SURFACE_SET_BUFFER_SCALE_SINCE_VERSION)
-            wl_surface_set_buffer_scale(wl->cursor.surface, scale);
-         wl_surface_damage(wl->cursor.surface, 0, 0,
-               image->width / scale, image->height / scale);
+         wl_surface_damage(wl->cursor.surface, 0, 0, image->width, image->height);
          wl_surface_commit(wl->cursor.surface);
+
       }
-   }
+   else
+      wl_pointer_set_cursor(wl->wl_pointer, wl->cursor.serial, NULL, 0, 0);
 
    wl->cursor.visible = state;
 }
@@ -630,14 +595,6 @@ static bool wl_current_outputs_add(gfx_ctx_wayland_data_t *wl,
    {
       surface_output_t *os = (surface_output_t*)
          calloc(1, sizeof(surface_output_t));
-      /* NULL-check: the field writes below NULL-deref on OOM.
-       * Skip this output from the current_outputs list; the
-       * subsequent wl_list_for_each traversal in
-       * wl_current_outputs_remove handles a missing entry
-       * gracefully (the loop simply doesn't find a match and
-       * returns false). */
-      if (!os)
-         return false;
       os->output = oi_found;
       wl_list_insert(&wl->current_outputs, &os->link);
       return true;
@@ -721,6 +678,8 @@ static void wl_output_handle_geometry(void *data,
       int transform)
 {
    output_info_t *oi   = (output_info_t*)data;
+   oi->physical_width  = physical_width;
+   oi->physical_height = physical_height;
    oi->make            = strdup(make);
    oi->model           = strdup(model);
 }
@@ -733,7 +692,8 @@ static void wl_output_handle_mode(void *data,
       int refresh)
 {
    output_info_t *oi = (output_info_t*)data;
-   oi->dims          = VIDEO_SCALE_PACK(width, height);
+   oi->width         = width;
+   oi->height        = height;
    oi->refresh_rate  = refresh;
 }
 
@@ -779,12 +739,6 @@ static void wl_registry_handle_global(void *data, struct wl_registry *reg,
    else if (string_is_equal(interface, wp_viewporter_interface.name) && found++)
       wl->viewporter = (struct wp_viewporter*)wl_registry_bind(reg,
             id, &wp_viewporter_interface, MIN(version, 1));
-   else if (string_is_equal(interface, wp_presentation_interface.name) && found++)
-   {
-      wl->presentation = (struct wp_presentation*)wl_registry_bind(reg,
-         id, &wp_presentation_interface, MIN(version, 2));
-      wp_presentation_add_listener(wl->presentation, &presentation_listener, wl);
-   }
    else if (string_is_equal(interface, wp_fractional_scale_manager_v1_interface.name) && found++)
       wl->fractional_scale_manager = (struct wp_fractional_scale_manager_v1*)
          wl_registry_bind(reg, id, &wp_fractional_scale_manager_v1_interface, MIN(version, 1));
@@ -795,30 +749,16 @@ static void wl_registry_handle_global(void *data, struct wl_registry *reg,
       output_info_t *oi = (output_info_t*)
          calloc(1, sizeof(output_info_t));
 
-      /* NULL-check both callocs: od->output = oi and
-       * oi->global_id = id NULL-deref on OOM.  Free whichever
-       * succeeded (free(NULL) is a no-op) and skip adding this
-       * output to wl->all_outputs - the compositor will re-emit
-       * wl_registry.global if it needs us to retry, and missing
-       * outputs fall back to sensible defaults downstream. */
-      if (!od || !oi)
-      {
-         free(od);
-         free(oi);
-      }
-      else
-      {
-         od->output    = oi;
-         oi->global_id = id;
-         oi->output    = (struct wl_output*)wl_registry_bind(reg,
-               id, &wl_output_interface, MIN(version, 2));
-         wl_output_add_listener(oi->output, &output_listener, oi);
-         wl_list_insert(&wl->all_outputs, &od->link);
-      }
+      od->output    = oi;
+      oi->global_id = id;
+      oi->output    = (struct wl_output*)wl_registry_bind(reg,
+            id, &wl_output_interface, MIN(version, 2));
+      wl_output_add_listener(oi->output, &output_listener, oi);
+      wl_list_insert(&wl->all_outputs, &od->link);
    }
    else if (string_is_equal(interface, xdg_wm_base_interface.name) && found++)
       wl->xdg_shell = (struct xdg_wm_base*)
-         wl_registry_bind(reg, id, &xdg_wm_base_interface, MIN(version, 6));
+         wl_registry_bind(reg, id, &xdg_wm_base_interface, MIN(version, 3));
    else if (string_is_equal(interface, wl_shm_interface.name) && found++)
       wl->shm = (struct wl_shm*)wl_registry_bind(reg, id, &wl_shm_interface, MIN(version, 1));
    else if (string_is_equal(interface, wl_seat_interface.name) && found++)
@@ -869,16 +809,6 @@ static void wl_registry_handle_global(void *data, struct wl_registry *reg,
       wl->xdg_toplevel_icon_manager = (struct xdg_toplevel_icon_manager_v1*)
          wl_registry_bind(
             reg, id, &xdg_toplevel_icon_manager_v1_interface, MIN(version, 1));
-   else if (string_is_equal(interface, xdg_toplevel_tag_manager_v1_interface.name) && found++)
-      wl->xdg_toplevel_tag_manager = (struct xdg_toplevel_tag_manager_v1*)
-         wl_registry_bind(
-            reg, id, &xdg_toplevel_tag_manager_v1_interface, MIN(version, 1));
-   else if (string_is_equal(interface, wp_tearing_control_manager_v1_interface.name) && found++)
-      wl->tearing_control_manager = (struct wp_tearing_control_manager_v1*)
-         wl_registry_bind(
-            reg, id, &wp_tearing_control_manager_v1_interface, MIN(version, 1));
-   else if (string_is_equal(interface, wl_color_interface_name()) && found++)
-      wl_color_bind(&wl->color, reg, id, version);
 
    if (found > 1)
    RARCH_LOG("[Wayland] Registered interface %s at version %u.\n",
@@ -898,23 +828,7 @@ static void wl_registry_handle_global_remove(void *data,
       {
          if (wl_current_outputs_remove(wl, od->output->output))
             surface_output_removed = true;
-
-         /* wl->current_output points into the output_info_t about to
-          * be freed.  wl_update_scale() below only reassigns it when
-          * it finds a replacement, so on the last output going away --
-          * a single monitor unplugged, or the surface leaving every
-          * output -- it would be left dangling for the next scale
-          * query to read. */
-         if (wl->current_output == od->output)
-            wl->current_output = NULL;
-
          wl_list_remove(&od->link);
-         /* The wl_output proxy is ours from wl_registry_bind() and has
-          * to go back; freeing only the output_info_t leaks it on
-          * every hotplug.  The teardown in
-          * gfx/common/wayland_common.c does destroy it. */
-         if (od->output->output)
-            wl_output_destroy(od->output->output);
          free(od->output);
          free(od);
          break;
@@ -948,11 +862,11 @@ static ssize_t wl_read_pipe(int fd, void** buffer, size_t* total_length,
       bool null_terminate)
 {
    char temp[PIPE_BUF];
-   void* output_buffer = NULL;
-   size_t _len         = 0;
-   ssize_t bytes_read  = 0;
-   size_t pos          = 0;
-   int ready           = wl_ioready(fd, IOR_READ, PIPE_MS_TIMEOUT);
+   void* output_buffer      = NULL;
+   size_t new_buffer_length = 0;
+   ssize_t bytes_read       = 0;
+   size_t pos               = 0;
+   int ready                = wl_ioready(fd, IOR_READ, PIPE_MS_TIMEOUT);
 
    if (ready == 0)     /* Pipe timeout? */
       bytes_read = -1;
@@ -962,48 +876,27 @@ static ssize_t wl_read_pipe(int fd, void** buffer, size_t* total_length,
    {
       if ((bytes_read = read(fd, temp, sizeof(temp))) > 0)
       {
-         pos              = *total_length;
-         *total_length   += bytes_read;
+         pos                   = *total_length;
+         *total_length        += bytes_read;
 
          if (null_terminate)
-            _len          = *total_length + 1;
+            new_buffer_length  = *total_length + 1;
          else
-            _len          = *total_length;
+            new_buffer_length  = *total_length;
 
          if (*buffer == NULL)
-            output_buffer = malloc(_len);
+            output_buffer      = malloc(new_buffer_length);
          else
-            output_buffer = realloc(*buffer, _len);
+            output_buffer      = realloc(*buffer, new_buffer_length);
 
          if (output_buffer)
          {
             memcpy((uint8_t*)output_buffer + pos, temp, bytes_read);
 
             if (null_terminate)
-               memset((uint8_t*)output_buffer + (_len - 1), 0, 1);
+               memset((uint8_t*)output_buffer + (new_buffer_length - 1), 0, 1);
 
             *buffer = output_buffer;
-         }
-         else
-         {
-            /* Allocation failed.  Previously this branch silently
-             * dropped the bytes_read data, left *total_length
-             * incremented (so the caller thought the buffer had
-             * grown), and returned a positive bytes_read - the
-             * caller's 'while (wl_read_pipe(...) > 0)' loop then
-             * continued and the next iteration wrote at offset
-             * 'pos = *total_length' which sat past the end of the
-             * still-unchanged *buffer, corrupting whatever lived
-             * there.  On realloc failure *buffer is also left
-             * pointing at the old (smaller) allocation, so the
-             * old data is still valid, but the length accounting
-             * is a lie.
-             *
-             * Restore the invariant by rewinding *total_length
-             * and reporting -1 to the caller so its while-loop
-             * terminates. */
-            *total_length = pos;
-            bytes_read    = -1;
          }
       }
    }
@@ -1013,7 +906,8 @@ static ssize_t wl_read_pipe(int fd, void** buffer, size_t* total_length,
 
 static void *wayland_data_offer_receive(
       struct wl_display *display, struct wl_data_offer *offer,
-      size_t *length, const char* mime_type, bool null_terminate)
+      size_t *length,
+      const char* mime_type, bool null_terminate)
 {
    int pipefd[2];
    void *buffer = NULL;
@@ -1043,15 +937,6 @@ static void wl_data_device_handle_data_offer(void *data,
       struct wl_data_device *data_device, struct wl_data_offer *offer)
 {
    data_offer_ctx *offer_data = (data_offer_ctx*)calloc(1, sizeof *offer_data);
-
-   /* NULL-check: the field writes below NULL-deref on OOM.
-    * On failure skip the offer - wl_data_offer_set_user_data
-    * would have attached this pointer for the listener
-    * callbacks to retrieve, so without it the offer just
-    * doesn't get handled by this client.  That's a lost
-    * drag-and-drop operation rather than a crash. */
-   if (!offer_data)
-      return;
 
    offer_data->offer          = offer;
    offer_data->data_device    = data_device;
@@ -1122,10 +1007,10 @@ static void wl_data_device_handle_drop(void *data,
    gfx_ctx_wayland_data_t *wl = (gfx_ctx_wayland_data_t*)data;
    data_offer_ctx *offer_data = wl->current_drag_offer;
 
+   offer_data->dropped        = true;
+
    if (!offer_data)
       return;
-
-   offer_data->dropped        = true;
 
    pipe(pipefd);
 
@@ -1143,7 +1028,6 @@ static void wl_data_device_handle_drop(void *data,
    if (!(stream = fmemopen(buffer, __len, "r")))
    {
       RARCH_WARN("[Wayland] Failed to open DnD buffer.\n");
-      free(buffer);
       return;
    }
 
@@ -1161,8 +1045,6 @@ static void wl_data_device_handle_drop(void *data,
 #endif
    }
 
-   /* getline allocates line on the first call and reuses it. */
-   free(line);
    fclose(stream);
    free(buffer);
 }

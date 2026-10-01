@@ -34,7 +34,6 @@
 #include "../../tasks/tasks_internal.h"
 
 #include "../../command.h"
-#include <compat/strl.h>
 
 #ifdef HAVE_BB10
 #define MAX_TOUCH 16
@@ -232,12 +231,12 @@ static void qnx_input_autodetect_gamepad(qnx_input_t *qnx,
    if (controller && controller->type == SCREEN_EVENT_GAMEPAD)
    {
        if (strstr(controller->id, "0-054C-05C4-1.0"))
-           strlcpy_lit(name_buf, "DS4 Controller", sizeof(name_buf));
+           strlcpy(name_buf, "DS4 Controller", sizeof(name_buf));
        else
-           strlcpy_lit(name_buf, "QNX Gamepad", sizeof(name_buf));
+           strlcpy(name_buf, "QNX Gamepad", sizeof(name_buf));
    }
 
-   if (name_buf && *name_buf)
+   if (!string_is_empty(name_buf))
    {
       controller->port = qnx->pads_connected;
 
@@ -421,9 +420,12 @@ static void qnx_process_touch_event(
             {
                struct video_viewport vp;
 
-               vp.pos                      = VIDEO_POS_PACK(0, 0);
-               vp.dims                     = 0;
-               vp.full_dims                = 0;
+               vp.x                        = 0;
+               vp.y                        = 0;
+               vp.width                    = 0;
+               vp.height                   = 0;
+               vp.full_width               = 0;
+               vp.full_height              = 0;
 
                qnx->pointer[i].contact_id  = contact_id;
 
@@ -473,9 +475,12 @@ static void qnx_process_touch_event(
             {
                struct video_viewport vp;
 
-               vp.pos                      = VIDEO_POS_PACK(0, 0);
-               vp.dims                     = 0;
-               vp.full_dims                = 0;
+               vp.x                        = 0;
+               vp.y                        = 0;
+               vp.width                    = 0;
+               vp.height                   = 0;
+               vp.full_width               = 0;
+               vp.full_height              = 0;
 
                video_driver_translate_coord_viewport_wrap(&vp,
                      pos[0], pos[1],
@@ -650,7 +655,7 @@ static void *qnx_input_init(const char *joypad_driver)
    qnx_discover_controllers(qnx);
 #else
    /* Initialize Playbook keyboard. */
-   strlcpy_lit(qnx->devices[0].id, "0A5C-8502",
+   strlcpy(qnx->devices[0].id, "0A5C-8502",
          sizeof(qnx->devices[0].id));
    qnx_input_autodetect_gamepad(qnx, &qnx->devices[0]);
    qnx->pads_connected = 1;
@@ -749,7 +754,7 @@ static int16_t qnx_input_state(
             {
                for (i = 0; i < RARCH_FIRST_CUSTOM_BIND; i++)
                {
-                  if (RETRO_KEYBIND_VALID(&binds[port][i]))
+                  if (binds[port][i].valid)
                   {
                      if (qnx_keyboard_pressed(qnx, key))
                         ret |= (1 << i);
@@ -762,7 +767,7 @@ static int16_t qnx_input_state(
 
          if (id < RARCH_BIND_LIST_END)
          {
-            if (RETRO_KEYBIND_VALID(&binds[port][id]))
+            if (binds[port][id].valid)
             {
                if (
                      ((id == RARCH_GAME_FOCUS_TOGGLE) ||

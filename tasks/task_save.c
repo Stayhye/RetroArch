@@ -27,8 +27,7 @@
 #include <rthreads/rthreads.h>
 #include <file/file_path.h>
 #include <retro_miscellaneous.h>
-#include <retro_timers.h>
-#include <features/features_cpu.h>
+#include <string/stdstring.h>
 #include <time/rtime.h>
 
 #ifdef HAVE_CONFIG_H
@@ -44,51 +43,29 @@
 #include "../core_info.h"
 #include "../file_path_special.h"
 #include "../configuration.h"
-#include "../audio/audio_driver.h"
 #include "../gfx/video_driver.h"
 #include "../msg_hash.h"
 #include "../runloop.h"
 #include "../verbosity.h"
 #include "tasks_internal.h"
 
-#ifdef __EMSCRIPTEN__
-/* Use huge chunks since each read/write is a possible suspend to
-   JS code */
-#define SAVE_STATE_CHUNK 16 * 1024 * 1024
+#ifdef EMSCRIPTEN
+/* Filesystem is in-memory anyway, use huge chunks since each
+   read/write is a possible suspend to JS code */
+#define SAVE_STATE_CHUNK 4096 * 4096
 #else
-/* A low common denominator transfer quantum.  On a slow
+/* A low common denominator write chunk size.  On a slow
   (speed class 6) SD card, we can write 6MB/s.  That gives us
-  roughly 100KB/frame, so a single quantum is one syscall that
-  fits inside one frame even on the worst storage we support.
-
-  This is the size of one read/write call, NOT the amount of work
-  a tick may do.  Tying the two together caps the save/load task
-  at SAVE_STATE_CHUNK * tick_rate == ~6MB/s no matter what the
-  device can actually do: measured on NVMe, one 100KB
-  intfstream_write costs ~62us out of a 16667us frame, so 99.6%
-  of every frame's budget sits idle and a 16MB state takes
-  164 ticks (2.7s at 60Hz) to write.  The tick budget below is
-  what bounds a tick now; the quantum only bounds how long the
-  handler can overshoot that budget, which is why it stays sized
-  for the slowest device rather than the fastest. */
+  roughly 100KB/frame.
+  This means we can write savestates with one syscall for cores
+  with less than 100KB of state. Class 10 is the standard now
+  even for lousy cards and supports 10MB/s, so you may prefer
+  to put this to 170KB. This all assumes that task_save's loop
+  is iterated once per frame at 60 FPS; if it's updated less
+  frequently this number could be doubled or quadrupled depending
+  on the tickrate. */
 #define SAVE_STATE_CHUNK 100 * 1024
 #endif
-
-/* Wall-clock budget for one save/load tick, in microseconds.
-   The handler keeps transferring SAVE_STATE_CHUNK quanta until this
-   is exhausted, then yields.  ~12% of a 60Hz frame.
-
-   Chosen as a time rather than a byte count because the quantity
-   that must be bounded is the stall the user sees, and only a clock
-   measures that; a byte count is a guess about device speed that is
-   wrong by two orders of magnitude across the range of devices
-   RetroArch runs on.
-
-   The loop is do/while, so exactly one quantum is always
-   transferred.  On a device slow enough that one quantum exceeds
-   the budget the behaviour is therefore byte-for-byte what it was
-   before this budget existed - there is no worst case to regress. */
-#define SAVE_STATE_TICK_BUDGET_US 2000
 
 #define RASTATE_VERSION 1
 #define RASTATE_MEM_BLOCK "MEM "
@@ -100,12 +77,6 @@ struct save_state_buf
 {
    void* data;
    size_t size;
-   /* Bytes actually allocated at 'data'.  Equal to 'size' for every
-    * buffer that was allocated to fit, and larger only for
-    * undo_load_buf, which reuses an allocation across snapshots that
-    * may differ in length.  Tracked on all of them so the field
-    * cannot be read stale by whoever reuses this struct next. */
-   size_t capacity;
    char path[PATH_MAX_LENGTH];
 };
 
@@ -145,21 +116,6 @@ typedef struct
    ssize_t bytes_read;
    int state_slot;
    uint8_t flags;
-   /* Frontend rastate blocks, captured on the main thread at push for
-    * the background path: SET_SAVE_STATE_IN_BACKGROUND is the core's
-    * promise about its own serialize, not about the frontend's replay
-    * or achievement state, so the worker serializes only the core and
-    * writes these as captured. */
-   void  *fe_replay;
-   size_t fe_replay_size;
-   void  *fe_cheevos;
-   size_t fe_cheevos_size;
-   /* Captured at push on the main thread: the load handler's
-    * core-readiness poll reads the frame counter through this,
-    * never through the video singleton - task workers reach no
-    * getter. The read stays a single benign per-tick poll of a
-    * monotonic counter. */
-   const uint64_t *frame_count;
    char path[PATH_MAX_LENGTH];
 } save_task_state_t;
 
@@ -173,37 +129,11 @@ static struct save_state_buf undo_save_buf;
  * Can be restored with undo_load_state(). */
 static struct save_state_buf undo_load_buf;
 
-/* The allocation undo_load_buf handed back last time it was replaced,
- * kept rather than freed.  Retaking the undo snapshot is the hottest
- * serialize in the frontend - content_load_state_cb does it on every
- * single state load - and it is a full state-sized allocation each
- * time.  Keeping one spare and swapping the two means the pages stay
- * faulted in; see content_serialize_reusing().
- *
- * Only ever non-NULL when undo is enabled: content_save_state()
- * returns before reaching this whenever save_state_disable_undo is
- * set, which is the setting that says memory is scarce, so the spare
- * is never held against that user's wishes. */
-static struct
-{
-   void  *data;
-   size_t capacity;
-} undo_load_spare;
-
 /* Buffer that stores state instead of file.
  * This is useful for devices with slow I/O. */
 static struct ram_save_state_buf ram_buf;
 
 static bool save_state_in_background       = false;
-/* See content_load_state_in_progress() for why these are flags and
- * not a task_queue_find().  Save tasks are TASK_TYPE_BLOCKING, so at
- * most one is in flight. */
-static bool load_state_task_pending        = false;
-static bool save_state_task_pending        = false;
-static bool save_state_disable_undo        = false;
-
-/* Time tracking for automatic savestate interval */
-static retro_time_t last_savestate_automatic_time = 0;
 
 typedef struct rastate_size_info
 {
@@ -227,20 +157,14 @@ typedef struct rastate_size_info
 bool content_undo_load_state(void)
 {
    unsigned i;
+   size_t temp_data_size;
    bool ret                  = false;
-   bool captured             = false;
-   bool ramped               = false;
    unsigned num_blocks       = 0;
-   void *restore_data        = NULL;
-   size_t restore_size       = 0;
-   size_t restore_cap        = 0;
+   void *temp_data           = NULL;
    struct sram_block *blocks = NULL;
    struct string_list *savefile_list = (struct string_list*)savefile_ptr_get();
 
-   /* The undo buffer holds a state this core produced during this
-    * session - its existence outranks (possibly stale) metadata. */
-   if (   !core_info_current_supports_savestate()
-       && !undo_load_buf.data)
+   if (!core_info_current_supports_savestate())
    {
       RARCH_LOG("[State] %s\n",
             msg_hash_to_str(MSG_CORE_DOES_NOT_SUPPORT_SAVESTATES));
@@ -304,56 +228,20 @@ bool content_undo_load_state(void)
       }
    }
 
-   /* The state about to be restored lives in undo_load_buf, and the
-    * capture below overwrites undo_load_buf - so the bytes being
-    * restored must be kept out of its reach.  Detaching the
-    * allocation does that for free: after the detach undo_load_buf
-    * owns no buffer, so the capture serializes into the spare and
-    * swaps that in, and neither one can touch the bytes being
-    * restored. */
-   restore_data           = undo_load_buf.data;
-   restore_size           = undo_load_buf.size;
-   restore_cap            = undo_load_buf.capacity;
-   undo_load_buf.data     = NULL;
-   undo_load_buf.size     = 0;
-   undo_load_buf.capacity = 0;
-
-   /* An undo jumps the game's state exactly as a load does. See
-    * audio_driver_jump_fade_begin(). */
-   ramped                 = audio_driver_jump_fade_begin();
+   /* We need to make a temporary copy of the buffer, to allow the swap below */
+   temp_data              = malloc(undo_load_buf.size);
+   temp_data_size         = undo_load_buf.size;
+   memcpy(temp_data, undo_load_buf.data, undo_load_buf.size);
 
    /* Swap the current state with the backup state. This way, we can undo
    what we're undoing */
-   captured               = content_save_state("RAM", false);
+   content_save_state("RAM", false);
 
-   ret = content_deserialize_state(restore_data, restore_size);
+   ret = content_deserialize_state(temp_data, temp_data_size);
 
-   audio_driver_jump_fade_end(ramped);
-
-   if (captured)
-   {
-      /* The detached allocation has no owner now.  Hand it to the
-       * spare rather than freeing it, so the next capture finds a
-       * buffer that is still mapped instead of asking the kernel for
-       * a fresh one - the same trade the capture path makes.
-       *
-       * The spare is empty here: the capture swapped undo_load_buf's
-       * buffer into it, and the detach above left that NULL.  The
-       * free is kept so this does not become a leak if that ever
-       * stops being true. */
-      free(undo_load_spare.data);
-      undo_load_spare.data     = restore_data;
-      undo_load_spare.capacity = restore_cap;
-   }
-   else
-   {
-      /* The capture failed, so there is nothing to undo back to.  Put
-       * the snapshot back where it was, which is where the
-       * copy-based form left it in this case. */
-      undo_load_buf.data     = restore_data;
-      undo_load_buf.size     = restore_size;
-      undo_load_buf.capacity = restore_cap;
-   }
+   /* Clean up the temporary copy */
+   free(temp_data);
+   temp_data              = NULL;
 
     /* Flush back. */
    for (i = 0; i < num_blocks; i++)
@@ -396,12 +284,9 @@ static void undo_save_state_cb(retro_task_t *task,
 {
    save_task_state_t *state = (save_task_state_t*)task_data;
 
-   save_state_task_pending  = false;
-
    /* Wipe the save file buffer as it's intended to be one use only */
-   undo_save_buf.path[0]  = '\0';
-   undo_save_buf.size     = 0;
-   undo_save_buf.capacity = 0;
+   undo_save_buf.path[0] = '\0';
+   undo_save_buf.size    = 0;
    if (undo_save_buf.data)
    {
       free(undo_save_buf.data);
@@ -426,13 +311,8 @@ static void task_save_handler_finished(retro_task_t *task,
 
    task_set_flags(task, RETRO_TASK_FLG_FINISHED, true);
 
-   /* NULL when the handler failed before the file was opened
-    * (serialize failure, or the open itself). */
-   if (state->file)
-   {
-      intfstream_close(state->file);
-      free(state->file);
-   }
+   intfstream_close(state->file);
+   free(state->file);
 
    flg = task_get_flags(task);
 
@@ -440,17 +320,9 @@ static void task_save_handler_finished(retro_task_t *task,
       task_set_error(task, strdup("Task canceled"));
 
    task_data = (save_task_state_t*)calloc(1, sizeof(*task_data));
-   /* NULL-check: the memcpy below NULL-derefs on OOM.  The
-    * completion callbacks save_state_cb / undo_save_state_cb
-    * are NULL-tolerant to match this code path.  On OOM we leave
-    * task_data unset (NULL); task_set_data is skipped and the
-    * completion callback receives NULL for its task_data
-    * parameter. */
-   if (task_data)
-   {
-      memcpy(task_data, state, sizeof(*state));
-      task_set_data(task, task_data);
-   }
+   memcpy(task_data, state, sizeof(*state));
+
+   task_set_data(task, task_data);
 
    if (state->data)
    {
@@ -460,36 +332,12 @@ static void task_save_handler_finished(retro_task_t *task,
       free(state->data);
       state->data = NULL;
    }
-   free(state->fe_replay);
-   free(state->fe_cheevos);
 
    free(state);
 }
 
 /* Align to 8-byte boundary */
 #define CONTENT_ALIGN_SIZE(size) ((((size) + 7) & ~7))
-
-/* Zero only the alignment padding bytes after a block's data payload.
- * When a block's unaligned size is not a multiple of 8, there are up to
- * 7 padding bytes that would otherwise contain uninitialized data,
- * causing nondeterministic compressed state file sizes. */
-#define CONTENT_ZERO_PADDING(output, unaligned_size)              \
-   do {                                                           \
-      size_t _pad = CONTENT_ALIGN_SIZE(unaligned_size)            \
-                  - (unaligned_size);                              \
-      if (_pad > 0)                                               \
-         memset((output) + (unaligned_size), 0, _pad);            \
-   } while (0)
-
-/* Frontend blocks pre-captured on the main thread; NULL means read
- * them live, which is only the main thread's to do. */
-typedef struct rastate_captured
-{
-   const void *replay;
-   size_t      replay_size;
-   const void *cheevos;
-   size_t      cheevos_size;
-} rastate_captured_t;
 
 static size_t content_get_rastate_size(rastate_size_info_t* size, bool rewind)
 {
@@ -515,31 +363,6 @@ static size_t content_get_rastate_size(rastate_size_info_t* size, bool rewind)
    else
       size->replay_size = 0;
 #endif
-   return size->total_size;
-}
-
-/* The worker's sizing: the core live - its serialize is what the
- * core's background request vouches for - and the frontend's blocks
- * from the capture, with no live frontend read on this path at all. */
-static size_t content_get_rastate_size_captured(rastate_size_info_t* size,
-      const rastate_captured_t *captured)
-{
-   size_t info_size = core_serialize_size();
-   if (!info_size)
-      return 0;
-   size->coremem_size = info_size;
-   size->total_size   = 8 + 8 + CONTENT_ALIGN_SIZE(info_size) + 8;
-#ifdef HAVE_CHEEVOS
-   size->cheevos_size = captured->cheevos_size;
-   if (size->cheevos_size > 0)
-      size->total_size += 8 + CONTENT_ALIGN_SIZE(size->cheevos_size);
-#endif
-#ifdef HAVE_BSV_MOVIE
-   size->replay_size = captured->replay_size;
-   if (size->replay_size > 0)
-      size->total_size += 8 + CONTENT_ALIGN_SIZE(size->replay_size);
-#endif
-   (void)captured;
    return size->total_size;
 }
 
@@ -593,10 +416,7 @@ static bool content_write_serialized_state(void* buffer,
           content_write_block_header(output,
              RASTATE_REPLAY_BLOCK, size->replay_size);
           if (replay_get_serialized_data(output + 8))
-          {
-            CONTENT_ZERO_PADDING(output + 8, size->replay_size);
             output += CONTENT_ALIGN_SIZE(size->replay_size) + 8;
-          }
        }
     }
 #endif
@@ -611,7 +431,6 @@ static bool content_write_serialized_state(void* buffer,
    if (!core_serialize(&serial_info))
       return false;
 
-   CONTENT_ZERO_PADDING(output, size->coremem_size);
    output += CONTENT_ALIGN_SIZE(size->coremem_size);
 
 #ifdef HAVE_CHEEVOS
@@ -620,63 +439,12 @@ static bool content_write_serialized_state(void* buffer,
       content_write_block_header(output,
             RASTATE_CHEEVOS_BLOCK, size->cheevos_size);
       if (rcheevos_get_serialized_data(output + 8))
-      {
-         CONTENT_ZERO_PADDING(output + 8, size->cheevos_size);
          output += CONTENT_ALIGN_SIZE(size->cheevos_size) + 8;
-      }
    }
 #endif
 
    content_write_block_header(output, RASTATE_END_BLOCK, 0);
 
-   return true;
-}
-
-/* The worker's writer: the frontend blocks come from the push-time
- * capture and the core serializes live. No live frontend read exists
- * on this path - the split is what the thread audit holds. */
-static bool content_write_serialized_state_captured(void* buffer,
-      rastate_size_info_t* size, const rastate_captured_t *captured)
-{
-   retro_ctx_serialize_info_t serial_info;
-   unsigned char* output = (unsigned char*)buffer;
-
-   memcpy(output, "RASTATE", 7);
-   output[7] = RASTATE_VERSION;
-   output   += 8;
-
-#ifdef HAVE_BSV_MOVIE
-   if (captured->replay && size->replay_size > 0)
-   {
-      content_write_block_header(output,
-            RASTATE_REPLAY_BLOCK, size->replay_size);
-      memcpy(output + 8, captured->replay, size->replay_size);
-      CONTENT_ZERO_PADDING(output + 8, size->replay_size);
-      output += CONTENT_ALIGN_SIZE(size->replay_size) + 8;
-   }
-#endif
-
-   content_write_block_header(output, RASTATE_MEM_BLOCK, size->coremem_size);
-   output += 8;
-   serial_info.size = size->coremem_size;
-   serial_info.data = (void*)output;
-   if (!core_serialize(&serial_info))
-      return false;
-   CONTENT_ZERO_PADDING(output, size->coremem_size);
-   output += CONTENT_ALIGN_SIZE(size->coremem_size);
-
-#ifdef HAVE_CHEEVOS
-   if (captured->cheevos && size->cheevos_size > 0)
-   {
-      content_write_block_header(output,
-            RASTATE_CHEEVOS_BLOCK, size->cheevos_size);
-      memcpy(output + 8, captured->cheevos, size->cheevos_size);
-      CONTENT_ZERO_PADDING(output + 8, size->cheevos_size);
-      output += CONTENT_ALIGN_SIZE(size->cheevos_size) + 8;
-   }
-#endif
-
-   content_write_block_header(output, RASTATE_END_BLOCK, 0);
    return true;
 }
 
@@ -709,10 +477,12 @@ static void *content_get_serialized_data(size_t *serial_size)
    if ((_len = content_get_rastate_size(&size, false)) == 0)
       return NULL;
 
-   /* Alignment padding bytes are zeroed selectively by
-    * CONTENT_ZERO_PADDING() in content_write_serialized_state(),
-    * so a full calloc() zero-fill is no longer needed here. */
-   if (!(data = malloc(_len)))
+   /* Ensure buffer is initialised to zero
+    * > Prevents inconsistent compressed state file
+    *   sizes when core requests a larger buffer
+    *   than it needs (and leaves the excess
+    *   as uninitialised garbage) */
+   if (!(data = calloc(_len, 1)))
       return NULL;
 
    if (!content_write_serialized_state(data, &size, false))
@@ -723,64 +493,6 @@ static void *content_get_serialized_data(size_t *serial_size)
 
    *serial_size = size.total_size;
    return data;
-}
-
-/**
- * content_serialize_reusing:
- * @buf : in/out, the caller's retained buffer.  May point to NULL.
- * @cap : in/out, bytes currently allocated at *buf.
- *
- * Serializes the current state into a buffer the caller keeps across
- * calls, allocating only when what is there is too small.
- *
- * Worth the extra bookkeeping because a state-sized allocation is
- * served by mmap rather than out of the heap's free lists, so free()
- * hands the pages straight back to the kernel and the next serialize
- * faults every one of them in again on first touch.  That fault
- * traffic is not a rounding error next to the copy it exists to hold:
- * measured against a 16 MiB state, a fresh malloc plus the copy costs
- * 5.08ms where the copy into a retained buffer costs 1.88ms, so 63%
- * of a serialize is spent obtaining memory rather than filling it.
- * A 4 MiB state measures 72%.
- *
- * @return the number of bytes serialized, or 0 on failure.  On
- * failure *buf and *cap remain valid (possibly reallocated), so the
- * caller can retry into them; the contents are undefined.
- **/
-static size_t content_serialize_reusing(void **buf, size_t *cap)
-{
-   size_t _len;
-   rastate_size_info_t size;
-
-   if ((_len = content_get_rastate_size(&size, false)) == 0)
-      return 0;
-
-   if (*cap < _len)
-   {
-      void *grown;
-
-      /* free()+malloc() rather than realloc(): every byte is about to
-       * be overwritten, and realloc would copy the old contents into
-       * the new allocation first. */
-      free(*buf);
-      if (!(grown = malloc(_len)))
-      {
-         *buf = NULL;
-         *cap = 0;
-         return 0;
-      }
-      *buf = grown;
-      *cap = _len;
-   }
-
-   /* Alignment padding is zeroed selectively by CONTENT_ZERO_PADDING()
-    * in content_write_serialized_state(), so a reused buffer needs no
-    * scrub: every byte the reader can reach is written by the write
-    * below, exactly as in the freshly-malloc'd case. */
-   if (!content_write_serialized_state(*buf, &size, false))
-      return 0;
-
-   return size.total_size;
 }
 
 /**
@@ -796,54 +508,6 @@ static void task_save_handler(retro_task_t *task)
    int written              = 0;
    save_task_state_t *state = (save_task_state_t*)task->state;
 
-   /* Serialize before opening, not after.  Opening first meant a
-    * failed serialize had already created (and truncated) the target,
-    * so the slot was left holding a zero-byte file. */
-   if (!state->data)
-   {
-      size_t _len = 0;
-      rastate_size_info_t size;
-      rastate_captured_t captured;
-      captured.replay       = state->fe_replay;
-      captured.replay_size  = state->fe_replay_size;
-      captured.cheevos      = state->fe_cheevos;
-      captured.cheevos_size = state->fe_cheevos_size;
-      state->size = 0;
-      if ((_len = content_get_rastate_size_captured(&size, &captured)) > 0)
-      {
-         if ((state->data = malloc(_len)))
-         {
-            if (!content_write_serialized_state_captured(state->data,
-                     &size, &captured))
-            {
-               free(state->data);
-               state->data = NULL;
-            }
-            else
-               /* size is filled exactly when the sizing call above
-                * succeeded; the other arms leave it at its initial
-                * zero rather than reading it. */
-               state->size = (ssize_t)size.total_size;
-         }
-      }
-
-      /* A failed serialize must be failed here: with data NULL and
-       * size 0, every test below reads as success - remaining is 0,
-       * so written == remaining and written == size - and the
-       * handler reports a COMPLETED save of a zero-byte file, giving
-       * the user a 'state saved' notification and an empty slot. */
-      if (!state->data || state->size <= 0)
-      {
-         RARCH_ERR("[State] save task could not serialize core state "
-               "for slot %d, path \"%s\".\n",
-               state->state_slot, state->path);
-         task_set_error(task, strdup(
-               msg_hash_to_str(MSG_FAILED_TO_SAVE_STATE_TO)));
-         task_save_handler_finished(task, state);
-         return;
-      }
-   }
-
    if (!state->file)
    {
       if (state->flags & SAVE_TASK_FLAG_COMPRESS_FILES)
@@ -855,41 +519,23 @@ static void task_save_handler(retro_task_t *task)
                RETRO_VFS_FILE_ACCESS_HINT_NONE);
 
       if (!state->file)
-      {
-         /* This must fail the task, not bare-return: a task neither
-          * errored nor finished is re-entered on the next tick and
-          * retries the open forever - and because save tasks are
-          * TASK_TYPE_BLOCKING, that one task wedges every other
-          * blocking task for the rest of the session.  An open that
-          * failed once (read-only medium, bad path, no space) is not
-          * going to succeed on retry; fail it. */
-         RARCH_ERR("[State] save task could not open \"%s\" for writing "
-               "(slot %d). The auto-index slot was already advanced, so "
-               "this leaves an advanced slot with no save file.\n",
-               state->path, state->state_slot);
-         task_set_error(task, strdup(
-               msg_hash_to_str(MSG_FAILED_TO_SAVE_STATE_TO)));
-         task_save_handler_finished(task, state);
          return;
-      }
    }
 
-   /* Transfer quanta until the tick budget is spent.  do/while, so a
-    * device slow enough that one quantum exceeds the budget behaves
-    * exactly as it did when a tick was hardcoded to one quantum. */
+   if (!state->data)
    {
-      retro_time_t deadline = cpu_features_get_time_usec()
-         + SAVE_STATE_TICK_BUDGET_US;
-      do
-      {
-         remaining = MIN(state->size - state->written, SAVE_STATE_CHUNK);
-         written   = (int)intfstream_write(state->file,
-               (uint8_t*)state->data + state->written, remaining);
-         if (written != remaining)
-            break;
-         state->written += written;
-      } while (   state->written < state->size
-               && cpu_features_get_time_usec() < deadline);
+      size_t _len = 0;
+      state->data = content_get_serialized_data(&_len);
+      state->size = (ssize_t)_len;
+   }
+
+   remaining       = MIN(state->size - state->written, SAVE_STATE_CHUNK);
+
+   if (state->data)
+   {
+      written         = (int)intfstream_write(state->file,
+         (uint8_t*)state->data + state->written, remaining);
+      state->written += written;
    }
 
    task_set_progress(task, (state->written / (float)state->size) * 100);
@@ -919,20 +565,11 @@ static void task_save_handler(retro_task_t *task)
       }
 
       task_set_error(task, strdup(msg));
-      RARCH_ERR("[State] save task FAILED for slot %d, path \"%s\" "
-            "(wrote %d of %d bytes%s).\n",
-            state->state_slot, state->path,
-            (int)state->written, (int)state->size,
-            ((flg & RETRO_TASK_FLG_CANCELLED) > 0) ? ", cancelled" : "");
       task_save_handler_finished(task, state);
    }
    else if (state->written == state->size)
    {
       char       *msg      = NULL;
-
-      RARCH_LOG("[State] save task COMPLETED for slot %d, path \"%s\" "
-            "(%d bytes).\n",
-            state->state_slot, state->path, (int)state->size);
 
       task_free_title(task);
 
@@ -957,7 +594,7 @@ static void task_save_handler(retro_task_t *task)
 
       task_save_handler_finished(task, state);
 
-      if (msg)
+      if (!string_is_empty(msg))
          free(msg);
    }
 }
@@ -979,15 +616,16 @@ static bool task_push_undo_save_state(const char *path, void *data, size_t len)
    if (task && state)
    {
       settings_t *settings  = config_get_ptr();
+      video_driver_state_t *video_st = video_state_get_ptr();
 
       strlcpy(state->path, path, sizeof(state->path));
       state->data           = data;
       state->size           = len;
       state->flags         |= SAVE_TASK_FLAG_UNDO_SAVE;
       state->state_slot     = settings->ints.state_slot;
-      if (video_driver_cached_frame_is_hw_render())
+      if (video_st->frame_cache_data && (video_st->frame_cache_data == RETRO_HW_FRAME_BUFFER_VALID))
          state->flags      |= SAVE_TASK_FLAG_HAS_VALID_FB;
-#if defined(HAVE_COMPRESSION)
+#if defined(HAVE_ZLIB)
       if (settings->bools.savestate_file_compression)
          state->flags      |= SAVE_TASK_FLAG_COMPRESS_FILES;
 #endif
@@ -1005,17 +643,9 @@ static bool task_push_undo_save_state(const char *path, void *data, size_t len)
       else
          task->flags       &= ~RETRO_TASK_FLG_MUTE;
 
-      if (task_queue_push(task))
-      {
-         save_state_task_pending = true;
-         return true;
-      }
+      task_queue_push(task);
 
-      /* Another blocking task is already active: this one never runs,
-       * so nothing else frees what it holds */
-      task_free_title(task);
-      free(task);
-      task = NULL;
+      return true;
    }
 
    if (data)
@@ -1073,19 +703,7 @@ static void task_load_handler_finished(retro_task_t *task,
       task_set_error(task, strdup("Task canceled"));
 
    if (!(task_data = (load_task_data_t*)calloc(1, sizeof(*task_data))))
-   {
-      /* On OOM: set a task error (so the user sees 'load state
-       * failed' rather than silent failure), free state - an early
-       * return without the free leaks it - and return.  The completion
-       * callbacks handle NULL task_data via their own NULL-
-       * checks. */
-      if (!task_get_error(task))
-         task_set_error(task, strdup("Out of memory"));
-      if (state->data)
-         free(state->data);
-      free(state);
       return;
-   }
 
    memcpy(task_data, state, sizeof(*task_data));
 
@@ -1106,29 +724,9 @@ static void task_load_handler(retro_task_t *task)
    ssize_t remaining, bytes_read;
    save_task_state_t *state = (save_task_state_t*)task->state;
 
-   /* Ensure the core is ready for loading states (Dolphin CLI).
-    *
-    * A spin here (while (...) retro_sleep(1)) cannot work.  When
-    * the task queue is not threaded the handler runs on the same
-    * thread that advances frame_count, so the condition it would
-    * wait on can never become true and the spin is an unconditional
-    * hang - masked interactively only because frame_count is already
-    * past 2 by the time a user loads a state, and CLI autoload is
-    * the one path that reaches here early.  When it IS threaded, a
-    * spin is a hot unsynchronised read of a counter the video thread
-    * writes - a data race, and TSan reports it.
-    *
-    * Yielding does both jobs: the task stays queued and is re-entered
-    * on the next tick, by which time the runloop has advanced the
-    * counter.  The read stays unsynchronised, but as a single benign
-    * poll of a monotonic counter per tick, with no progress depending
-    * on this thread observing it promptly. */
-   if (*state->frame_count < 2)
-      return;
-
    if (!state->file)
    {
-#if defined(HAVE_COMPRESSION)
+#if defined(HAVE_ZLIB)
       /* Always use RZIP interface when reading state
        * files - this will automatically handle uncompressed
        * data */
@@ -1154,22 +752,10 @@ static void task_load_handler(retro_task_t *task)
       task_set_flags(task, RETRO_TASK_FLG_CANCELLED, true);
 #endif
 
-   /* Same budgeted-quanta scheme as the save handler; see the comment
-    * on SAVE_STATE_TICK_BUDGET_US. */
-   {
-      retro_time_t deadline = cpu_features_get_time_usec()
-         + SAVE_STATE_TICK_BUDGET_US;
-      do
-      {
-         remaining  = MIN(state->size - state->bytes_read, SAVE_STATE_CHUNK);
-         bytes_read = intfstream_read(state->file,
-               (uint8_t*)state->data + state->bytes_read, remaining);
-         if (bytes_read != remaining)
-            break;
-         state->bytes_read += bytes_read;
-      } while (   state->bytes_read < state->size
-               && cpu_features_get_time_usec() < deadline);
-   }
+   remaining          = MIN(state->size - state->bytes_read, SAVE_STATE_CHUNK);
+   bytes_read         = intfstream_read(state->file,
+         (uint8_t*)state->data + state->bytes_read, remaining);
+   state->bytes_read += bytes_read;
 
    if (state->size > 0)
       task_set_progress(task, (state->bytes_read / (float)state->size) * 100);
@@ -1233,7 +819,7 @@ not_found:
       snprintf(msg, sizeof(msg), "%s \"%s\".",
             msg_hash_to_str(MSG_FAILED_TO_LOAD_STATE),
             path_basename(state->path));
-      task_set_error(task, strdup(msg));
+      task_set_title(task, strdup(msg));
    }
 
 end:
@@ -1251,67 +837,15 @@ static bool content_load_rastate1(unsigned char* input, size_t len)
    bool seen_replay = false;
 #endif
 
-   /* The identifier itself must be present before anything is read
-    * past it. */
-   if (len < 8)
-      return false;
-
    input += 8;
 
-   /* input + 8 <= stop, not input < stop.  The old bound let the loop
-    * body run with as little as one byte remaining and then read the
-    * block length out of input[4..7] - up to six bytes past the end of
-    * the buffer.  ASan reports it for any state file truncated to
-    * 9..15 bytes, which is not a theoretical shape: savestates get
-    * shared, synced and copied off failing media, and a short read in
-    * the load handler produces exactly this buffer. */
-   while (input + 8 <= stop)
+   while (input < stop)
    {
-      /* Assembled through uint32_t, not int.  input[7] is an unsigned
-       * char, which promotes to int, and int << 24 is undefined for
-       * any top byte >= 0x80 - that is every block length at or above
-       * 2 GB, which is exactly the range a corrupt or hostile length
-       * lands in.  UBSan reports it; a compiler is entitled to do
-       * worse than report it, and the value it produces is the one
-       * the bound check below is asked to trust. */
-      size_t     block_size = (size_t)(  ((uint32_t)input[7] << 24)
-                                       | ((uint32_t)input[6] << 16)
-                                       | ((uint32_t)input[5] <<  8)
-                                       |  (uint32_t)input[4]);
+      size_t     block_size = ( input[7] << 24
+            | input[6] << 16 |  input[5] << 8 | input[4]);
       unsigned char *marker = input;
-      size_t          avail;
-      size_t        advance;
 
       input += 8;
-
-      /* Terminator carries no payload; check it before the extent
-       * test so a well-formed END block is not rejected. */
-      if (memcmp(marker, RASTATE_END_BLOCK, 4) == 0)
-         break;
-
-      /* Nothing below may consume more than the buffer holds.  This
-       * is what stops a corrupt or hostile 32-bit length from being
-       * handed to core_unserialize / rcheevos_set_serialized_data /
-       * replay_set_serialized_data as the size of a buffer that is
-       * not that large - the block contents are attacker-controlled
-       * in any file that arrived from outside. */
-      avail = (size_t)(stop - input);
-      if (block_size > avail)
-      {
-         RARCH_ERR("[State] Block \"%.4s\" declares %u bytes with %u "
-               "left in the state; refusing.\n",
-               (const char*)marker, (unsigned)block_size,
-               (unsigned)avail);
-         return false;
-      }
-
-      /* Padding is written for every block but the last one may sit
-       * flush against the end of the buffer, so clamp rather than
-       * reject.  Computed after the bound check above: block_size is
-       * a 32-bit quantity and CONTENT_ALIGN_SIZE would overflow a
-       * 32-bit size_t near UINT32_MAX. */
-      if ((advance = CONTENT_ALIGN_SIZE(block_size)) > avail)
-         advance = avail;
 
       if (memcmp(marker, RASTATE_MEM_BLOCK, 4) == 0)
       {
@@ -1366,8 +900,10 @@ static bool content_load_rastate1(unsigned char* input, size_t len)
             return false;
       }
 #endif
+      else if (memcmp(marker, RASTATE_END_BLOCK, 4) == 0)
+         break;
 
-      input += advance;
+      input += CONTENT_ALIGN_SIZE(block_size);
    }
 
    if (!seen_core)
@@ -1397,13 +933,6 @@ static bool content_load_rastate1(unsigned char* input, size_t len)
 
 bool content_deserialize_state(const void *s, size_t len)
 {
-   /* Both branches below read the first 8 bytes: the memcmp reads 7
-    * and the version switch reads input[7].  Neither was guarded, so
-    * a state file shorter than the identifier overread here before
-    * the block walker was ever reached. */
-   if (!s || len < 8)
-      return false;
-
    if (memcmp(s, "RASTATE", 7) != 0)
    {
       /* old format is just core data, load it directly */
@@ -1456,26 +985,11 @@ static void content_load_state_cb(retro_task_t *task,
    unsigned i;
    bool ret;
    load_task_data_t *load_data = (load_task_data_t*)task_data;
-   ssize_t _len;
+   ssize_t _len                = load_data->size;
    unsigned num_blocks         = 0;
-   void *buf;
+   void *buf                   = load_data->data;
    struct sram_block *blocks   = NULL;
    struct string_list *savefile_list = (struct string_list*)savefile_ptr_get();
-
-   /* The state is applied below; the load is no longer pending
-    * whichever way this callback exits. */
-   load_state_task_pending     = false;
-
-   /* NULL-check load_data: task_load_handler_finished may fail
-    * to allocate the task_data copy on OOM and leave it NULL.
-    * Skip all processing - the emulator state is unchanged and
-    * the task error (set by the handler) surfaces the failure
-    * to the user. */
-   if (!load_data)
-      return;
-
-   _len = load_data->size;
-   buf  = load_data->data;
 
 #ifdef HAVE_CHEEVOS
    if (rcheevos_hardcore_active())
@@ -1498,13 +1012,19 @@ static void content_load_state_cb(retro_task_t *task,
    {
       /* If we were previously backing up a file, let go of it first */
       if (undo_save_buf.data)
+      {
          free(undo_save_buf.data);
+         undo_save_buf.data = NULL;
+      }
 
-      undo_save_buf.data     = buf;
-      undo_save_buf.size     = _len;
-      undo_save_buf.capacity = (size_t)_len;
+      if (!(undo_save_buf.data = malloc(_len)))
+         goto error;
+
+      memcpy(undo_save_buf.data, buf, _len);
+      undo_save_buf.size = _len;
       strlcpy(undo_save_buf.path, load_data->path, sizeof(undo_save_buf.path));
 
+      free(buf);
       free(load_data);
       return;
    }
@@ -1557,20 +1077,10 @@ static void content_load_state_cb(retro_task_t *task,
       }
    }
 
-   /* A state load is a discontinuity in the game's own audio, and the work
-    * below blocks this thread long enough for the device to run dry. End the
-    * stream on the pause tail first and bring it back on the resume ramp, so
-    * both land in silence. See audio_driver_jump_fade_begin(). */
-   {
-      bool ramped = audio_driver_jump_fade_begin();
+   /* Backup the current state so we can undo this load */
+   content_save_state("RAM", false);
 
-      /* Backup the current state so we can undo this load */
-      content_save_state("RAM", false);
-
-      ret = content_deserialize_state(buf, _len);
-
-      audio_driver_jump_fade_end(ramped);
-   }
+   ret = content_deserialize_state(buf, _len);
 
    /* Flush back. */
    for (i = 0; i < num_blocks; i++)
@@ -1620,79 +1130,17 @@ static void save_state_cb(retro_task_t *task,
       void *user_data, const char *error)
 {
    save_task_state_t *state   = (save_task_state_t*)task_data;
-
-   /* Out of the core whichever way this callback exits. */
-   save_state_task_pending    = false;
-   /* NULL-check: task_save_handler_finished may fail to alloc
-    * the task_data copy on OOM and leave it NULL.  Skip the
-    * screenshot hook and free(state) on NULL - free(NULL) is a
-    * no-op but we can't read state->path / state->flags. */
-   if (!state)
-      return;
 #ifdef HAVE_SCREENSHOTS
-   {
-      char               *path   = strdup(state->path);
-      if (state->flags & SAVE_TASK_FLAG_THUMBNAIL_ENABLE)
-         take_screenshot(config_get_ptr()->paths.directory_screenshot,
-               path, true,
-               state->flags & SAVE_TASK_FLAG_HAS_VALID_FB, false, true);
-      free(path);
-   }
+   char               *path   = strdup(state->path);
+   if (state->flags & SAVE_TASK_FLAG_THUMBNAIL_ENABLE)
+      take_screenshot(config_get_ptr()->paths.directory_screenshot,
+            path, true,
+            state->flags & SAVE_TASK_FLAG_HAS_VALID_FB, false, true);
+   free(path);
 #endif
 
    free(state);
 }
-
-#if defined(HAVE_BSV_MOVIE) || defined(HAVE_CHEEVOS)
-/* The frontend's rastate blocks, captured where they belong: the main
- * thread, when the background save is pushed. The worker then
- * serializes only the core - which is what the core's
- * SET_SAVE_STATE_IN_BACKGROUND request vouches for. */
-static void content_capture_frontend_blocks(save_task_state_t *state)
-{
-#ifdef HAVE_BSV_MOVIE
-   {
-      input_driver_state_t *input_st = input_state_get_ptr();
-#ifdef HAVE_REWIND
-      bool frame_is_reversed = state_manager_frame_is_reversed();
-#else
-      bool frame_is_reversed = false;
-#endif
-      if (   (input_st->bsv_movie_state.flags
-               & (BSV_FLAG_MOVIE_RECORDING | BSV_FLAG_MOVIE_PLAYBACK))
-          && !frame_is_reversed)
-      {
-         size_t _len = replay_get_serialize_size();
-         if (_len > 0 && (state->fe_replay = malloc(_len)))
-         {
-            if (replay_get_serialized_data(state->fe_replay))
-               state->fe_replay_size = _len;
-            else
-            {
-               free(state->fe_replay);
-               state->fe_replay = NULL;
-            }
-         }
-      }
-   }
-#endif
-#ifdef HAVE_CHEEVOS
-   {
-      size_t _len = rcheevos_get_serialize_size();
-      if (_len > 0 && (state->fe_cheevos = malloc(_len)))
-      {
-         if (rcheevos_get_serialized_data(state->fe_cheevos))
-            state->fe_cheevos_size = _len;
-         else
-         {
-            free(state->fe_cheevos);
-            state->fe_cheevos = NULL;
-         }
-      }
-   }
-#endif
-}
-#endif
 
 /**
  * task_push_save_state:
@@ -1706,6 +1154,7 @@ static void task_push_save_state(const char *path, void *data, size_t len, bool 
 {
    settings_t     *settings        = config_get_ptr();
    retro_task_t       *task        = task_init();
+   video_driver_state_t *video_st  = video_state_get_ptr();
    save_task_state_t *state        = (save_task_state_t*)calloc(1, sizeof(*state));
 
    if (!task || !state)
@@ -1714,13 +1163,6 @@ static void task_push_save_state(const char *path, void *data, size_t len, bool 
    strlcpy(state->path, path, sizeof(state->path));
    state->data                   = data;
    state->size                   = len;
-#if defined(HAVE_BSV_MOVIE) || defined(HAVE_CHEEVOS)
-   /* A background save arrives without data: the worker serializes
-    * the core, and the frontend's blocks are captured here, on the
-    * main thread. */
-   if (!data)
-      content_capture_frontend_blocks(state);
-#endif
    /* Don't show OSD messages if we are auto-saving */
    if (autosave)
       state->flags              |= (  SAVE_TASK_FLAG_AUTOSAVE
@@ -1734,9 +1176,9 @@ static void task_push_save_state(const char *path, void *data, size_t len, bool 
       state->flags               |= SAVE_TASK_FLAG_THUMBNAIL_ENABLE;
    }
    state->state_slot             = settings->ints.state_slot;
-   if (video_driver_cached_frame_is_hw_render())
+   if (video_st->frame_cache_data && (video_st->frame_cache_data == RETRO_HW_FRAME_BUFFER_VALID))
       state->flags              |= SAVE_TASK_FLAG_HAS_VALID_FB;
-#if defined(HAVE_COMPRESSION)
+#if defined(HAVE_ZLIB)
    if (settings->bools.savestate_file_compression)
       state->flags              |= SAVE_TASK_FLAG_COMPRESS_FILES;
 #endif
@@ -1754,9 +1196,7 @@ static void task_push_save_state(const char *path, void *data, size_t len, bool 
    else
       task->flags               &= ~RETRO_TASK_FLG_MUTE;
 
-   if (task_queue_push(task))
-      save_state_task_pending = true;
-   else
+   if (!task_queue_push(task))
    {
       /* Another blocking task is already active. */
       if (data)
@@ -1793,26 +1233,10 @@ static void content_load_and_save_state_cb(retro_task_t *task,
       void *user_data, const char *error)
 {
    load_task_data_t *load_data = (load_task_data_t*)task_data;
-   char                  *path;
-   void                  *data;
-   size_t                 size;
-   bool               autosave;
-
-   /* NULL-check load_data: task_load_handler_finished may have
-    * failed to allocate the task_data copy on OOM.  Delegate the
-    * NULL-safe no-op to content_load_state_cb (which already
-    * handles NULL via its own guard) and skip the subsequent
-    * save push which would NULL-deref ->path / ->undo_data. */
-   if (!load_data)
-   {
-      content_load_state_cb(task, task_data, user_data, error);
-      return;
-   }
-
-   path     = strdup(load_data->path);
-   data     = load_data->undo_data;
-   size     = load_data->undo_size;
-   autosave = (load_data->flags & SAVE_TASK_FLAG_AUTOSAVE) ? true : false;
+   char                  *path = strdup(load_data->path);
+   void                  *data = load_data->undo_data;
+   size_t                 size = load_data->undo_size;
+   bool               autosave = (load_data->flags & SAVE_TASK_FLAG_AUTOSAVE) ? true : false;
 
    content_load_state_cb(task, task_data, user_data, error);
 
@@ -1834,9 +1258,10 @@ static void content_load_and_save_state_cb(retro_task_t *task,
 static void task_push_load_and_save_state(const char *path, void *data,
       size_t len, bool load_to_backup_buffer, bool autosave)
 {
-   retro_task_t      *task        = NULL;
-   settings_t        *settings    = config_get_ptr();
-   save_task_state_t *state       = (save_task_state_t*)
+   retro_task_t      *task         = NULL;
+   settings_t        *settings     = config_get_ptr();
+   video_driver_state_t *video_st  = video_state_get_ptr();
+   save_task_state_t *state        = (save_task_state_t*)
       calloc(1, sizeof(*state));
 
    if (!state)
@@ -1851,44 +1276,39 @@ static void task_push_load_and_save_state(const char *path, void *data,
 
    strlcpy(state->path, path, sizeof(state->path));
    if (load_to_backup_buffer)
-      state->flags             |= SAVE_TASK_FLAG_LOAD_TO_BACKUP_BUFF;
-   state->undo_size             = len;
-   state->undo_data             = data;
+      state->flags              |= SAVE_TASK_FLAG_LOAD_TO_BACKUP_BUFF;
+   state->undo_size              = len;
+   state->undo_data              = data;
    /* Don't show OSD messages if we are auto-saving */
    if (autosave)
-      state->flags             |= ( SAVE_TASK_FLAG_AUTOSAVE
-                                  | SAVE_TASK_FLAG_MUTE);
+      state->flags              |= (SAVE_TASK_FLAG_AUTOSAVE |
+                                    SAVE_TASK_FLAG_MUTE);
    if (load_to_backup_buffer)
-      state->flags             |= SAVE_TASK_FLAG_MUTE;
-   state->state_slot            = settings->ints.state_slot;
-   if (video_driver_cached_frame_is_hw_render())
-      state->flags             |= SAVE_TASK_FLAG_HAS_VALID_FB;
-#if defined(HAVE_COMPRESSION)
+      state->flags              |= SAVE_TASK_FLAG_MUTE;
+   state->state_slot             = settings->ints.state_slot;
+   if (video_st->frame_cache_data && (video_st->frame_cache_data == RETRO_HW_FRAME_BUFFER_VALID))
+      state->flags              |= SAVE_TASK_FLAG_HAS_VALID_FB;
+#if defined(HAVE_ZLIB)
    if (settings->bools.savestate_file_compression)
-      state->flags             |= SAVE_TASK_FLAG_COMPRESS_FILES;
+      state->flags              |= SAVE_TASK_FLAG_COMPRESS_FILES;
 #endif
    if (!settings->bools.notification_show_save_state)
-      state->flags             |= SAVE_TASK_FLAG_MUTE;
+      state->flags              |= SAVE_TASK_FLAG_MUTE;
 
-   state->frame_count           = &video_state_get_ptr()->frame_count;
-   task->state                  = state;
-   task->type                   = TASK_TYPE_BLOCKING;
-   task->handler                = task_load_handler;
-   task->callback               = content_load_and_save_state_cb;
-   task->title                  = strdup(msg_hash_to_str(MSG_LOADING_STATE));
-
-   load_state_task_pending      = true;
+   task->state                   = state;
+   task->type                    = TASK_TYPE_BLOCKING;
+   task->handler                 = task_load_handler;
+   task->callback                = content_load_and_save_state_cb;
+   task->title                   = strdup(msg_hash_to_str(MSG_LOADING_STATE));
 
    if (state->flags & SAVE_TASK_FLAG_MUTE)
-      task->flags              |=  RETRO_TASK_FLG_MUTE;
+      task->flags               |=  RETRO_TASK_FLG_MUTE;
    else
-      task->flags              &= ~RETRO_TASK_FLG_MUTE;
+      task->flags               &= ~RETRO_TASK_FLG_MUTE;
 
    if (!task_queue_push(task))
    {
-      /* Another blocking task is already active.  No callback will
-       * run for this task, so clear the flag here. */
-      load_state_task_pending   = false;
+      /* Another blocking task is already active. */
       if (data)
          free(data);
       if (task->title)
@@ -1911,8 +1331,8 @@ bool content_auto_save_state(const char *path)
 {
    size_t _len;
    settings_t *settings = config_get_ptr();
-   void *serial_data    = NULL;
-   intfstream_t *file   = NULL;
+   void *serial_data  = NULL;
+   intfstream_t *file = NULL;
 
    if (!core_info_current_supports_savestate())
    {
@@ -1929,7 +1349,7 @@ bool content_auto_save_state(const char *path)
    if (!serial_data)
       return false;
 
-#if defined(HAVE_COMPRESSION)
+#if defined(HAVE_ZLIB)
    if (settings->bools.savestate_file_compression)
       file = intfstream_open_rzip_file(path, RETRO_VFS_FILE_ACCESS_WRITE);
    else
@@ -1958,8 +1378,10 @@ bool content_auto_save_state(const char *path)
 #ifdef HAVE_SCREENSHOTS
    if (settings->bools.savestate_thumbnail_enable)
    {
+      video_driver_state_t *video_st = video_state_get_ptr();
       const char *dir_screenshot = settings->paths.directory_screenshot;
-      bool validfb = video_driver_cached_frame_is_hw_render();
+      bool validfb = video_st->frame_cache_data &&
+                     video_st->frame_cache_data == RETRO_HW_FRAME_BUFFER_VALID;
 
       take_screenshot(dir_screenshot, path, true, validfb, false, false);
    }
@@ -1981,9 +1403,6 @@ bool content_save_state(const char *path, bool save_to_disk)
    size_t _len;
    void *data  = NULL;
 
-   if (!save_to_disk && save_state_disable_undo)
-      return false;
-
    if (!core_info_current_supports_savestate())
    {
       RARCH_LOG("[State] %s\n",
@@ -1994,54 +1413,6 @@ bool content_save_state(const char *path, bool save_to_disk)
    _len = core_serialize_size();
    if (_len == 0)
       return false;
-
-   /* The undo snapshot is retaken on every state load, so this is the
-    * hottest serialize the frontend does, and it is the one where the
-    * destination can be kept between calls: nothing outside this
-    * function owns undo_load_buf's allocation.  Split out ahead of
-    * the disk path, which cannot reuse anything - it hands its buffer
-    * to a task that takes ownership of it. */
-   if (!save_to_disk)
-   {
-      if (!(_len = content_serialize_reusing(&undo_load_spare.data,
-                  &undo_load_spare.capacity)))
-      {
-         RARCH_ERR("[State] %s \"%s\".\n",
-               msg_hash_to_str(MSG_FAILED_TO_SAVE_STATE_TO),
-               path);
-         return false;
-      }
-
-      RARCH_LOG("[State] %s \"%s\", %u %s.\n",
-            msg_hash_to_str(MSG_SAVING_STATE),
-            path,
-            (unsigned)_len,
-            msg_hash_to_str(MSG_BYTES));
-
-      /* Swap rather than free-and-assign.  The outgoing snapshot's
-       * allocation becomes the next spare - still mapped, still
-       * faulted in - and the freshly filled spare becomes the
-       * snapshot.  Nothing is freed and nothing is copied.
-       *
-       * Swapping is also what keeps the old failure semantics exact:
-       * the serialize above wrote into the spare, not into the live
-       * snapshot, so a serialize that failed left the previous
-       * snapshot intact and undoable, which is what the
-       * fresh-allocation form did. */
-      {
-         void  *outgoing     = undo_load_buf.data;
-         size_t outgoing_cap = undo_load_buf.capacity;
-
-         undo_load_buf.data     = undo_load_spare.data;
-         undo_load_buf.capacity = undo_load_spare.capacity;
-         undo_load_spare.data     = outgoing;
-         undo_load_spare.capacity = outgoing_cap;
-      }
-
-      undo_load_buf.size = _len;
-      strlcpy(undo_load_buf.path, path, sizeof(undo_load_buf.path));
-      return true;
-   }
 
    if (!save_state_in_background)
    {
@@ -2060,17 +1431,54 @@ bool content_save_state(const char *path, bool save_to_disk)
             msg_hash_to_str(MSG_BYTES));
    }
 
-   if (!save_state_disable_undo && path_is_valid(path))
+   if (save_to_disk)
    {
-      /* Before overwriting the savestate file, load it into a buffer
-      to allow undo_save_state() to work */
-      /* TODO/FIXME - Use msg_hash_to_str here */
-      RARCH_LOG("[State] %s...\n",
-            msg_hash_to_str(MSG_FILE_ALREADY_EXISTS_SAVING_TO_BACKUP_BUFFER));
-      task_push_load_and_save_state(path, data, _len, true, false);
+      if (path_is_valid(path))
+      {
+         /* Before overwriting the savestate file, load it into a buffer
+         to allow undo_save_state() to work */
+         /* TODO/FIXME - Use msg_hash_to_str here */
+         RARCH_LOG("[State] %s...\n",
+               msg_hash_to_str(MSG_FILE_ALREADY_EXISTS_SAVING_TO_BACKUP_BUFFER));
+         task_push_load_and_save_state(path, data, _len, true, false);
+      }
+      else
+         task_push_save_state(path, data, _len, false);
    }
    else
-      task_push_save_state(path, data, _len, false);
+   {
+      if (!data)
+      {
+         if (!(data = content_get_serialized_data(&_len)))
+         {
+            RARCH_ERR("[State] %s \"%s\".\n",
+                  msg_hash_to_str(MSG_FAILED_TO_SAVE_STATE_TO),
+                  path);
+            return false;
+         }
+      }
+
+      /* save_to_disk is false, which means we are saving the state
+      in undo_load_buf to allow content_undo_load_state() to restore it */
+
+      /* If we were holding onto an old state already, clean it up first */
+      if (undo_load_buf.data)
+      {
+         free(undo_load_buf.data);
+         undo_load_buf.data = NULL;
+      }
+
+      if (!(undo_load_buf.data = malloc(_len)))
+      {
+         free(data);
+         return false;
+      }
+
+      memcpy(undo_load_buf.data, data, _len);
+      free(data);
+      undo_load_buf.size = _len;
+      strlcpy(undo_load_buf.path, path, sizeof(undo_load_buf.path));
+   }
 
    return true;
 }
@@ -2086,51 +1494,44 @@ bool content_ram_state_pending(void)
    return ram_buf.to_write_file;
 }
 
-/* True from the moment a save state task is pushed until its
- * main-thread callback has run: the task is inside the core until
- * then.  A flag, not a finder, for the reason given at
- * content_load_state_in_progress() below - the close asks from
- * inside a task handler, where a finder cannot see the save. */
-bool content_save_state_in_progress(void* data)
+static bool task_save_state_finder(retro_task_t *task, void *user_data)
 {
-   (void)data;
-   return save_state_task_pending;
+   return (task && task->handler == task_save_handler);
 }
 
-/* Blocks until the state task is through.  For the exit, startup and
- * init-failure paths only; CI keeps it out of menu/ and tasks/. */
+/* Returns true if a save state task is in progress */
+static bool content_save_state_in_progress(void* data)
+{
+   task_finder_data_t find_data;
+
+   find_data.func     = task_save_state_finder;
+   find_data.userdata = data;
+
+   return task_queue_find(&find_data);
+}
+
 void content_wait_for_save_state_task(void)
 {
    task_queue_wait(content_save_state_in_progress, NULL);
 }
 
 
-/* Returns true if a load state task is in progress.
- *
- * Declared with the other file statics above.
- *
- * True from the moment a load task is pushed until its main-thread
- * callback has applied the state.
- *
- * Deliberately NOT derived from task_queue_find().  The unthreaded
- * gather lifts EVERY running task off the queue into a local list
- * before invoking any handler, so for the whole of that pass the
- * queue looks empty to a finder - including to a finder called from
- * inside another task's handler, which is exactly how this is used.
- * A sibling load task is invisible there, so a finder answers "no
- * load in progress" while the load is sitting a few entries away in
- * the same pass, waiting its turn.  The threaded gather has a
- * narrower version of the same window between a worker finishing and
- * its callback running.
- *
- * The flag transitions strictly on the main thread (push, then
- * callback), so neither window exists. */
-bool content_load_state_in_progress(void* data)
+static bool task_load_state_finder(retro_task_t *task, void *user_data)
 {
-   return load_state_task_pending;
+   return (task && task->handler == task_load_handler);
 }
 
-/* As content_wait_for_save_state_task(), for a load. */
+/* Returns true if a load state task is in progress */
+bool content_load_state_in_progress(void* data)
+{
+   task_finder_data_t find_data;
+
+   find_data.func     = task_load_state_finder;
+   find_data.userdata = data;
+
+   return task_queue_find(&find_data);
+}
+
 void content_wait_for_load_state_task(void)
 {
    task_queue_wait(content_load_state_in_progress, NULL);
@@ -2149,18 +1550,10 @@ bool content_load_state(const char *path,
 {
    retro_task_t       *task        = NULL;
    save_task_state_t *state        = NULL;
+   video_driver_state_t *video_st  = video_state_get_ptr();
    settings_t *settings            = config_get_ptr();
 
-   /* Loading is gated by the artifact, not by save-capability: a state
-    * file the user produced outranks (possibly stale) core metadata, and
-    * a core may be able to restore in situations where it cannot
-    * currently serialize - e.g. from a game's own main menu, where
-    * retro_serialize_size() is legitimately 0 but retro_unserialize()
-    * performs a full restore. retro_unserialize() is the final arbiter
-    * and fails gracefully. */
-   if (   !core_info_current_supports_savestate()
-       && !load_to_backup_buffer
-       && !path_is_valid(path))
+   if (!core_info_current_supports_savestate())
    {
       RARCH_LOG("[State] %s\n",
             msg_hash_to_str(MSG_CORE_DOES_NOT_SUPPORT_SAVESTATES));
@@ -2179,42 +1572,27 @@ bool content_load_state(const char *path,
    if (autoload)
       state->flags             |= SAVE_TASK_FLAG_AUTOLOAD;
    state->state_slot            = settings->ints.state_slot;
-   if (video_driver_cached_frame_is_hw_render())
+   if (video_st->frame_cache_data && (video_st->frame_cache_data == RETRO_HW_FRAME_BUFFER_VALID))
       state->flags             |= SAVE_TASK_FLAG_HAS_VALID_FB;
-#if defined(HAVE_COMPRESSION)
+#if defined(HAVE_ZLIB)
    if (settings->bools.savestate_file_compression)
       state->flags             |= SAVE_TASK_FLAG_COMPRESS_FILES;
 #endif
    if (!settings->bools.notification_show_save_state)
       state->flags             |= SAVE_TASK_FLAG_MUTE;
 
-   state->frame_count           = &video_state_get_ptr()->frame_count;
    task->type                   = TASK_TYPE_BLOCKING;
    task->state                  = state;
    task->handler                = task_load_handler;
    task->callback               = content_load_state_cb;
    task->title                  = strdup(msg_hash_to_str(MSG_LOADING_STATE));
 
-   load_state_task_pending      = true;
-
    if (state->flags & SAVE_TASK_FLAG_MUTE)
       task->flags               |=  RETRO_TASK_FLG_MUTE;
    else
       task->flags               &= ~RETRO_TASK_FLG_MUTE;
 
-   if (!task_queue_push(task))
-   {
-      /* Another blocking task is already active. No callback will run
-       * for this task, so the load is not pending - left set, the
-       * flag would hold a content close and a movie recording waiting
-       * on a load that never comes - and nothing else frees what it
-       * holds. */
-      load_state_task_pending   = false;
-      task_free_title(task);
-      free(task);
-      free(state);
-      return false;
-   }
+   task_queue_push(task);
 
    return true;
 
@@ -2253,9 +1631,8 @@ void content_reset_savestate_backups(void)
       undo_save_buf.data = NULL;
    }
 
-   undo_save_buf.path[0]  = '\0';
-   undo_save_buf.size     = 0;
-   undo_save_buf.capacity = 0;
+   undo_save_buf.path[0] = '\0';
+   undo_save_buf.size    = 0;
 
    if (undo_load_buf.data)
    {
@@ -2263,33 +1640,18 @@ void content_reset_savestate_backups(void)
       undo_load_buf.data = NULL;
    }
 
-   undo_load_buf.path[0]  = '\0';
-   undo_load_buf.size     = 0;
-   undo_load_buf.capacity = 0;
-
-   /* The spare is an allocation nobody else knows about, so this is
-    * the only place it can be released.  Resetting the backups is
-    * exactly the point at which holding a state-sized buffer for a
-    * snapshot that no longer exists stops being worth it. */
-   if (undo_load_spare.data)
-   {
-      free(undo_load_spare.data);
-      undo_load_spare.data = NULL;
-   }
-
-   undo_load_spare.capacity = 0;
+   undo_load_buf.path[0] = '\0';
+   undo_load_buf.size    = 0;
 
    if (ram_buf.state_buf.data)
    {
       free(ram_buf.state_buf.data);
-      ram_buf.state_buf.data     = NULL;
-      ram_buf.state_buf.capacity = 0;
+      ram_buf.state_buf.data = NULL;
    }
 
-   ram_buf.state_buf.path[0]  = '\0';
-   ram_buf.state_buf.size     = 0;
-   ram_buf.state_buf.capacity = 0;
-   ram_buf.to_write_file      = false;
+   ram_buf.state_buf.path[0] = '\0';
+   ram_buf.state_buf.size    = 0;
+   ram_buf.to_write_file     = false;
 }
 
 bool content_undo_load_buf_is_empty(void)
@@ -2302,11 +1664,6 @@ bool content_undo_save_buf_is_empty(void)
    return undo_save_buf.data == NULL || undo_save_buf.size == 0;
 }
 
-bool content_undo_save_disabled(void)
-{
-   return save_state_disable_undo;
-}
-
 /**
  * content_load_state_from_ram:
  * Load a state from RAM.
@@ -2315,8 +1672,9 @@ bool content_undo_save_disabled(void)
  **/
 bool content_load_state_from_ram(void)
 {
+   size_t temp_data_size;
    bool ret        = false;
-   bool ramped     = false;
+   void* temp_data = NULL;
 
    if (!core_info_current_supports_savestate())
    {
@@ -2333,16 +1691,20 @@ bool content_load_state_from_ram(void)
          (unsigned)ram_buf.state_buf.size,
          msg_hash_to_str(MSG_BYTES));
 
-   /* Same discontinuity as a load from disk, so the same bracket. See
-    * audio_driver_jump_fade_begin(). */
-   ramped = audio_driver_jump_fade_begin();
+   /* We need to make a temporary copy of the buffer, to allow the swap below */
+   temp_data       = malloc(ram_buf.state_buf.size);
+   temp_data_size  = ram_buf.state_buf.size;
+   memcpy(temp_data, ram_buf.state_buf.data, ram_buf.state_buf.size);
 
-   /* Backup the current state so we can undo this load */
+   /* Swap the current state with the backup state. This way, we can undo
+   what we're undoing */
    content_save_state("RAM", false);
 
-   ret = content_deserialize_state(ram_buf.state_buf.data, ram_buf.state_buf.size);
+   ret             = content_deserialize_state(temp_data, temp_data_size);
 
-   audio_driver_jump_fade_end(ramped);
+   /* Clean up the temporary copy */
+   free(temp_data);
+   temp_data       = NULL;
 
    if (!ret)
    {
@@ -2373,36 +1735,52 @@ bool content_save_state_to_ram(void)
    }
 
    _len = core_serialize_size();
+
    if (_len == 0)
       return false;
 
-   RARCH_LOG("[State] %s, %u %s.\n",
-         msg_hash_to_str(MSG_SAVING_STATE),
-         (unsigned)_len,
-         msg_hash_to_str(MSG_BYTES));
-
-   if (save_state_disable_undo && ram_buf.state_buf.data)
+   if (!save_state_in_background)
    {
-      /* Undo off means lack of memory, free before we alloc the new one */
-      free(ram_buf.state_buf.data);
-      ram_buf.state_buf.data     = NULL;
-      ram_buf.state_buf.capacity = 0;
+      if (!(data = content_get_serialized_data(&_len)))
+      {
+         RARCH_ERR("[State] %s.\n",
+               msg_hash_to_str(MSG_FAILED_TO_SAVE_SRAM));
+         return false;
+      }
+
+      RARCH_LOG("[State] %s, %u %s.\n",
+            msg_hash_to_str(MSG_SAVING_STATE),
+            (unsigned)_len,
+            msg_hash_to_str(MSG_BYTES));
    }
 
-   if (!(data = content_get_serialized_data(&_len)))
+   if (!data)
    {
-      RARCH_ERR("[State] %s.\n",
-            msg_hash_to_str(MSG_FAILED_TO_SAVE_SRAM));
+      if (!(data = content_get_serialized_data(&_len)))
+      {
+         RARCH_ERR("[State] %s.\n",
+               msg_hash_to_str(MSG_FAILED_TO_SAVE_SRAM));
+         return false;
+      }
+   }
+
+   /* If we were holding onto an old state already, clean it up first */
+   if (ram_buf.state_buf.data)
+   {
+      free(ram_buf.state_buf.data);
+      ram_buf.state_buf.data = NULL;
+   }
+
+   if (!(ram_buf.state_buf.data = malloc(_len)))
+   {
+      free(data);
       return false;
    }
 
-   if (ram_buf.state_buf.data)
-      free(ram_buf.state_buf.data);
-
-   ram_buf.state_buf.data     = data;
-   ram_buf.state_buf.size     = _len;
-   ram_buf.state_buf.capacity = _len;
-   ram_buf.to_write_file      = true;
+   memcpy(ram_buf.state_buf.data, data, _len);
+   free(data);
+   ram_buf.state_buf.size = _len;
+   ram_buf.to_write_file  = true;
 
    return true;
 }
@@ -2421,7 +1799,7 @@ bool content_ram_state_to_file(const char *path)
          && ram_buf.state_buf.data
          && ram_buf.to_write_file)
    {
-#if defined(HAVE_COMPRESSION)
+#if defined(HAVE_ZLIB)
       settings_t *settings = config_get_ptr();
       if (settings->bools.save_file_compression)
       {
@@ -2448,47 +1826,4 @@ success:
 void set_save_state_in_background(bool state)
 {
    save_state_in_background = state;
-}
-
-void set_save_state_disable_undo(bool disable)
-{
-   save_state_disable_undo = disable;
-}
-
-bool content_save_state_automatic(retro_time_t now_us)
-{
-   char savestate_path[PATH_MAX_LENGTH];
-   settings_t *settings = config_get_ptr();
-   unsigned savestate_automatic_interval =
-      settings->uints.savestate_automatic_interval;
-
-   /* Return early if automatic savestate is disabled,
-      safety checks already happen in content_auto_save_state() */
-   if (savestate_automatic_interval == 0)
-      return false;
-
-   /* Check how long since last autosavestate, against the clock the
-    * frame already read - no time() call of its own per frame. */
-   if ((now_us - last_savestate_automatic_time)
-         < (retro_time_t)savestate_automatic_interval * 1000000)
-      return false;
-   
-   /* Generate the savestate path */
-   if (!runloop_get_savestate_path(savestate_path, 
-                                          sizeof(savestate_path), -1))
-   {
-      RARCH_WARN("[State] %s\n",
-            msg_hash_to_str(MSG_FAILED_TO_SAVE_STATE_TO));
-      return false;
-   }
-   
-   /* Trigger the savestate */
-   RARCH_LOG("[State] %s (automatic) to \"%s\".\n",
-         msg_hash_to_str(MSG_SAVING_STATE),
-         savestate_path);
-   
-   /* Update the last savestate time, rinse/repeat */
-   last_savestate_automatic_time = now_us;
-   
-   return content_auto_save_state(savestate_path);
 }

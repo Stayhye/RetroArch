@@ -30,7 +30,6 @@
 #endif
 
 #import <TargetConditionals.h>
-#include "../../../../../apple_runtime.h"
 #if TARGET_OS_IPHONE
 #import <UIKit/UIKit.h>
 #else
@@ -426,7 +425,7 @@ static inline NSString* _EncodeBase64(NSString* string) {
 #if TARGET_OS_IPHONE || (__MAC_OS_X_VERSION_MIN_REQUIRED >= __MAC_10_9)
   return [[NSString alloc] initWithData:[data base64EncodedDataWithOptions:0] encoding:NSASCIIStringEncoding];
 #else
-  if (apple_runtime_available(APPLE_RUNTIME_VER(10, 9, 0), 0, 0)) {
+  if (@available(macOS 10.9, *)) {
     return [[NSString alloc] initWithData:[data base64EncodedDataWithOptions:0] encoding:NSASCIIStringEncoding];
   }
   return [data base64Encoding];

@@ -27,8 +27,6 @@
 #include <compat/strcasestr.h>
 #include <retro_timers.h>
 #include <X11/Xatom.h>
-#include <X11/Xlib-xcb.h>
-#include <xcb/xcb.h>
 
 #include "../../configuration.h"
 #include "../../frontend/frontend_driver.h"
@@ -52,9 +50,6 @@ typedef struct gfx_ctx_x_vk_data
    int interval;
 
    gfx_ctx_vulkan_data_t vk;
-   /* The swapchain's own connection to the server, see
-    * gfx_ctx_x_vk_wsi_connection(). */
-   xcb_connection_t *wsi_conn;
 } gfx_ctx_x_vk_data_t;
 
 typedef struct Hints
@@ -90,33 +85,6 @@ static const unsigned long retroarch_icon_vk_data[] = {
 
 static int x_vk_nul_handler(Display *dpy, XErrorEvent *event) { return 0; }
 
-/* The swapchain presents through a connection of its own. A software
- * WSI writes each frame into its connection as image data, and every
- * request the frontend makes on a shared connection - the input
- * driver's keymap and pointer queries, the event pump - would wait
- * behind that frame. Nothing the frontend asks the server then queues
- * behind a present, whichever thread presents. The window is the
- * frontend's; the server does not care which client draws to it. The
- * frontend's own connection is used only if a second one cannot be
- * opened. */
-static xcb_connection_t *gfx_ctx_x_vk_wsi_connection(
-      gfx_ctx_x_vk_data_t *x)
-{
-   if (!x->wsi_conn)
-   {
-      xcb_connection_t *conn = xcb_connect(DisplayString(g_x11_dpy), NULL);
-      if (xcb_connection_has_error(conn))
-      {
-         xcb_disconnect(conn);
-         RARCH_WARN("[Vulkan] No second X connection for the swapchain,"
-               " presenting on the frontend's.\n");
-         return XGetXCBConnection(g_x11_dpy);
-      }
-      x->wsi_conn = conn;
-   }
-   return x->wsi_conn;
-}
-
 static void gfx_ctx_x_vk_destroy_resources(gfx_ctx_x_vk_data_t *x)
 {
    x11_input_ctx_destroy();
@@ -124,14 +92,6 @@ static void gfx_ctx_x_vk_destroy_resources(gfx_ctx_x_vk_data_t *x)
    if (g_x11_dpy)
    {
       vulkan_context_destroy(&x->vk, g_x11_win != 0);
-   }
-
-   /* After the swapchain and surface: the server frees what the
-    * swapchain made on this connection when it closes. */
-   if (x->wsi_conn)
-   {
-      xcb_disconnect(x->wsi_conn);
-      x->wsi_conn = NULL;
    }
 
    if (g_x11_win && g_x11_dpy)
@@ -185,16 +145,6 @@ static void gfx_ctx_x_vk_swap_interval(void *data, int interval)
    }
 }
 
-static bool gfx_ctx_x_vk_presentable(void *data)
-{
-   gfx_ctx_x_vk_data_t *x = (gfx_ctx_x_vk_data_t*)data;
-   /* Unmapped is asked of X directly; the swapchain check covers the
-    * moment before it has been torn down or rebuilt. */
-   if (!x11_presentable(data))
-      return false;
-   return x && x->vk.swapchain != VK_NULL_HANDLE;
-}
-
 static void gfx_ctx_x_vk_swap_buffers(void *data)
 {
    gfx_ctx_x_vk_data_t *x = (gfx_ctx_x_vk_data_t*)data;
@@ -202,27 +152,28 @@ static void gfx_ctx_x_vk_swap_buffers(void *data)
    if (x->vk.context.flags & VK_CTX_FLAG_HAS_ACQUIRED_SWAPCHAIN)
    {
       x->vk.context.flags &= ~VK_CTX_FLAG_HAS_ACQUIRED_SWAPCHAIN;
-      /* No swapchain - the window is minimised or zero-sized, and
-       * the create is retried in vulkan_acquire_next_image() below,
-       * which throttles that path itself. Nothing to present and
-       * nothing to wait for here. */
-      if (x->vk.swapchain != VK_NULL_HANDLE)
+      if (x->vk.swapchain == VK_NULL_HANDLE)
+      {
+         retro_sleep(10);
+      }
+      else
          vulkan_present(&x->vk, x->vk.context.current_swapchain_index);
    }
    vulkan_acquire_next_image(&x->vk);
 }
 
 static void gfx_ctx_x_vk_check_window(void *data, bool *quit,
-      bool *resize, unsigned *dims)
+      bool *resize, unsigned *width, unsigned *height)
 {
    gfx_ctx_x_vk_data_t *x = (gfx_ctx_x_vk_data_t*)data;
-   x11_check_window(data, quit, resize, dims);
+   x11_check_window(data, quit, resize, width, height);
 
    if (x->vk.flags & VK_DATA_FLAG_NEED_NEW_SWAPCHAIN)
       *resize = true;
 }
 
-static bool gfx_ctx_x_vk_set_resize(void *data, unsigned dims)
+static bool gfx_ctx_x_vk_set_resize(void *data,
+      unsigned width, unsigned height)
 {
    gfx_ctx_x_vk_data_t *x = (gfx_ctx_x_vk_data_t*)data;
 
@@ -236,13 +187,12 @@ static bool gfx_ctx_x_vk_set_resize(void *data, unsigned dims)
    if (x->is_fullscreen)
    {
       XMapRaised(g_x11_dpy, g_x11_win);
-      RARCH_LOG("[Vulkan] Resized fullscreen resolution to %ux%u.\n",
-            VIDEO_SCALE_W(dims), VIDEO_SCALE_H(dims));
+      RARCH_LOG("[Vulkan] Resized fullscreen resolution to %dx%d.\n", width, height);
    }
 
    /* FIXME/TODO - threading error here */
 
-   if (!vulkan_create_swapchain(&x->vk, dims, x->interval))
+   if (!vulkan_create_swapchain(&x->vk, width, height, x->interval))
    {
       RARCH_ERR("[Vulkan] Failed to update swapchain.\n");
       x->vk.swapchain              = VK_NULL_HANDLE;
@@ -250,10 +200,8 @@ static bool gfx_ctx_x_vk_set_resize(void *data, unsigned dims)
    }
 
    if (x->vk.flags & VK_DATA_FLAG_CREATED_NEW_SWAPCHAIN)
-   {
       vulkan_acquire_next_image(&x->vk);
-      x->vk.context.flags         |=  VK_CTX_FLAG_INVALID_SWAPCHAIN;
-   }
+   x->vk.context.flags            |=  VK_CTX_FLAG_INVALID_SWAPCHAIN;
    x->vk.flags                    &= ~VK_DATA_FLAG_NEED_NEW_SWAPCHAIN;
    return true;
 }
@@ -292,11 +240,9 @@ error:
 }
 
 static bool gfx_ctx_x_vk_set_video_mode(void *data,
-      unsigned dims,
+      unsigned width, unsigned height,
       bool fullscreen)
 {
-   unsigned width  = VIDEO_SCALE_W(dims);
-   unsigned height = VIDEO_SCALE_H(dims);
    XEvent event;
 #ifdef HAVE_XF86VM
    bool true_full            = false;
@@ -343,8 +289,7 @@ static bool gfx_ctx_x_vk_set_video_mode(void *data,
                              | LeaveWindowMask 
 			     | EnterWindowMask
                              | ButtonReleaseMask 
-			     | ButtonPressMask
-                             | FocusChangeMask;
+			     | ButtonPressMask;
    swa.override_redirect     = False;
 
    x->is_fullscreen          = fullscreen;
@@ -362,7 +307,7 @@ static bool gfx_ctx_x_vk_set_video_mode(void *data,
          {
             RARCH_LOG("[Vulkan] Window manager is %s.\n", wm_name);
 
-            if (compat_strcasestr(wm_name, "xfwm"))
+            if (strcasestr(wm_name, "xfwm"))
             {
                RARCH_LOG("[Vulkan] Using override-redirect workaround.\n");
                swa.override_redirect = True;
@@ -445,13 +390,6 @@ static bool gfx_ctx_x_vk_set_video_mode(void *data,
    x11_update_title(NULL);
 
    if (fullscreen)
-   {
-      /* Give the window a fullscreen hint before it is shown.
-       * This helps GNOME + X11 enter fullscreen properly */
-      x11_set_net_wm_fullscreen_hint(g_x11_dpy, g_x11_win);
-   }
-
-   if (fullscreen)
       x11_show_mouse(data, false);
 
 #ifdef HAVE_XF86VM
@@ -491,26 +429,18 @@ static bool gfx_ctx_x_vk_set_video_mode(void *data,
 
    x11_event_queue_check(&event);
 
-   if (fullscreen)
-   {
-      /* Ask for fullscreen again after the window is visible. Some
-       * GNOME + X11 setups ignore the first request if it happens too
-       * early, which causes RetroArch to only maximise the window */
-      x11_set_net_wm_fullscreen(g_x11_dpy, g_x11_win);
-      XFlush(g_x11_dpy);
-   }
-
    {
       bool quit, resize;
-      unsigned dims = 0;
-      x11_check_window(x, &quit, &resize, &dims);
+      unsigned width = 0, height = 0;
+      x11_check_window(x, &quit, &resize, &width, &height);
 
       /* FIXME/TODO - threading error here */
 
-      /* Use XCB surface since it's the most supported WSI. */
+      /* Use XCB surface since it's the most supported WSI.
+       * We can obtain the XCB connection directly from X11. */
       if (!vulkan_surface_create(&x->vk, VULKAN_WSI_XCB,
-               gfx_ctx_x_vk_wsi_connection(x), &g_x11_win,
-               VIDEO_SCALE_PACK(width, height), x->interval))
+               g_x11_dpy, &g_x11_win,
+               width, height, x->interval))
          goto error;
    }
 
@@ -544,16 +474,10 @@ error:
    if (vi)
       XFree(vi);
 
-   /* Do not destroy `x` here.  The caller in
-    * gfx/drivers/vulkan.c::vulkan_init treats a false return
-    * from set_video_mode as a failure of the in-flight `vk_t`
-    * construction and runs vulkan_free() on it, which calls
-    * ctx_driver->destroy(ctx_data) -- i.e. gfx_ctx_x_vk_destroy()
-    * -- on the very pointer we already freed.  That second call
-    * walks freed memory in gfx_ctx_x_vk_destroy_resources() and
-    * then free()s the same pointer again.  Leave cleanup to the
-    * caller's single normal-path destroy.  Cocoa / Android
-    * already do this; this matches them. */
+   gfx_ctx_x_vk_destroy_resources(x);
+
+   if (x)
+      free(x);
    g_x11_screen = 0;
 
    return false;
@@ -604,12 +528,18 @@ static uint32_t gfx_ctx_x_vk_get_flags(void *data)
 {
    gfx_ctx_x_vk_data_t *x     = (gfx_ctx_x_vk_data_t*)data;
    uint32_t flags             = 0;
+   uint8_t present_mode_count = 16;
+   uint8_t i                  = 0;
 
-   /* What the swapchain settled when it was made, rather than a walk of
-    * present_modes while the thread that draws rewrites it */
-   if (retro_atomic_load_acquire_int(
-            &x->vk.context.supports_adaptive_vsync))
-      BIT32_SET(flags, GFX_CTX_FLAGS_ADAPTIVE_VSYNC);
+   /* Check for FIFO_RELAXED_KHR capability */
+   for (i = 0; i < present_mode_count; i++)
+   {
+      if (x->vk.context.present_modes[i] == VK_PRESENT_MODE_FIFO_RELAXED_KHR)
+      {
+         BIT32_SET(flags, GFX_CTX_FLAGS_ADAPTIVE_VSYNC);
+         break;
+      }
+   }
 
 #if defined(HAVE_SLANG) && defined(HAVE_SPIRV_CROSS)
    BIT32_SET(flags, GFX_CTX_FLAGS_SHADERS_SLANG);
@@ -636,7 +566,7 @@ const gfx_ctx_driver_t gfx_ctx_vk_x = {
    NULL, /* get_video_output_size */
    NULL, /* get_video_output_prev */
    NULL, /* get_video_output_next */
-   NULL, /* get_metrics - handled by display server */
+   x11_get_metrics,
    NULL,
    x11_update_title,
    gfx_ctx_x_vk_check_window,
@@ -658,6 +588,5 @@ const gfx_ctx_driver_t gfx_ctx_vk_x = {
    gfx_ctx_x_vk_get_context_data,
    NULL, /* make_current */
    NULL, /* create_surface */
-   NULL  /* destroy_surface */,
-   gfx_ctx_x_vk_presentable
+   NULL  /* destroy_surface */
 };

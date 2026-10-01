@@ -17,7 +17,6 @@
 /* X/EGL context. Mostly used for testing GLES code paths. */
 
 #include <stdint.h>
-#include <compat/strcasestr.h>
 #include <stdlib.h>
 
 #include <string/stdstring.h>
@@ -27,7 +26,6 @@
 #endif
 
 #include "../../frontend/frontend_driver.h"
-#include <lists/string_list.h>
 #include "../../configuration.h"
 #include "../../input/input_driver.h"
 #include "../../verbosity.h"
@@ -55,8 +53,6 @@ typedef struct
 #ifdef HAVE_XF86VM
    bool should_reset_mode;
 #endif
-   /* The GPUs the GL GPU index chooses from, as published to the menu */
-   struct string_list *gl_gpu_list;
 } xegl_ctx_data_t;
 
 /* TODO/FIXME - static globals */
@@ -72,12 +68,6 @@ static void gfx_ctx_xegl_destroy(void *data)
 #ifdef HAVE_EGL
    egl_destroy(&xegl->egl);
 #endif
-   if (xegl->gl_gpu_list)
-   {
-      video_driver_set_gpu_api_devices(xegl_api, NULL);
-      string_list_free(xegl->gl_gpu_list);
-      xegl->gl_gpu_list = NULL;
-   }
 
    if (g_x11_win)
    {
@@ -183,49 +173,12 @@ static void *gfx_ctx_xegl_init(void *video_driver)
       goto error;
 
 #ifdef HAVE_EGL
-   /* The GL GPU index picks one of EGL's devices, 0 leaving it to the
-    * implementation; a device that cannot drive this display gives way
-    * to the default. */
+   if (!egl_init_context(&xegl->egl, EGL_PLATFORM_X11_KHR,
+       (EGLNativeDisplayType)g_x11_dpy, &major, &minor, &n,
+	    attrib_ptr, egl_default_accept_config_cb))
    {
-      bool ok              = false;
-      void *device         = NULL;
-      settings_t *settings = config_get_ptr();
-      xegl->gl_gpu_list    = egl_gpu_list_new();
-      /* The device the index was chosen as, wherever the list now
-       * puts it */
-      if (xegl->gl_gpu_list && settings)
-         settings->ints.gl_gpu_index = video_driver_gpu_index_resolve(
-               xegl_api, settings->ints.gl_gpu_index, xegl->gl_gpu_list);
-      if (xegl->gl_gpu_list && settings && settings->ints.gl_gpu_index > 0)
-      {
-         if ((device = egl_gpu_device_at(settings->ints.gl_gpu_index)))
-            RARCH_LOG("[X/EGL] Using GPU #%d: \"%s\".\n",
-                  settings->ints.gl_gpu_index,
-                  xegl->gl_gpu_list->elems[settings->ints.gl_gpu_index].data);
-         else
-            RARCH_WARN("[X/EGL] GPU #%d not found; using the default.\n",
-                  settings->ints.gl_gpu_index);
-      }
-      egl_set_display_device(device);
-      ok = egl_init_context(&xegl->egl, EGL_PLATFORM_X11_KHR,
-            (EGLNativeDisplayType)g_x11_dpy, &major, &minor, &n,
-            attrib_ptr, egl_default_accept_config_cb);
-      if (!ok && device)
-      {
-         RARCH_WARN("[X/EGL] The chosen GPU cannot drive this display; using the default.\n");
-         egl_set_display_device(NULL);
-         ok = egl_init_context(&xegl->egl, EGL_PLATFORM_X11_KHR,
-               (EGLNativeDisplayType)g_x11_dpy, &major, &minor, &n,
-               attrib_ptr, egl_default_accept_config_cb);
-      }
-      egl_set_display_device(NULL);
-      if (!ok)
-      {
-         egl_report_error();
-         goto error;
-      }
-      if (xegl->gl_gpu_list)
-         video_driver_set_gpu_api_devices(xegl_api, xegl->gl_gpu_list);
+      egl_report_error();
+      goto error;
    }
 
    if (n == 0 || !xegl->egl.config)
@@ -310,11 +263,9 @@ static EGLint *xegl_fill_attribs(xegl_ctx_data_t *xegl, EGLint *attr)
 static void gfx_ctx_xegl_set_swap_interval(void *data, int swap_interval);
 
 static bool gfx_ctx_xegl_set_video_mode(void *data,
-      unsigned dims,
+      unsigned width, unsigned height,
       bool fullscreen)
 {
-   unsigned width  = VIDEO_SCALE_W(dims);
-   unsigned height = VIDEO_SCALE_H(dims);
    XEvent event;
    EGLint egl_attribs[16];
    EGLint vid, num_visuals;
@@ -359,8 +310,7 @@ static bool gfx_ctx_xegl_set_video_mode(void *data,
 				     | ButtonReleaseMask
 				     | KeyReleaseMask
                                      | EnterWindowMask
-				     | LeaveWindowMask
-                                     | FocusChangeMask;
+				     | LeaveWindowMask;
    swa.override_redirect             = False;
 
 #ifdef HAVE_XF86VM
@@ -376,7 +326,7 @@ static bool gfx_ctx_xegl_set_video_mode(void *data,
          {
             RARCH_LOG("[X/EGL] Window manager is %s.\n", wm_name);
 
-            if (compat_strcasestr(wm_name, "xfwm"))
+            if (strcasestr(wm_name, "xfwm"))
             {
                RARCH_LOG("[X/EGL] Using override-redirect workaround.\n");
                swa.override_redirect = True;
@@ -448,13 +398,6 @@ static bool gfx_ctx_xegl_set_video_mode(void *data,
    x11_update_title(NULL);
 
    if (fullscreen)
-   {
-      /* Give the window a fullscreen hint before it is shown.
-       * This helps GNOME + X11 enter fullscreen properly */
-      x11_set_net_wm_fullscreen_hint(g_x11_dpy, g_x11_win);
-   }
-
-   if (fullscreen)
       x11_show_mouse(data, false);
 
 #ifdef HAVE_XF86VM
@@ -495,15 +438,6 @@ static bool gfx_ctx_xegl_set_video_mode(void *data,
    }
 
    x11_event_queue_check(&event);
-
-   if (fullscreen)
-   {
-      /* Ask for fullscreen again after the window is visible. Some
-       * GNOME + X11 setups ignore the first request if it happens too
-       * early, which causes RetroArch to only maximise the window */
-      x11_set_net_wm_fullscreen(g_x11_dpy, g_x11_win);
-      XFlush(g_x11_dpy);
-   }
    x11_install_quit_atom();
 
 #ifdef HAVE_EGL
@@ -592,17 +526,6 @@ static void gfx_ctx_xegl_swap_buffers(void *data)
 #endif
 }
 
-static void gfx_ctx_xegl_release_current(void *data)
-{
-#ifdef HAVE_EGL
-   xegl_ctx_data_t *xegl = (xegl_ctx_data_t*)data;
-   if (xegl)
-      egl_release_current(&xegl->egl);
-#else
-   (void)data;
-#endif
-}
-
 static void gfx_ctx_xegl_bind_hw_render(void *data, bool enable)
 {
 #ifdef HAVE_EGL
@@ -623,7 +546,6 @@ static gfx_ctx_proc_t gfx_ctx_xegl_get_proc_address(const char *symbol)
 {
    switch (xegl_api)
    {
-      case GFX_CTX_OPENGL_API:
       case GFX_CTX_OPENGL_ES_API:
       case GFX_CTX_OPENVG_API:
 #ifdef HAVE_EGL
@@ -631,6 +553,7 @@ static gfx_ctx_proc_t gfx_ctx_xegl_get_proc_address(const char *symbol)
 #else
          break;
 #endif
+      case GFX_CTX_OPENGL_API:
       case GFX_CTX_NONE:
       default:
          break;
@@ -649,12 +572,9 @@ static uint32_t gfx_ctx_xegl_get_flags(void *data)
       BIT32_SET(flags, GFX_CTX_FLAGS_SHADERS_SLANG);
 #endif
    }
-   else
-   {
 #ifdef HAVE_GLSL
-      BIT32_SET(flags, GFX_CTX_FLAGS_SHADERS_GLSL);
+   BIT32_SET(flags, GFX_CTX_FLAGS_SHADERS_GLSL);
 #endif
-   }
 
    return flags;
 }
@@ -698,7 +618,7 @@ const gfx_ctx_driver_t gfx_ctx_x_egl =
    NULL, /* get_video_output_size */
    NULL, /* get_video_output_prev */
    NULL, /* get_video_output_next */
-   NULL, /* get_metrics - handled by display server */
+   x11_get_metrics,
    NULL,
    x11_update_title,
    x11_check_window,
@@ -719,8 +639,5 @@ const gfx_ctx_driver_t gfx_ctx_x_egl =
    NULL,
    NULL,
    gfx_ctx_xegl_create_surface,
-   gfx_ctx_xegl_destroy_surface,
-   x11_presentable,
-   NULL, /* last_present_time */
-   gfx_ctx_xegl_release_current
+   gfx_ctx_xegl_destroy_surface
 };

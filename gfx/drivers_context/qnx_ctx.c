@@ -253,33 +253,34 @@ screen_error:
 }
 
 static void gfx_ctx_qnx_get_video_size(void *data,
-      unsigned *dims)
+      unsigned *width, unsigned *height)
 {
 #ifdef HAVE_EGL
    qnx_ctx_data_t *qnx = (qnx_ctx_data_t*)data;
-   egl_get_video_size(&qnx->egl, dims);
+   egl_get_video_size(&qnx->egl, width, height);
 #endif
 }
 
 static void gfx_ctx_qnx_check_window(void *data, bool *quit,
-      bool *resize, unsigned *dims)
+      bool *resize, unsigned *width, unsigned *height)
 {
-   unsigned new_dims;
+   unsigned new_width, new_height;
    qnx_ctx_data_t *qnx = (qnx_ctx_data_t*)data;
    *quit               = false;
 #ifdef HAVE_EGL
-   egl_get_video_size(&qnx->egl, &new_dims);
+   egl_get_video_size(&qnx->egl, &new_width, &new_height);
 #endif
 
-   if (new_dims != *dims)
+   if (new_width != *width || new_height != *height)
    {
-      *dims           = new_dims;
+      *width           = new_width;
+      *height          = new_height;
       *resize          = true;
    }
 }
 
 static bool gfx_ctx_qnx_set_video_mode(void *data,
-      unsigned dims, bool fullscreen) { return true; }
+      unsigned width, unsigned height, bool fullscreen) { return true; }
 
 static void gfx_ctx_qnx_input_driver(void *data,
       const char *joypad_name,

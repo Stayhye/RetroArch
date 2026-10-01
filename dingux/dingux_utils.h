@@ -108,7 +108,7 @@ int retrofw_get_battery_level(enum frontend_powerstate *source);
 
 /* Fetches the path of the base 'retroarch'
  * directory */
-size_t dingux_get_base_path(char *s, size_t len);
+void dingux_get_base_path(char *path, size_t len);
 
 RETRO_END_DECLS
 

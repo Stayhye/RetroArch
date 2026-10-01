@@ -39,14 +39,11 @@
 #include <file/file_path.h>
 #include <string/stdstring.h>
 #include <retro_math.h>
-#include <encodings/utf.h>
-#include <gfx/math/matrix_4x4.h>
 
 #include <d3d8.h>
 
 #include <defines/d3d_defines.h>
 #include "../common/d3d_common.h"
-
 #include "../../configuration.h"
 #include "../../retroarch.h"
 #include "../../dynamic.h"
@@ -67,10 +64,6 @@
 #endif
 
 #include "../font_driver.h"
-#include "../gfx_display.h"
-#ifdef HAVE_GFX_WIDGETS
-#include "../gfx_widgets.h"
-#endif
 
 #include "../../core.h"
 #include "../../retroarch.h"
@@ -84,12 +77,10 @@
 #define D3D8_RGB565_FORMAT D3DFMT_LIN_R5G6B5
 #define D3D8_XRGB8888_FORMAT D3DFMT_LIN_X8R8G8B8
 #define D3D8_ARGB8888_FORMAT D3DFMT_LIN_A8R8G8B8
-#define D3D8_ARGB4444_FORMAT D3DFMT_LIN_A4R4G4B4
 #else
 #define D3D8_RGB565_FORMAT D3DFMT_R5G6B5
 #define D3D8_XRGB8888_FORMAT D3DFMT_X8R8G8B8
 #define D3D8_ARGB8888_FORMAT D3DFMT_A8R8G8B8
-#define D3D8_ARGB4444_FORMAT D3DFMT_A4R4G4B4
 #endif
 
 typedef struct d3d8_video
@@ -104,7 +95,6 @@ typedef struct d3d8_video
    WNDCLASSEX windowClass;
 #endif
    LPDIRECT3DDEVICE8 dev;
-   LPDIRECT3D8 d3d8;
    D3DVIEWPORT8 out_vp;
 
    char *shader_path;
@@ -115,24 +105,6 @@ typedef struct d3d8_video
       void *decl;
       int size;
       int offset;
-      /* Soft scissor for D3D8 (no SetScissorRect available).
-       * scissor_begin stores the requested rect here, and
-       * gfx_display_d3d8_draw skips any quad whose screen-space
-       * bounding box lies entirely outside the rect.  Partial
-       * overlaps still draw in full — true geometry clipping
-       * would require modifying vertex/UV arrays per draw and is
-       * not worth the complexity here.  Skip-only is enough to
-       * stop entry lists from spilling on top of header/footer
-       * regions in Ozone, which is the only place the visual
-       * gap with d3d9+ was noticeable. */
-      unsigned scissor_pos;
-      unsigned scissor_dims;
-      bool scissor_active;
-      /* Scratch UV array for clipped quads.  Layout matches
-       * d3d8_tex_coords: BL, BR, TL, TR (8 floats).  Reused
-       * across draws — only valid until the next clipped
-       * draw. */
-      float scissor_uv[8];
    }menu_display;
 
    overlay_t *overlays;
@@ -148,16 +120,11 @@ typedef struct d3d8_video
    bool quitting;
    bool needs_restore;
    bool overlays_enabled;
+   /* TODO - refactor this away properly. */
+   bool resolution_hd_enable;
+
    /* Only used for Xbox */
    bool widescreen_mode;
-
-   /* Bit-depth of the data most recently uploaded to `menu->tex`.
-    * The menu texture is created with a fixed pixel format (16bpp
-    * ARGB4444 for the RGUI fast path, 32bpp ARGB8888 otherwise),
-    * so we must recreate it when set_menu_texture_frame is called
-    * with a different `rgb32` value.  Defaults to false; the first
-    * call will see a NULL tex and create one regardless. */
-   bool menu_tex_rgb32;
 } d3d8_video_t;
 
 typedef struct d3d8_renderchain
@@ -167,9 +134,11 @@ typedef struct d3d8_renderchain
    const video_info_t *video_info;
    LPDIRECT3DTEXTURE8 tex;
    LPDIRECT3DVERTEXBUFFER8 vertex_buf;
-   unsigned last_dims;
+   unsigned last_width;
+   unsigned last_height;
    void *vertex_decl;
-   unsigned tex_dims;
+   unsigned tex_w;
+   unsigned tex_h;
    uint64_t frame_count;
 } d3d8_renderchain_t;
 
@@ -193,6 +162,8 @@ static const float d3d8_tex_coords[8] = {
    0, 0,
    1, 0
 };
+
+static LPDIRECT3D8 g_pD3D8;
 
 void *dinput;
 
@@ -243,25 +214,8 @@ static bool d3d8_initialize_symbols(enum gfx_ctx_api api)
       g_d3d8_dll            = dylib_load("d3d8.dll");
 
    if (!g_d3d8_dll)
-   {
-      /* On modern Windows the legacy D3D8 user-mode runtime is not
-       * installed by default (only d3d8thk.dll, the kernel thunk
-       * layer, ships with the OS). Tell the user explicitly --
-       * otherwise the only message they see is the generic
-       * "Cannot open video driver" from video_driver_init_internal. */
-      RARCH_ERR("[D3D8] Failed to load d3d8.dll: %s\n",
-            dylib_error() ? dylib_error() : "(no error reported)");
-      RARCH_ERR("[D3D8] The legacy DirectX 8 runtime is not present "
-            "on this system. Drop a matching d3d8.dll and d3d9.dll"
-            "(e.g. from DXVK) next to retroarch.exe, or pick a different "
-            "video driver.\n");
       return false;
-   }
-   if (!(D3DCreate = (D3DCreate_t)dylib_proc(g_d3d8_dll, "Direct3DCreate8")))
-   {
-      RARCH_ERR("[D3D8] d3d8.dll does not export Direct3DCreate8: %s\n",
-            dylib_error() ? dylib_error() : "(no error reported)");
-   }
+   D3DCreate                = (D3DCreate_t)dylib_proc(g_d3d8_dll, "Direct3DCreate8");
 #else
    D3DCreate                = Direct3DCreate8;
 #endif
@@ -383,16 +337,16 @@ static void *d3d8_texture_new(LPDIRECT3DDEVICE8 dev,
 
 static void d3d8_set_mvp(void *data, const void *mat_data)
 {
-   math_matrix_4x4 matrix;
+   struct d3d_matrix matrix;
    LPDIRECT3DDEVICE8 d3dr     = (LPDIRECT3DDEVICE8)data;
 
-   matrix_4x4_identity(matrix);
+   d3d_matrix_identity(&matrix);
 
    IDirect3DDevice8_SetTransform(d3dr,
          D3DTS_PROJECTION, (D3DMATRIX*)&matrix);
    IDirect3DDevice8_SetTransform(d3dr,
          D3DTS_VIEW, (D3DMATRIX*)&matrix);
-   matrix_4x4_transpose(matrix, (*(const math_matrix_4x4*)mat_data));
+   d3d_matrix_transpose(&matrix, mat_data);
    IDirect3DDevice8_SetTransform(d3dr, D3DTS_WORLD, (D3DMATRIX*)&matrix);
 }
 
@@ -402,16 +356,19 @@ static void d3d8_set_vertices(
       unsigned pass,
       unsigned vert_width, unsigned vert_height, uint64_t frame_count)
 {
-   unsigned vert_dims    = VIDEO_SCALE_PACK(vert_width, vert_height);
+   unsigned width, height;
 
-   if (chain->last_dims != vert_dims)
+   video_driver_get_size(&width, &height);
+
+   if (chain->last_width != vert_width || chain->last_height != vert_height)
    {
       Vertex vert[4];
       void *verts        = NULL;
       float tex_w        = vert_width;
       float tex_h        = vert_height;
 
-      chain->last_dims   = vert_dims;
+      chain->last_width  = vert_width;
+      chain->last_height = vert_height;
 
       if (chain->vertex_buf)
       {
@@ -441,10 +398,10 @@ static void d3d8_set_vertices(
          vert[3].u        = tex_w;
          vert[3].v        = tex_h;
 #ifndef _XBOX
-         vert[1].u       /= VIDEO_SCALE_W(chain->tex_dims);
-         vert[2].v       /= VIDEO_SCALE_H(chain->tex_dims);
-         vert[3].u       /= VIDEO_SCALE_W(chain->tex_dims);
-         vert[3].v       /= VIDEO_SCALE_H(chain->tex_dims);
+         vert[1].u       /= chain->tex_w;
+         vert[2].v       /= chain->tex_h;
+         vert[3].u       /= chain->tex_w;
+         vert[3].v       /= chain->tex_h;
 #endif
 
          vert[0].color    = 0xFFFFFFFF;
@@ -475,13 +432,12 @@ static void d3d8_blit_to_texture(
    D3DDevice_SetSoftDisplayFilter(global->console.softfilter_enable);
 #endif
 
-   if (chain->last_dims != VIDEO_SCALE_PACK(width, height))
+   if (chain->last_width != width || chain->last_height != height)
    {
       if (IDirect3DTexture8_LockRect(tex, 0, lr,
                NULL, D3DLOCK_NOSYSLOCK) == D3D_OK)
       {
-         memset(lr->pBits, 0,
-               VIDEO_SCALE_H(chain->tex_dims) * lr->Pitch);
+         memset(lr->pBits, 0, chain->tex_h * lr->Pitch);
          IDirect3DTexture8_UnlockRect((LPDIRECT3DTEXTURE8)tex, 0);
       }
    }
@@ -563,20 +519,22 @@ static bool d3d8_setup_init(void *data,
       bool rgb32
       )
 {
+   unsigned width, height;
    d3d8_video_t *d3d                      = (d3d8_video_t*)data;
    settings_t *settings                   = config_get_ptr();
    LPDIRECT3DDEVICE8 d3dr                 = (LPDIRECT3DDEVICE8)d3d->dev;
    d3d8_renderchain_t *chain              = (d3d8_renderchain_t*)d3d->renderchain_data;
    unsigned fmt                           = (rgb32) ? RETRO_PIXEL_FORMAT_XRGB8888 : RETRO_PIXEL_FORMAT_RGB565;
-   video_viewport_settings_t *custom_vp            = &settings->video_vp_custom;
-   unsigned width                         = VIDEO_SCALE_W(d3d->vp.full_dims);
-   unsigned height                        = VIDEO_SCALE_H(d3d->vp.full_dims);
+   video_viewport_t *custom_vp            = &settings->video_vp_custom;
+
+   video_driver_get_size(&width, &height);
 
    chain->dev                             = dev_data;
    chain->pixel_size                      = (fmt == RETRO_PIXEL_FORMAT_RGB565)
       ? 2
       : 4;
-   chain->tex_dims                        = link_info->tex_dims;
+   chain->tex_w                           = link_info->tex_w;
+   chain->tex_h                           = link_info->tex_h;
 
    chain->vertex_buf                      = (LPDIRECT3DVERTEXBUFFER8)d3d8_vertex_buffer_new(d3dr, 4 * sizeof(Vertex),
          D3DUSAGE_WRITEONLY,
@@ -587,8 +545,7 @@ static bool d3d8_setup_init(void *data,
       return false;
 
    chain->tex = (LPDIRECT3DTEXTURE8)d3d8_texture_new(d3dr,
-         VIDEO_SCALE_W(chain->tex_dims),
-         VIDEO_SCALE_H(chain->tex_dims), 1, 0,
+         chain->tex_w, chain->tex_h, 1, 0,
          video_info->rgb32
          ?
          D3D8_XRGB8888_FORMAT : D3D8_RGB565_FORMAT,
@@ -607,11 +564,11 @@ static bool d3d8_setup_init(void *data,
    IDirect3DDevice8_SetRenderState(d3dr, D3DRS_ZENABLE,  FALSE);
 
    /* FIXME */
-   if (!VIDEO_SCALE_W(custom_vp->dims))
-      VIDEO_SCALE_PUT_W(custom_vp->dims, width);
+   if (custom_vp->width == 0)
+      custom_vp->width = width;
 
-   if (!VIDEO_SCALE_H(custom_vp->dims))
-      VIDEO_SCALE_PUT_H(custom_vp->dims, height);
+   if (custom_vp->height == 0)
+      custom_vp->height = height;
 
    return true;
 }
@@ -649,6 +606,23 @@ static void *gfx_display_d3d8_get_default_mvp(void *data)
    return &id;
 }
 
+static INT32 gfx_display_prim_to_d3d8_enum(
+      enum gfx_display_prim_type prim_type)
+{
+   switch (prim_type)
+   {
+      case GFX_DISPLAY_PRIM_TRIANGLES:
+      case GFX_DISPLAY_PRIM_TRIANGLESTRIP:
+         return D3DPT_COMM_TRIANGLESTRIP;
+      case GFX_DISPLAY_PRIM_NONE:
+      default:
+         break;
+   }
+
+   /* TODO/FIXME - hack */
+   return 0;
+}
+
 static void gfx_display_d3d8_blend_begin(void *data)
 {
    d3d8_video_t *d3d             = (d3d8_video_t*)data;
@@ -673,10 +647,9 @@ static void gfx_display_d3d8_blend_end(void *data)
 
 static void gfx_display_d3d8_draw(gfx_display_ctx_draw_t *draw,
       void *data,
-      unsigned video_dims)
+      unsigned video_width,
+      unsigned video_height)
 {
-   unsigned video_width  = VIDEO_SCALE_W(video_dims);
-   unsigned video_height = VIDEO_SCALE_H(video_dims);
    static float default_mvp[] ={ 1.0f, 0.0f, 0.0f, 0.0f,
                                  0.0f, 1.0f, 0.0f, 0.0f,
                                  0.0f, 0.0f, 1.0f, 0.0f,
@@ -686,6 +659,7 @@ static void gfx_display_d3d8_draw(gfx_display_ctx_draw_t *draw,
    math_matrix_4x4 mop, m1, m2;
    LPDIRECT3DVERTEXBUFFER8 vbo;
    LPDIRECT3DDEVICE8 dev;
+   D3DPRIMITIVETYPE type;
    unsigned start                = 0;
    unsigned count                = 0;
    d3d8_video_t *d3d             = (d3d8_video_t*)data;
@@ -693,156 +667,9 @@ static void gfx_display_d3d8_draw(gfx_display_ctx_draw_t *draw,
    const float *vertex           = NULL;
    const float *tex_coord        = NULL;
    const float *color            = NULL;
-   /* When the soft-scissor clipping path remaps UVs, it points
-    * this at d3d->menu_display.scissor_uv and the per-vertex
-    * read below uses it instead of draw->coords->tex_coord. */
-   const float *clipped_uv       = NULL;
 
-   if (!d3d || !draw)
+   if (!d3d || !draw || draw->pipeline_id)
       return;
-   if (!draw->coords)
-      return;
-
-   /* Soft scissor.
-    *
-    * D3D8 has no SetScissorRect, so we approximate scissoring in
-    * software inside the draw function itself.  Two strategies
-    * depending on what the caller supplies:
-    *
-    *   - Default-vertex path (draw->coords->vertex == NULL, i.e.
-    *     gfx_display_draw_quad): we have an axis-aligned screen
-    *     rect from the origin in draw->pos and the size in draw->dims,
-    *     plus a 4-element UV
-    *     array (either the caller's tex_coord or the default
-    *     [0..1] one).  We clip the rect against the scissor and
-    *     remap the UVs proportionally so the visible portion of
-    *     the texture still lands on the visible portion of the
-    *     screen rect.  This is what Ozone's entry icons,
-    *     selection borders and dividers use, and the fully
-    *     correct path for the cases that overflow.
-    *
-    *   - Explicit-vertex path (draw->coords->vertex != NULL, i.e.
-    *     gfx_display_draw_texture_slice with its 9 sub-quads):
-    *     the geometry is already in normalised [0,1] screen
-    *     space and clipping each of the 9 sub-quads with UV
-    *     remap is too invasive.  Fall back to skip-only — only
-    *     drop sub-quads whose bounding box lies entirely outside
-    *     the scissor rect.
-    *
-    * Note that gfx_display_draw_quad converts the caller's
-    * top-down Y into bottom-up before it packs the origin.  We
-    * convert back to top-down here for the comparison and back
-    * again on the way out, so callers don't notice. */
-   if (d3d->menu_display.scissor_active)
-   {
-      int sx  = VIDEO_POS_X(d3d->menu_display.scissor_pos);
-      int sy  = VIDEO_POS_Y(d3d->menu_display.scissor_pos);
-      int sx2 = sx + (int)VIDEO_SCALE_W(d3d->menu_display.scissor_dims);
-      int sy2 = sy + (int)VIDEO_SCALE_H(d3d->menu_display.scissor_dims);
-
-      if (draw->coords->vertex)
-      {
-         /* Skip-only path for explicit-vertex draws.  Build a
-          * bounding box from the vertex array (normalised
-          * [0,1] screen space, Y bottom-up) and skip if it's
-          * entirely outside the scissor. */
-         float vmin_x = draw->coords->vertex[0];
-         float vmin_y = draw->coords->vertex[1];
-         float vmax_x = vmin_x;
-         float vmax_y = vmin_y;
-         int qx, qy, qx2, qy2;
-         unsigned vi;
-         for (vi = 1; vi < draw->coords->vertices; vi++)
-         {
-            float vx = draw->coords->vertex[vi * 2 + 0];
-            float vy = draw->coords->vertex[vi * 2 + 1];
-            if (vx < vmin_x) vmin_x = vx;
-            if (vx > vmax_x) vmax_x = vx;
-            if (vy < vmin_y) vmin_y = vy;
-            if (vy > vmax_y) vmax_y = vy;
-         }
-         qx  = (int)(vmin_x * (float)video_width);
-         qx2 = (int)(vmax_x * (float)video_width);
-         qy2 = (int)((1.0f - vmin_y) * (float)video_height);
-         qy  = (int)((1.0f - vmax_y) * (float)video_height);
-
-         if (qx2 <= sx || qx >= sx2 || qy2 <= sy || qy >= sy2)
-            return;
-      }
-      else
-      {
-         /* Geometry-clipping path for default-vertex draws.
-          * Clip the screen rect against the scissor and remap
-          * the UVs proportionally; we mutate draw->pos, draw->dims and
-          * a local UV copy in place, then fall through to the
-          * normal rendering code with the clipped values. */
-         int qx_left  = VIDEO_POS_X(draw->pos);
-         int qx_right = VIDEO_POS_X(draw->pos) + (int)VIDEO_SCALE_W(draw->dims);
-         int qy_bot   = (int)video_height - VIDEO_POS_Y(draw->pos);             /* top-down */
-         int qy_top   = qy_bot - (int)VIDEO_SCALE_H(draw->dims);              /* top-down */
-         int new_left  = qx_left  > sx  ? qx_left  : sx;
-         int new_right = qx_right < sx2 ? qx_right : sx2;
-         int new_top   = qy_top   > sy  ? qy_top   : sy;
-         int new_bot   = qy_bot   < sy2 ? qy_bot   : sy2;
-
-         if (new_left >= new_right || new_top >= new_bot)
-            return;
-
-         /* Only mutate if the rect actually clips, to keep the
-          * common (no overlap with scissor edges) path free of
-          * UV remapping noise and to avoid the float roundtrip. */
-         if (   new_left != qx_left || new_right != qx_right
-             || new_top  != qy_top  || new_bot   != qy_bot)
-         {
-            const float *src_uv = draw->coords->tex_coord
-               ? draw->coords->tex_coord
-               : &d3d8_tex_coords[0];
-            float w_orig = (float)VIDEO_SCALE_W(draw->dims);
-            float h_orig = (float)VIDEO_SCALE_H(draw->dims);
-            float fx_l   = (float)(new_left  - qx_left) / w_orig;
-            float fx_r   = (float)(new_right - qx_left) / w_orig;
-            float fy_t   = (float)(new_top   - qy_top)  / h_orig;
-            float fy_b   = (float)(new_bot   - qy_top)  / h_orig;
-            /* Source UVs in BL,BR,TL,TR order match d3d8_tex_coords:
-             *   src_uv[0,1] = BL    src_uv[2,3] = BR
-             *   src_uv[4,5] = TL    src_uv[6,7] = TR
-             * The four corners share U-left/U-right and V-top/V-bot,
-             * so derive those from BL/BR (U) and TL/BL (V). */
-            float u_l_orig = src_uv[0];                           /* BL.u */
-            float u_r_orig = src_uv[2];                           /* BR.u */
-            float v_t_orig = src_uv[5];                           /* TL.v */
-            float v_b_orig = src_uv[1];                           /* BL.v */
-            float u_l_new  = u_l_orig + fx_l * (u_r_orig - u_l_orig);
-            float u_r_new  = u_l_orig + fx_r * (u_r_orig - u_l_orig);
-            /* V interpolates from v_t_orig (top, fy=0) to v_b_orig
-             * (bot, fy=1), i.e. fy_t/fy_b are along the top->bot
-             * axis.  The default tex coord array has TL.v=0 and
-             * BL.v=1 so V grows downward, matching D3D convention. */
-            float v_t_new  = v_t_orig + fy_t * (v_b_orig - v_t_orig);
-            float v_b_new  = v_t_orig + fy_b * (v_b_orig - v_t_orig);
-
-            /* Write clipped UVs into a local 4-corner array and
-             * point the local tex_coord pointer at it.  Layout
-             * matches d3d8_tex_coords: BL, BR, TL, TR. */
-            d3d->menu_display.scissor_uv[0] = u_l_new;
-            d3d->menu_display.scissor_uv[1] = v_b_new;
-            d3d->menu_display.scissor_uv[2] = u_r_new;
-            d3d->menu_display.scissor_uv[3] = v_b_new;
-            d3d->menu_display.scissor_uv[4] = u_l_new;
-            d3d->menu_display.scissor_uv[5] = v_t_new;
-            d3d->menu_display.scissor_uv[6] = u_r_new;
-            d3d->menu_display.scissor_uv[7] = v_t_new;
-            clipped_uv = d3d->menu_display.scissor_uv;
-
-            /* Now mutate the screen rect to the clipped one.
-             * Convert new_bot back to bottom-up Y for the origin. */
-            draw->pos    = VIDEO_POS_PACK(new_left,
-                  (int)video_height - new_bot);
-            draw->dims   = VIDEO_SCALE_PACK((unsigned)(new_right - new_left), (unsigned)(new_bot - new_top));
-         }
-      }
-   }
-
    if ((d3d->menu_display.offset + draw->coords->vertices )
          > (unsigned)d3d->menu_display.size)
       return;
@@ -855,45 +682,40 @@ static void gfx_display_d3d8_draw(gfx_display_ctx_draw_t *draw,
 
    pv          += d3d->menu_display.offset;
    vertex       = draw->coords->vertex;
-   tex_coord    = clipped_uv ? clipped_uv : draw->coords->tex_coord;
+   tex_coord    = draw->coords->tex_coord;
    color        = draw->coords->color;
 
    if (!vertex)
       vertex    = &d3d8_vertexes[0];
    if (!tex_coord)
       tex_coord = &d3d8_tex_coords[0];
-   if (!color)
-   {
-      /* Default to opaque white when caller provides no color
-       * array — matches the behaviour of the d3d9/d3d10/d3d11
-       * gfx_display drivers and avoids dereferencing NULL on
-       * pipeline/dispca-driven draws. */
-      static const float default_color[4] = { 1.0f, 1.0f, 1.0f, 1.0f };
-      color     = &default_color[0];
-   }
 
    for (i = 0; i < draw->coords->vertices; i++)
    {
       int colors[4];
-      const float *cp = color;
 
-      colors[0]   = *cp++ * 0xFF;
-      colors[1]   = *cp++ * 0xFF;
-      colors[2]   = *cp++ * 0xFF;
-      colors[3]   = *cp++ * 0xFF;
-
-      /* Advance the color pointer only when the caller actually
-       * provided a per-vertex color array; if we fell back to the
-       * static default above, reuse that single RGBA for every
-       * vertex. */
-      if (draw->coords->color)
-         color = cp;
+      colors[0]   = *color++ * 0xFF;
+      colors[1]   = *color++ * 0xFF;
+      colors[2]   = *color++ * 0xFF;
+      colors[3]   = *color++ * 0xFF;
 
       pv[i].x     = *vertex++;
       pv[i].y     = *vertex++;
       pv[i].z     = 0.5f;
       pv[i].u     = *tex_coord++;
       pv[i].v     = *tex_coord++;
+
+      if ((void*)draw->texture)
+      {
+         D3DSURFACE_DESC desc;
+         LPDIRECT3DTEXTURE8 tex = (LPDIRECT3DTEXTURE8)draw->texture;
+         if (SUCCEEDED(IDirect3DTexture8_GetLevelDesc(tex,
+                     0, (D3DSURFACE_DESC*)&desc)))
+         {
+            pv[i].u *= desc.Width;
+            pv[i].v *= desc.Height;
+         }
+      }
 
       pv[i].color =
          D3DCOLOR_ARGB(
@@ -915,16 +737,16 @@ static void gfx_display_d3d8_draw(gfx_display_ctx_draw_t *draw,
    matrix_4x4_multiply(m1,
          *((math_matrix_4x4*)draw->matrix_data), m2);
    matrix_4x4_scale(mop,
-         (VIDEO_SCALE_W(draw->dims)  / 2.0) / video_width,
-         (VIDEO_SCALE_H(draw->dims) / 2.0) / video_height, 0);
+         (draw->width  / 2.0) / video_width,
+         (draw->height / 2.0) / video_height, 0);
    matrix_4x4_multiply(m2, mop, m1);
    matrix_4x4_translate(mop,
-         (VIDEO_POS_X(draw->pos) + (VIDEO_SCALE_W(draw->dims)  / 2.0)) / video_width,
-         (VIDEO_POS_Y(draw->pos) + (VIDEO_SCALE_H(draw->dims) / 2.0)) / video_height,
+         (draw->x + (draw->width  / 2.0)) / video_width,
+         (draw->y + (draw->height / 2.0)) / video_height,
          0);
    matrix_4x4_multiply(m1, mop, m2);
    matrix_4x4_multiply(m2, d3d->mvp_transposed, m1);
-   matrix_4x4_transpose(m1, m2);
+   d3d_matrix_transpose(&m1, &m2);
 
    d3d8_set_mvp(dev, &m1);
 
@@ -933,751 +755,43 @@ static void gfx_display_d3d8_draw(gfx_display_ctx_draw_t *draw,
       IDirect3DDevice8_SetTexture(dev, 0,
             (IDirect3DBaseTexture8*)draw->texture);
       IDirect3DDevice8_SetTextureStageState(dev, 0,
-            (D3DTEXTURESTAGESTATETYPE)D3DTSS_ADDRESSU, D3DTADDRESS_CLAMP);
+            (D3DTEXTURESTAGESTATETYPE)D3DTSS_ADDRESSU, D3DTADDRESS_COMM_CLAMP);
       IDirect3DDevice8_SetTextureStageState(dev, 0,
-            (D3DTEXTURESTAGESTATETYPE)D3DTSS_ADDRESSV, D3DTADDRESS_CLAMP);
+            (D3DTEXTURESTAGESTATETYPE)D3DTSS_ADDRESSV, D3DTADDRESS_COMM_CLAMP);
       IDirect3DDevice8_SetTextureStageState(dev, 0,
-            (D3DTEXTURESTAGESTATETYPE)D3DTSS_MINFILTER, D3DTEXF_LINEAR);
+            (D3DTEXTURESTAGESTATETYPE)D3DTSS_MINFILTER, D3DTEXF_COMM_LINEAR);
       IDirect3DDevice8_SetTextureStageState(dev, 0,
-            (D3DTEXTURESTAGESTATETYPE)D3DTSS_MAGFILTER, D3DTEXF_LINEAR);
-   }
-   else
-   {
-      /* Untextured draw — clear any stale texture binding (the
-       * font atlas left bound after font_driver_render_msg, the
-       * libretro frame texture from d3d8_render, etc.) so the
-       * default texture-stage MODULATE doesn't multiply the
-       * per-vertex DIFFUSE colour against an unrelated sample.
-       * Without this, divider lines and selection highlights in
-       * Ozone/XMB/MaterialUI would pick up whatever texture was
-       * last bound and render as garbage or invisibly. */
-      IDirect3DDevice8_SetTexture(dev, 0, NULL);
+            (D3DTEXTURESTAGESTATETYPE)D3DTSS_MAGFILTER, D3DTEXF_COMM_LINEAR);
    }
 
-   /* Force the alpha pipeline to MODULATE(TEXTURE, DIFFUSE).
-    *
-    * The fixed-function default for stage 0 is
-    *   COLOROP = MODULATE,   COLORARG1 = TEXTURE, COLORARG2 = CURRENT
-    *   ALPHAOP = SELECTARG1, ALPHAARG1 = TEXTURE
-    * which means the colour channel correctly multiplies the
-    * texture sample by the per-vertex DIFFUSE colour, but the
-    * alpha channel ignores DIFFUSE entirely and just selects the
-    * texture's alpha.  For an opaque texture (the common case —
-    * gfx_white_texture, icon atlases, the Ozone cursor texture)
-    * that means a draw whose only opacity comes from per-vertex
-    * alpha (e.g. a fading-out "old" cursor at alpha=0, or a
-    * semi-transparent footer fill) renders fully opaque instead
-    * of fading.
-    *
-    * Switching ALPHAOP to MODULATE makes the alpha output equal
-    * texture.alpha * diffuse.alpha, which is what every menu
-    * caller expects (and what the d3d9/d3d10/d3d11 stock shaders
-    * compute explicitly).  COLOROP stays at its default. */
-   IDirect3DDevice8_SetTextureStageState(dev, 0,
-         (D3DTEXTURESTAGESTATETYPE)D3DTSS_ALPHAOP,   D3DTOP_MODULATE);
-   IDirect3DDevice8_SetTextureStageState(dev, 0,
-         (D3DTEXTURESTAGESTATETYPE)D3DTSS_ALPHAARG1, D3DTA_TEXTURE);
-   IDirect3DDevice8_SetTextureStageState(dev, 0,
-         (D3DTEXTURESTAGESTATETYPE)D3DTSS_ALPHAARG2, D3DTA_DIFFUSE);
-
+   type  = gfx_display_prim_to_d3d8_enum(draw->prim_type);
    start = d3d->menu_display.offset;
-
-   /* Menu draws issued by gfx_display always pass a triangle-strip layout
-    * (4 vertices = 2 triangles for a quad).  D3D8 expects PrimitiveCount,
-    * not vertex count, hence (vertices - 2).  Guard against vertices < 3
-    * which would underflow the unsigned subtraction and pass a huge
-    * primitive count to the GPU. */
-   if (draw->coords->vertices < 3)
-   {
-      d3d->menu_display.offset += draw->coords->vertices;
-      return;
-   }
-   count = draw->coords->vertices - 2;
+   count = draw->coords->vertices -
+         ((draw->prim_type == GFX_DISPLAY_PRIM_TRIANGLESTRIP)
+          ? 2 : 0);
 
    IDirect3DDevice8_BeginScene(dev);
-   IDirect3DDevice8_DrawPrimitive(dev, D3DPT_TRIANGLESTRIP, start, count);
+   IDirect3DDevice8_DrawPrimitive(dev, type, start, count);
    IDirect3DDevice8_EndScene(dev);
 
    d3d->menu_display.offset += draw->coords->vertices;
 }
 
-/* Set up render state for one of the menu pipeline draws (XMB
- * ribbon backgrounds, snow/bokeh particle effects, etc.).
- *
- * D3D8 has no programmable shader path here — the actual menu
- * shaders the other backends compile (ribbon_sm3, simple_snow_sm3,
- * snowflake_sm3, bokeh_sm3) need at minimum pixel shader 2.0 to
- * fit; PS 1.x cannot represent the per-fragment noise math. So
- * for d3d8 we deliberately skip programmable shading entirely and
- * only do the work that *can* be done in fixed function:
- *
- *   - Hand the dispca coordinate array to the caller via
- *     draw->coords so the subsequent gfx_display_d3d8_draw call
- *     has geometry to render.
- *   - Set the per-pipeline blend mode so the geometry composites
- *     against the background the way XMB expects (ribbon uses
- *     multiplicative DESTCOLOR+ONE, particle effects use the
- *     usual SRCALPHA / INVSRCALPHA premultiplied path).
- *
- * The result is that the ribbon and particle layers render as
- * static geometry rather than the animated shader effect — the
- * menu still composes correctly, just without the eye-candy.
- */
-static void gfx_display_d3d8_draw_pipeline(
-      gfx_display_ctx_draw_t *draw,
-      gfx_display_t *p_disp,
-      void *data, unsigned video_dims)
-{
-   video_coord_array_t *ca;
-   d3d8_video_t *d3d = (d3d8_video_t*)data;
-
-   if (!d3d || !draw || !p_disp)
-      return;
-
-   ca                = &p_disp->dispca;
-
-   /* Position the geometry at the origin and clear any inherited
-    * MVP — gfx_display_d3d8_draw will fall back to identity. */
-   draw->pos         = VIDEO_POS_PACK(0, 0);
-   draw->matrix_data = NULL;
-
-   if (ca)
-      draw->coords   = (struct video_coords*)&ca->coords;
-
-   switch (draw->pipeline_id)
-   {
-      case VIDEO_SHADER_MENU:
-      case VIDEO_SHADER_MENU_2:
-         /* XMB ribbon: multiplicative blend so the ribbon mesh
-          * darkens / tints whatever is behind it. Matches the
-          * blend setup d3d10/d3d11 use for the ribbon pass. */
-         IDirect3DDevice8_SetRenderState(d3d->dev,
-               D3DRS_SRCBLEND,         D3DBLEND_DESTCOLOR);
-         IDirect3DDevice8_SetRenderState(d3d->dev,
-               D3DRS_DESTBLEND,        D3DBLEND_ONE);
-         IDirect3DDevice8_SetRenderState(d3d->dev,
-               D3DRS_ALPHABLENDENABLE, TRUE);
-         break;
-
-      case VIDEO_SHADER_MENU_3:
-      case VIDEO_SHADER_MENU_4:
-      case VIDEO_SHADER_MENU_5:
-      case VIDEO_SHADER_MENU_6:
-         /* Snow / bokeh / snowflake: standard alpha blend. The
-          * dispca geometry alone won't produce a particle effect
-          * without the pixel shader, but at least the blend mode
-          * is consistent so any text/icons drawn afterwards don't
-          * inherit a stale state. */
-         IDirect3DDevice8_SetRenderState(d3d->dev,
-               D3DRS_SRCBLEND,         D3DBLEND_SRCALPHA);
-         IDirect3DDevice8_SetRenderState(d3d->dev,
-               D3DRS_DESTBLEND,        D3DBLEND_INVSRCALPHA);
-         IDirect3DDevice8_SetRenderState(d3d->dev,
-               D3DRS_ALPHABLENDENABLE, TRUE);
-         break;
-
-      default:
-         /* Unknown pipeline ID — leave blend state alone and let
-          * the regular draw path render whatever was set up. */
-         break;
-   }
-}
-
-/* Soft scissor for D3D8.
- *
- * D3D8 has no SetScissorRect (added in D3D9) and no
- * D3DRS_SCISSORTESTENABLE.  Two workarounds are possible:
- *
- *   1. Shrink the viewport to the requested rect.  This does not
- *      clip — it transforms full-screen geometry into the smaller
- *      rect — so it produces visibly squashed text/icons when
- *      callers (e.g. Ozone's sidebar pass) draw at full-screen
- *      coordinates expecting clipping.
- *
- *   2. Software clipping in gfx_display_d3d8_draw — skip any draw
- *      whose screen-space bounding box lies entirely outside the
- *      requested rect.  This is partial — partially-overlapping
- *      draws still render in full — but it stops fully-outside
- *      draws (the entry-list overflow that spills onto Ozone's
- *      footer) which is the visible artifact users actually
- *      notice.  True geometry clipping (per-vertex remap with UV
- *      adjustment) would be invasive to do for every quad and is
- *      not worth the complexity for a fallback-quality backend.
- *
- * scissor_begin stores the rect; scissor_end clears it; the draw
- * function consults the rect when active. */
-static void gfx_display_d3d8_scissor_begin(void *data, unsigned video_dims,
-      int x, int y, unsigned dims)
-{
-   d3d8_video_t *d3d = (d3d8_video_t*)data;
-
-   if (!d3d)
-      return;
-
-   d3d->menu_display.scissor_pos    = VIDEO_POS_PACK(x, y);
-   d3d->menu_display.scissor_dims   = dims;
-   d3d->menu_display.scissor_active = true;
-}
-
-static void gfx_display_d3d8_scissor_end(void *data, unsigned video_dims)
-{
-   d3d8_video_t *d3d = (d3d8_video_t*)data;
-
-   if (!d3d)
-      return;
-
-   d3d->menu_display.scissor_active = false;
-}
-
-/*
- * FONT DRIVER
- *
- * Fixed-function font renderer for D3D8.  Mirrors the structure of
- * d3d9_font in d3d9hlsl.c but uses the D3D8 texture-stage-state
- * APIs (D3D8 has no programmable shaders or sampler-state objects)
- * and an FVF instead of a vertex declaration.  The atlas is an A8
- * buffer that we expand to A8R8G8B8 with white RGB; the per-glyph
- * tint comes from the per-vertex DIFFUSE colour, modulated by the
- * texture sample in the default fixed-function combiner.
- */
-
-typedef struct
-{
-   LPDIRECT3DTEXTURE8            texture;
-   const font_renderer_driver_t *font_driver;
-   void                         *font_data;
-   struct font_atlas             *atlas;
-   unsigned                      tex_dims;
-   /* Scratch buffer to avoid per-line malloc/free in font rendering. */
-   Vertex                       *scratch_verts;
-   unsigned                      scratch_capacity; /* in Vertex count */
-} d3d8_font_t;
-
-/* Convert and lock only the given atlas rectangle; 'full' forces the
- * whole surface (required right after the texture is recreated, when
- * it has no previous contents). Managed pool textures track locked
- * sub-rects natively, so only that region is transferred. */
-static void d3d8_font_upload_atlas(d3d8_font_t *font,
-      unsigned x0, unsigned y0, unsigned x1, unsigned y1, bool full)
-{
-   D3DLOCKED_RECT lr;
-   RECT rect;
-   unsigned i, j;
-
-   if (!font->texture)
-      return;
-
-   if (     full
-         || x1 <= x0 || y1 <= y0
-         || x1 > (unsigned)font->atlas->width
-         || y1 > (unsigned)font->atlas->height)
-   {
-      x0 = 0;
-      y0 = 0;
-      x1 = font->atlas->width;
-      y1 = font->atlas->height;
-   }
-   rect.left   = (LONG)x0;
-   rect.top    = (LONG)y0;
-   rect.right  = (LONG)x1;
-   rect.bottom = (LONG)y1;
-
-   if (FAILED(IDirect3DTexture8_LockRect(font->texture, 0, &lr, &rect, 0)))
-      return;
-
-   /* lr.pBits addresses the top-left of the locked rect */
-   for (j = 0; j < y1 - y0; j++)
-   {
-      uint32_t      *dst = (uint32_t*)((uint8_t*)lr.pBits + j * lr.Pitch);
-      const uint8_t *src = font->atlas->buffer
-            + (size_t)(y0 + j) * font->atlas->width + x0;
-      for (i = 0; i < x1 - x0; i++)
-         dst[i] = D3DCOLOR_ARGB(src[i], 0xFF, 0xFF, 0xFF);
-   }
-
-   IDirect3DTexture8_UnlockRect(font->texture, 0);
-}
-
-static void *d3d8_font_init(void *data,
-      const char *font_path, float font_size,
-      bool is_threaded)
-{
-   d3d8_video_t *d3d = (d3d8_video_t*)data;
-   d3d8_font_t  *font = (d3d8_font_t*)calloc(1, sizeof(*font));
-
-   if (!font)
-      return NULL;
-
-   if (!font_renderer_create_default(
-            &font->font_driver, &font->font_data,
-            font_path, font_size, FONT_ATLAS_FORMAT_A8))
-   {
-      free(font);
-      return NULL;
-   }
-
-   font->atlas      = font->font_driver->get_atlas(font->font_data);
-   /* The atlas may grow, up to the largest texture the device takes;
-    * the draw remakes the texture when the atlas's size has changed */
-   {
-      D3DCAPS8 caps;
-      if (     SUCCEEDED(IDirect3DDevice8_GetDeviceCaps(d3d->dev, &caps))
-            && caps.MaxTextureWidth  > 0
-            && caps.MaxTextureHeight > 0)
-      {
-         font->atlas->max_width  = caps.MaxTextureWidth;
-         font->atlas->max_height = caps.MaxTextureHeight;
-      }
-   }
-   font->tex_dims   = VIDEO_SCALE_PACK(font->atlas->width,
-         font->atlas->height);
-
-   /* D3D8 doesn't universally support D3DFMT_A8 as a texture format,
-    * so expand the A8 atlas into A8R8G8B8 (white RGB, alpha = atlas
-    * sample).  The colour modulation against the per-vertex diffuse
-    * is done by the default fixed-function texture stage state. */
-   font->texture = (LPDIRECT3DTEXTURE8)d3d8_texture_new(d3d->dev,
-         VIDEO_SCALE_W(font->tex_dims),
-         VIDEO_SCALE_H(font->tex_dims), 1,
-         0, D3D8_ARGB8888_FORMAT,
-         D3DPOOL_MANAGED, 0, 0, 0, NULL, NULL, false);
-
-   if (font->texture)
-      d3d8_font_upload_atlas(font, 0, 0, 0, 0, true);
-
-   font->atlas->dirty = false;
-   return font;
-}
-
-static void d3d8_font_free(void *data, bool is_threaded)
-{
-   d3d8_font_t *font = (d3d8_font_t*)data;
-
-   if (!font)
-      return;
-
-   if (font->font_driver && font->font_data)
-      font->font_driver->free(font->font_data);
-
-   if (font->texture)
-      IDirect3DTexture8_Release(font->texture);
-
-   free(font->scratch_verts);
-   free(font);
-}
-
-static int d3d8_font_get_message_width(void *data, const char *msg,
-      size_t msg_len, float scale)
-{
-   d3d8_font_t *font = (d3d8_font_t*)data;
-   if (!font)
-      return 0;
-   return font_renderer_get_message_width(font->font_driver,
-         font->font_data, msg, msg_len, scale);
-}
-
-/* Emit a single glyph quad (6 vertices, two triangles) into pv.
- * Returns the number of vertices written (always 6). */
-static INLINE unsigned d3d8_font_emit_quad(
-      Vertex *pv,
-      float x, float y, float w, float h,
-      float tex_u, float tex_v, float tex_w, float tex_h,
-      D3DCOLOR color)
-{
-   pv[0].x     = x;
-   pv[0].y     = y;
-   pv[0].z     = 0.5f;
-   pv[0].u     = tex_u;
-   pv[0].v     = tex_v;
-   pv[0].color = color;
-
-   pv[1].x     = x + w;
-   pv[1].y     = y;
-   pv[1].z     = 0.5f;
-   pv[1].u     = tex_u + tex_w;
-   pv[1].v     = tex_v;
-   pv[1].color = color;
-
-   pv[2].x     = x;
-   pv[2].y     = y + h;
-   pv[2].z     = 0.5f;
-   pv[2].u     = tex_u;
-   pv[2].v     = tex_v + tex_h;
-   pv[2].color = color;
-
-   pv[3].x     = x + w;
-   pv[3].y     = y;
-   pv[3].z     = 0.5f;
-   pv[3].u     = tex_u + tex_w;
-   pv[3].v     = tex_v;
-   pv[3].color = color;
-
-   pv[4].x     = x + w;
-   pv[4].y     = y + h;
-   pv[4].z     = 0.5f;
-   pv[4].u     = tex_u + tex_w;
-   pv[4].v     = tex_v + tex_h;
-   pv[4].color = color;
-
-   pv[5].x     = x;
-   pv[5].y     = y + h;
-   pv[5].z     = 0.5f;
-   pv[5].u     = tex_u;
-   pv[5].v     = tex_v + tex_h;
-   pv[5].color = color;
-
-   return 6;
-}
-
-static INLINE Vertex *d3d8_font_get_scratch(
-      d3d8_font_t *font, unsigned needed)
-{
-   if (needed > font->scratch_capacity)
-   {
-      unsigned new_cap = needed > 1536 ? needed : 1536; /* 256 glyphs * 6 verts */
-      Vertex *tmp      = (Vertex*)realloc(font->scratch_verts,
-            new_cap * sizeof(Vertex));
-      if (!tmp)
-         return NULL;
-      font->scratch_verts    = tmp;
-      font->scratch_capacity = new_cap;
-   }
-   memset(font->scratch_verts, 0, needed * sizeof(Vertex));
-   return font->scratch_verts;
-}
-
-/* Render a single line of glyphs from `m` of length `msg_len` at
- * (line_x, line_y) in [0..1] coords, with the supplied colour.
- * Used for both the drop-shadow pass and the main text pass. */
-/* Draws @vert_count glyph vertices from @verts with the atlas bound and
- * the coverage modulated by the per-vertex colour. */
-static void d3d8_font_draw_verts(d3d8_video_t *d3d, d3d8_font_t *font,
-      Vertex *verts, unsigned vert_count)
-{
-   IDirect3DDevice8_SetTexture(d3d->dev, 0,
-         (IDirect3DBaseTexture8*)font->texture);
-   IDirect3DDevice8_SetTextureStageState(d3d->dev, 0,
-         (D3DTEXTURESTAGESTATETYPE)D3DTSS_ADDRESSU, D3DTADDRESS_CLAMP);
-   IDirect3DDevice8_SetTextureStageState(d3d->dev, 0,
-         (D3DTEXTURESTAGESTATETYPE)D3DTSS_ADDRESSV, D3DTADDRESS_CLAMP);
-   IDirect3DDevice8_SetTextureStageState(d3d->dev, 0,
-         (D3DTEXTURESTAGESTATETYPE)D3DTSS_MINFILTER, D3DTEXF_LINEAR);
-   IDirect3DDevice8_SetTextureStageState(d3d->dev, 0,
-         (D3DTEXTURESTAGESTATETYPE)D3DTSS_MAGFILTER, D3DTEXF_LINEAR);
-
-   /* MODULATE the atlas alpha with the per-vertex DIFFUSE alpha
-    * so callers can fade glyphs in/out via the colour parameter
-    * (drop-shadow alpha, animation fades, etc).  Without this the
-    * default ALPHAOP=SELECTARG1+TEXTURE makes glyph alpha equal
-    * the atlas coverage only, ignoring the requested fade. */
-   IDirect3DDevice8_SetTextureStageState(d3d->dev, 0,
-         (D3DTEXTURESTAGESTATETYPE)D3DTSS_ALPHAOP,   D3DTOP_MODULATE);
-   IDirect3DDevice8_SetTextureStageState(d3d->dev, 0,
-         (D3DTEXTURESTAGESTATETYPE)D3DTSS_ALPHAARG1, D3DTA_TEXTURE);
-   IDirect3DDevice8_SetTextureStageState(d3d->dev, 0,
-         (D3DTEXTURESTAGESTATETYPE)D3DTSS_ALPHAARG2, D3DTA_DIFFUSE);
-
-   IDirect3DDevice8_BeginScene(d3d->dev);
-   IDirect3DDevice8_DrawPrimitiveUP(d3d->dev,
-         D3DPT_TRIANGLELIST,
-         vert_count / 3,
-         verts,
-         sizeof(Vertex));
-   IDirect3DDevice8_EndScene(d3d->dev);
-}
-
-static void d3d8_font_render_msg(
-      void *userdata, void *data,
-      const char *msg, size_t msg_len,
-      const struct font_params *params)
-{
-   font_params_resolved_t rp;
-   float x, y, scale, drop_mod, drop_alpha;
-   enum text_alignment text_align;
-   int drop_x, drop_y;
-   unsigned r, g, b, alpha;
-   D3DCOLOR color, color_dark = 0;
-   struct font_line_metrics *line_metrics = NULL;
-   float line_height;
-   d3d8_font_t  *font  = (d3d8_font_t*)data;
-   d3d8_video_t *d3d   = (d3d8_video_t*)userdata;
-   unsigned      width  = 0;
-   unsigned      height = 0;
-   /* Top-down ortho mapping x[0..1]→[-1..1], y[0..1]→[1..-1] so
-    * (0,0) is the top-left corner.  D3D uses row-vector convention
-    * (v_clip = v · M) and stores D3DMATRIX in row-major order, so
-    * we write the matrix below in its natural row layout and pass
-    * it directly to SetTransform (bypassing d3d8_set_mvp which is
-    * tuned for column-major math_matrix_4x4 input from the menu
-    * draw path). */
-   static const D3DMATRIX topdown_ortho_d3d = {
-      {{
-          2.0f,  0.0f, 0.0f, 0.0f,  /* row 0 */
-          0.0f, -2.0f, 0.0f, 0.0f,  /* row 1 */
-          0.0f,  0.0f, 1.0f, 0.0f,  /* row 2 */
-         -1.0f,  1.0f, 0.0f, 1.0f   /* row 3 */
-      }}
-   };
-   static const math_matrix_4x4 identity = {{
-      1.0f, 0.0f, 0.0f, 0.0f,
-      0.0f, 1.0f, 0.0f, 0.0f,
-      0.0f, 0.0f, 1.0f, 0.0f,
-      0.0f, 0.0f, 0.0f, 1.0f
-   }};
-
-   if (!font || !msg || !*msg)
-      return;
-   if (!d3d)
-      return;
-
-   width  = VIDEO_SCALE_W(d3d->vp.full_dims);
-   height = VIDEO_SCALE_H(d3d->vp.full_dims);
-   if (!width || !height)
-      return;
-
-   font_driver_resolve_params(params, &rp);
-   x          = rp.x;
-   y          = rp.y;
-   scale      = rp.scale;
-   text_align = rp.text_align;
-   drop_x     = rp.drop_x;
-   drop_y     = rp.drop_y;
-   drop_mod   = rp.drop_mod;
-   drop_alpha = rp.drop_alpha;
-   r          = rp.rgba[0];
-   g          = rp.rgba[1];
-   b          = rp.rgba[2];
-   alpha           = rp.rgba[3];
-   color      = D3DCOLOR_ARGB(alpha, r, g, b);
-
-
-   font->font_driver->get_line_metrics(font->font_data, &line_metrics);
-   line_height = line_metrics->height * scale / height;
-
-   /* Standard premultiplied-alpha blend for glyph compositing. */
-   IDirect3DDevice8_SetRenderState(d3d->dev,
-         D3DRS_SRCBLEND,         D3DBLEND_SRCALPHA);
-   IDirect3DDevice8_SetRenderState(d3d->dev,
-         D3DRS_DESTBLEND,        D3DBLEND_INVSRCALPHA);
-   IDirect3DDevice8_SetRenderState(d3d->dev,
-         D3DRS_ALPHABLENDENABLE, TRUE);
-
-   /* FVF is shared with the rest of the menu draw path. Set it
-    * defensively in case a previous stage left a different format
-    * bound (e.g. the renderchain's vertex format). */
-   IDirect3DDevice8_SetVertexShader(d3d->dev,
-         D3DFVF_XYZ | D3DFVF_TEX1 | D3DFVF_DIFFUSE);
-
-   /* Apply top-down ortho. SetTransform consumes a row-major
-    * D3DMATRIX directly. PROJ and VIEW are forced to identity so
-    * the WORLD transform alone produces clip space. */
-   IDirect3DDevice8_SetTransform(d3d->dev, D3DTS_PROJECTION,
-         (D3DMATRIX*)&identity);
-   IDirect3DDevice8_SetTransform(d3d->dev, D3DTS_VIEW,
-         (D3DMATRIX*)&identity);
-   IDirect3DDevice8_SetTransform(d3d->dev, D3DTS_WORLD,
-         &topdown_ortho_d3d);
-
-   /* Refresh the atlas if the glyph cache has grown or new glyphs
-    * have been emitted since the last frame. */
-   /* Asked for before anything is laid out: it may have grown, which
-    * marks it dirty, and the texture is remade below at its new size
-    * before any texture coordinate is taken from it */
-   if (font->font_driver && font->font_data)
-      font->atlas = font->font_driver->get_atlas(font->font_data);
-
-   if (font->atlas->dirty)
-   {
-      bool respecified = false;
-
-      if (font->tex_dims != VIDEO_SCALE_PACK(font->atlas->width,
-               font->atlas->height))
-      {
-         if (font->texture)
-            IDirect3DTexture8_Release(font->texture);
-
-         respecified      = true;
-         font->tex_dims   = VIDEO_SCALE_PACK(font->atlas->width,
-               font->atlas->height);
-         font->texture    = (LPDIRECT3DTEXTURE8)d3d8_texture_new(d3d->dev,
-               VIDEO_SCALE_W(font->tex_dims),
-               VIDEO_SCALE_H(font->tex_dims), 1,
-               0, D3D8_ARGB8888_FORMAT,
-               D3DPOOL_MANAGED, 0, 0, 0, NULL, NULL, false);
-      }
-
-      d3d8_font_upload_atlas(font,
-            font->atlas->dirty_x0, font->atlas->dirty_y0,
-            font->atlas->dirty_x1, font->atlas->dirty_y1, respecified);
-      font->atlas->dirty = false;
-   }
-
-   {
-      bool has_drop                    = drop_x || drop_y;
-      bool line_ok                     = false;
-      bool cull_s                      = false;
-      bool cull_f                      = false;
-      Vertex *verts_s                  = NULL;
-      Vertex *verts_f                  = NULL;
-      unsigned vs                      = 0;
-      unsigned vf                      = 0;
-      int lx_s                         = 0;
-      int ly_s                         = 0;
-      int lx_f                         = 0;
-      int ly_f                         = 0;
-      float inv_viewport_w             = 1.0f / (float)width;
-      float inv_viewport_h             = 1.0f / (float)height;
-      float inv_tex_w                  = 0.0f;
-      float inv_tex_h                  = 0.0f;
-      const struct font_glyph* (*get_glyph)(void*, uint32_t)
-                                       = font->font_driver->get_glyph;
-      void *font_data                  = font->font_data;
-      const struct font_glyph *glyph_q = NULL;
-
-      if (has_drop)
-      {
-         unsigned r_dark     = r * drop_mod;
-         unsigned g_dark     = g * drop_mod;
-         unsigned b_dark     = b * drop_mod;
-         unsigned alpha_dark = alpha * drop_alpha;
-         color_dark          = D3DCOLOR_ARGB(alpha_dark, r_dark, g_dark, b_dark);
-      }
-
-      /* One pass per line: each glyph is looked up once and written
-       * to the line's shadow run and its foreground run, drawn in
-       * that order, the shadow behind. A run whose baseline falls
-       * outside the scissor is left out: the font path does not go
-       * through gfx_display_d3d8_draw, so it applies the same
-       * skip-only check - a baseline at or below the scissor's bottom
-       * edge, or above its top, puts the whole line out (in Ozone, the
-       * entry just scrolled past the footer or the header). */
-      glyph_q = get_glyph(font_data, '?');
-#define D3D8_FONT_QUAD(dst, px, py, glyph, col) \
-      d3d8_font_emit_quad(dst, \
-            ((px) + (glyph)->draw_offset_x * scale) * inv_viewport_w, \
-            ((py) + (glyph)->draw_offset_y * scale) * inv_viewport_h, \
-            (glyph)->width  * scale * inv_viewport_w, \
-            (glyph)->height * scale * inv_viewport_h, \
-            (glyph)->atlas_offset_x * inv_tex_w, \
-            (glyph)->atlas_offset_y * inv_tex_h, \
-            (glyph)->width  * inv_tex_w, \
-            (glyph)->height * inv_tex_h, \
-            col)
-#define D3D8_FONT_CULLED(ly) \
-      (d3d->menu_display.scissor_active \
-       && (   (ly) >= (int)VIDEO_POS_Y(d3d->menu_display.scissor_pos) \
-            + (int)VIDEO_SCALE_H(d3d->menu_display.scissor_dims) \
-           || (ly) < (int)VIDEO_POS_Y(d3d->menu_display.scissor_pos)))
-#define FONT_LAYOUT_ALIGNED (text_align == TEXT_ALIGN_RIGHT \
-            || text_align == TEXT_ALIGN_CENTER)
-      /* An empty line, or one with every run out of the scissor, is
-       * not even looked up */
-#define FONT_LAYOUT_SKIP(line, bytes) \
-      (   (bytes) == 0 \
-       || (   D3D8_FONT_CULLED((int)roundf((1.0f - (y \
-                     - (float)(line) * line_height)) * height)) \
-           && (!has_drop || D3D8_FONT_CULLED((int)roundf((1.0f - ((y \
-                     - (float)(line) * line_height) + scale * drop_y \
-                     / (float)height)) * height)))))
-#define FONT_LAYOUT_LINE(line, line_width, count, bytes) \
-      do \
-      { \
-         float line_y = y - (float)(line) * line_height; \
-         float fx     = x; \
-         (void)(count); \
-         vs = vf = 0; \
-         line_ok = ((bytes) > 0 \
-               && (verts_s = d3d8_font_get_scratch(font, (bytes) * 12))); \
-         if (!line_ok) \
-            break; \
-         verts_f   = verts_s + (bytes) * 6; \
-         inv_tex_w = 1.0f / (float)VIDEO_SCALE_W(font->tex_dims); \
-         inv_tex_h = 1.0f / (float)VIDEO_SCALE_H(font->tex_dims); \
-         if (text_align == TEXT_ALIGN_RIGHT) \
-            fx -= (float)((line_width) * scale) / (float)width; \
-         else if (text_align == TEXT_ALIGN_CENTER) \
-            fx -= (float)((line_width) * scale) / (float)width / 2.0f; \
-         lx_f   = roundf(fx * width); \
-         ly_f   = roundf((1.0f - line_y) * height); \
-         cull_f = D3D8_FONT_CULLED(ly_f); \
-         if (has_drop) \
-         { \
-            float sx = x + scale * drop_x / (float)width; \
-            if (text_align == TEXT_ALIGN_RIGHT) \
-               sx -= (float)((line_width) * scale) / (float)width; \
-            else if (text_align == TEXT_ALIGN_CENTER) \
-               sx -= (float)((line_width) * scale) / (float)width / 2.0f; \
-            lx_s   = roundf(sx * width); \
-            ly_s   = roundf((1.0f - (line_y + scale * drop_y \
-                        / (float)height)) * height); \
-            cull_s = D3D8_FONT_CULLED(ly_s); \
-         } \
-      } while (0)
-#define FONT_LAYOUT_GLYPH(glyph, pen_x, pen_y) \
-      do \
-      { \
-         /* This driver keeps its own truncating pens */ \
-         (void)(pen_x); \
-         (void)(pen_y); \
-         if (!line_ok) \
-            break; \
-         if (has_drop && !cull_s) \
-         { \
-            vs   += D3D8_FONT_QUAD(&verts_s[vs], lx_s, ly_s, glyph, \
-                  color_dark); \
-            lx_s += (glyph)->advance_x * scale; \
-            ly_s += (glyph)->advance_y * scale; \
-         } \
-         if (!cull_f) \
-         { \
-            vf   += D3D8_FONT_QUAD(&verts_f[vf], lx_f, ly_f, glyph, color); \
-            lx_f += (glyph)->advance_x * scale; \
-            ly_f += (glyph)->advance_y * scale; \
-         } \
-      } while (0)
-#define FONT_LAYOUT_LINE_END() \
-      do \
-      { \
-         if (vs) \
-            d3d8_font_draw_verts(d3d, font, verts_s, vs); \
-         if (vf) \
-            d3d8_font_draw_verts(d3d, font, verts_f, vf); \
-      } while (0)
-#include "../font_layout.h"
-#undef D3D8_FONT_QUAD
-#undef D3D8_FONT_CULLED
-   }
-
-   /* Restore the menu vertex stream so subsequent gfx_display_d3d8_draw
-    * calls see the correct buffer.  d3d9hlsl does this between every
-    * DrawPrimitiveUP; on d3d8 we only need it once at the end since
-    * the sole stream switch is to the UP path. */
-   IDirect3DDevice8_SetStreamSource(d3d->dev, 0,
-         (LPDIRECT3DVERTEXBUFFER8)d3d->menu_display.buffer,
-         sizeof(Vertex));
-}
-
-static const struct font_glyph *d3d8_font_get_glyph(
-      void *data, uint32_t code)
-{
-   d3d8_font_t *font = (d3d8_font_t*)data;
-   if (font && font->font_driver)
-      return font->font_driver->get_glyph(
-            (void*)font->font_data, code);
-   return NULL;
-}
-
-static bool d3d8_font_get_line_metrics(
-      void *data, struct font_line_metrics **metrics)
-{
-   d3d8_font_t *font = (d3d8_font_t*)data;
-   if (font && font->font_driver && font->font_data)
-   {
-      font->font_driver->get_line_metrics(font->font_data, metrics);
-      return true;
-   }
-   return false;
-}
+gfx_display_ctx_driver_t gfx_display_ctx_d3d8 = {
+   gfx_display_d3d8_draw,
+   NULL,                                        /* draw_pipeline */
+   gfx_display_d3d8_blend_begin,
+   gfx_display_d3d8_blend_end,
+   gfx_display_d3d8_get_default_mvp,
+   gfx_display_d3d8_get_default_vertices,
+   gfx_display_d3d8_get_default_tex_coords,
+   FONT_DRIVER_RENDER_D3D8_API,
+   GFX_VIDEO_DRIVER_DIRECT3D8,
+   "d3d8",
+   false,
+   NULL,
+   NULL
+};
 
 /*
  * VIDEO DRIVER
@@ -1685,15 +799,21 @@ static bool d3d8_font_get_line_metrics(
 
 static void d3d8_viewport_info(void *data, struct video_viewport *vp)
 {
+   unsigned width, height;
    d3d8_video_t *d3d   = (d3d8_video_t*)data;
 
    if (!d3d || !vp)
       return;
 
-   vp->pos          = VIDEO_POS_PACK(d3d->out_vp.X, d3d->out_vp.Y);
-   vp->dims         = VIDEO_SCALE_PACK(d3d->out_vp.Width, d3d->out_vp.Height);
+   video_driver_get_size(&width, &height);
 
-   vp->full_dims    = d3d->vp.full_dims;
+   vp->x            = d3d->out_vp.X;
+   vp->y            = d3d->out_vp.Y;
+   vp->width        = d3d->out_vp.Width;
+   vp->height       = d3d->out_vp.Height;
+
+   vp->full_width   = width;
+   vp->full_height  = height;
 }
 
 static void d3d8_overlay_render(d3d8_video_t *d3d,
@@ -1704,7 +824,7 @@ static void d3d8_overlay_render(d3d8_video_t *d3d,
    struct video_viewport vp;
    unsigned i;
    Vertex vert[4];
-   D3DTEXTUREFILTERTYPE filter_type        = D3DTEXF_LINEAR;
+   enum D3DTEXTUREFILTERTYPE filter_type = D3DTEXF_LINEAR;
 
    if (!d3d || !overlay || !overlay->tex)
       return;
@@ -1718,13 +838,12 @@ static void d3d8_overlay_render(d3d8_video_t *d3d,
 
 	  if (!overlay->vert_buf)
 		  return;
-      overlay->vert_sent_ok = false;
    }
 
    for (i = 0; i < 4; i++)
    {
       vert[i].z    = 0.5f;
-      vert[i].color   = (((uint32_t)VIDEO_ALPHA_BYTE(overlay->alpha_mod)) << 24) | 0xFFFFFF;
+      vert[i].color   = (((uint32_t)(overlay->alpha_mod * 0xFF)) << 24) | 0xFFFFFF;
    }
 
    d3d8_viewport_info(d3d, &vp);
@@ -1747,20 +866,12 @@ static void d3d8_overlay_render(d3d8_video_t *d3d,
    vert[2].v      = overlay->tex_coords[1] + overlay->tex_coords[3];
    vert[3].v      = overlay->tex_coords[1] + overlay->tex_coords[3];
 
-   /* A lock only when the quad changed: the page's quads are the same
-    * from one frame to the next until the layout or an alpha moves. */
-   if (     !overlay->vert_sent_ok
-         || memcmp(overlay->vert_sent, vert, sizeof(vert)))
+   if (overlay->vert_buf)
    {
       LPDIRECT3DVERTEXBUFFER8 vbo = (LPDIRECT3DVERTEXBUFFER8)overlay->vert_buf;
       void *verts = d3d8_vertex_buffer_lock(vbo);
-      if (verts)
-      {
-         memcpy(verts, vert, sizeof(vert));
-         IDirect3DVertexBuffer8_Unlock(vbo);
-         memcpy(overlay->vert_sent, vert, sizeof(vert));
-         overlay->vert_sent_ok = true;
-      }
+      memcpy(verts, vert, sizeof(vert));
+      IDirect3DVertexBuffer8_Unlock(vbo);
    }
    IDirect3DDevice8_SetRenderState(d3d->dev, D3DRS_SRCBLEND, D3DBLEND_SRCALPHA);
    IDirect3DDevice8_SetRenderState(d3d->dev, D3DRS_DESTBLEND, D3DBLEND_INVSRCALPHA);
@@ -1829,6 +940,7 @@ static void d3d8_deinitialize(d3d8_video_t *d3d)
    if (!d3d)
       return;
    chain                     = (d3d8_renderchain_t*)d3d->renderchain_data;
+   font_driver_free_osd();
 
    if (chain)
    {
@@ -1864,8 +976,7 @@ static INLINE bool d3d8_get_adapter_display_mode(
    return false;
 }
 
-static D3DFORMAT d3d8_get_color_format_backbuffer(
-      LPDIRECT3D8 d3d8, bool rgb32, bool windowed)
+static D3DFORMAT d3d8_get_color_format_backbuffer(bool rgb32, bool windowed)
 {
    D3DFORMAT fmt = D3DFMT_X8R8G8B8;
 #ifdef _XBOX
@@ -1875,7 +986,7 @@ static D3DFORMAT d3d8_get_color_format_backbuffer(
    if (windowed)
    {
       D3DDISPLAYMODE display_mode;
-      if (d3d8_get_adapter_display_mode(d3d8, 0, &display_mode))
+      if (d3d8_get_adapter_display_mode(g_pD3D8, 0, &display_mode))
          fmt = display_mode.Format;
    }
 #endif
@@ -1896,11 +1007,12 @@ static bool d3d8_is_windowed_enable(bool info_fullscreen)
 
 #ifdef _XBOX
 static void d3d8_get_video_size(d3d8_video_t *d3d,
-      unsigned *dims)
+      unsigned *width, unsigned *height)
 {
    DWORD video_mode      = XGetVideoFlags();
 
-   *dims = VIDEO_SCALE_PACK(640, 480);
+   *width                = 640;
+   *height               = 480;
 
    d3d->widescreen_mode  = false;
 
@@ -1911,9 +1023,12 @@ static void d3d8_get_video_size(d3d8_video_t *d3d,
       /* Check for 16:9 mode (PAL REGION) */
       if (video_mode & XC_VIDEO_FLAGS_WIDESCREEN)
       {
-         /* 60 Hz is 720x480i, 50 Hz 720x576i */
-         *dims = VIDEO_SCALE_PACK(720,
-               (video_mode & XC_VIDEO_FLAGS_PAL_60Hz) ? 480 : 576);
+         *width = 720;
+         /* 60 Hz, 720x480i */
+         if (video_mode & XC_VIDEO_FLAGS_PAL_60Hz)
+            *height = 480;
+         else /* 50 Hz, 720x576i */
+            *height = 576;
          d3d->widescreen_mode = true;
       }
    }
@@ -1922,7 +1037,8 @@ static void d3d8_get_video_size(d3d8_video_t *d3d,
       /* Check for 16:9 mode (NTSC REGIONS) */
       if (video_mode & XC_VIDEO_FLAGS_WIDESCREEN)
       {
-         *dims = VIDEO_SCALE_PACK(720, 480);
+         *width                    = 720;
+         *height                   = 480;
          d3d->widescreen_mode      = true;
       }
    }
@@ -1931,18 +1047,24 @@ static void d3d8_get_video_size(d3d8_video_t *d3d,
    {
       if (video_mode & XC_VIDEO_FLAGS_HDTV_480p)
       {
-         *dims = VIDEO_SCALE_PACK(640, 480);
+         *width                    = 640;
+         *height                   = 480;
          d3d->widescreen_mode      = false;
+         d3d->resolution_hd_enable = true;
       }
       else if (video_mode & XC_VIDEO_FLAGS_HDTV_720p)
       {
-         *dims = VIDEO_SCALE_PACK(1280, 720);
+         *width                    = 1280;
+         *height                   = 720;
          d3d->widescreen_mode      = true;
+         d3d->resolution_hd_enable = true;
       }
       else if (video_mode & XC_VIDEO_FLAGS_HDTV_1080i)
       {
-         *dims = VIDEO_SCALE_PACK(1920, 1080);
+         *width                    = 1920;
+         *height                   = 1080;
          d3d->widescreen_mode      = true;
+         d3d->resolution_hd_enable = true;
       }
    }
 }
@@ -1966,10 +1088,9 @@ static void d3d8_make_d3dpp(void *data,
       unsigned video_swap_interval = runloop_get_video_swap_interval(
             settings->uints.video_swap_interval);
 
-      /* Four is the largest interval the presentation parameter can
-       * carry, so anything above it presents at four. */
       switch (video_swap_interval)
       {
+         default:
          case 1:
             FS_PRESENTINTERVAL(d3dpp) = D3DPRESENT_INTERVAL_ONE;
             break;
@@ -1979,7 +1100,6 @@ static void d3d8_make_d3dpp(void *data,
          case 3:
             FS_PRESENTINTERVAL(d3dpp) = D3DPRESENT_INTERVAL_THREE;
             break;
-         default:
          case 4:
             FS_PRESENTINTERVAL(d3dpp) = D3DPRESENT_INTERVAL_FOUR;
             break;
@@ -1993,7 +1113,7 @@ static void d3d8_make_d3dpp(void *data,
    d3dpp->SwapEffect              = D3DSWAPEFFECT_DISCARD;
    d3dpp->BackBufferCount         = 2;
    d3dpp->BackBufferFormat        = d3d8_get_color_format_backbuffer(
-         d3d->d3d8, info->rgb32, windowed_enable);
+         info->rgb32, windowed_enable);
 #ifndef _XBOX
    d3dpp->hDeviceWindow           = win32_get_window();
 #endif
@@ -2001,24 +1121,14 @@ static void d3d8_make_d3dpp(void *data,
    if (!windowed_enable)
    {
 #ifdef _XBOX
-      /* Xbox: query the actual display size, publish it to video_st
-       * and track it in d3d->vp.full_width/full_height so subsequent
-       * read sites (font_render_msg, viewport_info, etc.) can pull
-       * from the local field instead of locking video_st. */
-      unsigned dims               = 0;
+      unsigned width              = 0;
+      unsigned height             = 0;
 
-      d3d8_get_video_size(d3d, &dims);
-      video_driver_set_output_dims(dims);
-      d3d->vp.full_dims           = dims;
-      d3dpp->BackBufferWidth      = VIDEO_SCALE_W(dims);
-      d3dpp->BackBufferHeight     = VIDEO_SCALE_H(dims);
-#else
-      /* Non-Xbox: by the time make_d3dpp runs, d3d8_init_internal
-       * has already published the size and written d3d->vp.
-       * full_width/full_height; read from there. */
-      d3dpp->BackBufferWidth      = VIDEO_SCALE_W(d3d->vp.full_dims);
-      d3dpp->BackBufferHeight     = VIDEO_SCALE_H(d3d->vp.full_dims);
+      d3d8_get_video_size(d3d, &width, &height);
+      video_driver_set_size(width, height);
 #endif
+      video_driver_get_size(&d3dpp->BackBufferWidth,
+            &d3dpp->BackBufferHeight);
    }
 
 #ifdef _XBOX
@@ -2072,18 +1182,18 @@ static bool d3d8_init_base(void *data, const video_info_t *info)
    d3d8_video_t *d3d = (d3d8_video_t*)data;
 
 #ifdef _XBOX
-   d3d->d3d8           = (LPDIRECT3D8)D3DCreate(0);
+   g_pD3D8           = (LPDIRECT3D8)D3DCreate(0);
 #else
-   d3d->d3d8           = (LPDIRECT3D8)D3DCreate(220);
+   g_pD3D8           = (LPDIRECT3D8)D3DCreate(220);
 #endif
 
    /* this needs g_pD3D created first */
    d3d8_make_d3dpp(d3d, info, &d3dpp);
 
-   if (!d3d->d3d8)
+   if (!g_pD3D8)
       return false;
    if (!d3d8_create_device(&d3d->dev, &d3dpp,
-            d3d->d3d8,
+            g_pD3D8,
             focus_window,
             d3d->cur_mon_id)
       )
@@ -2092,7 +1202,7 @@ static bool d3d8_init_base(void *data, const video_info_t *info)
 }
 
 static void d3d8_calculate_rect(void *data,
-      unsigned *dims,
+      unsigned *width, unsigned *height,
       int *x, int *y,
       bool force_full,
       bool allow_rotate)
@@ -2100,29 +1210,29 @@ static void d3d8_calculate_rect(void *data,
    struct video_viewport vp;
    d3d8_video_t *d3d         = (d3d8_video_t*)data;
 
-   vp.full_dims   = d3d->vp.full_dims;
+   video_driver_get_size(width, height);
+
+   vp.full_width  = *width;
+   vp.full_height = *height;
    video_driver_update_viewport(&vp, force_full, d3d->keep_aspect, true);
 
-   *x      = VIDEO_POS_X(vp.pos);
-   *y      = VIDEO_POS_Y(vp.pos);
-   *dims   = vp.dims;
+   *x      = vp.x;
+   *y      = vp.y;
+   *width  = vp.width;
+   *height = vp.height;
 }
 
 static void d3d8_set_viewport(void *data,
-      unsigned dims,
+      unsigned width, unsigned height,
       bool force_full,
       bool allow_rotate)
 {
+   struct d3d_matrix proj, ortho, rot, matrix;
    int x               = 0;
    int y               = 0;
    d3d8_video_t *d3d = (d3d8_video_t*)data;
 
-   /* Pre-computed transpose(ortho(0,1,0,1,0,1)) — constant */
-   static const math_matrix_4x4 k_ortho_mvp = {{
-      2, 0, 0,-1,   0, 2, 0,-1,   0, 0, 1, 0,   0, 0, 0, 1
-   }};
-
-   d3d8_calculate_rect(data, &dims, &x, &y,
+   d3d8_calculate_rect(data, &width, &height, &x, &y,
          force_full, allow_rotate);
 
    /* D3D doesn't support negative X/Y viewports ... */
@@ -2133,50 +1243,52 @@ static void d3d8_set_viewport(void *data,
 
    d3d->out_vp.X      = x;
    d3d->out_vp.Y      = y;
-   d3d->out_vp.Width  = VIDEO_SCALE_W(dims);
-   d3d->out_vp.Height = VIDEO_SCALE_H(dims);
+   d3d->out_vp.Width  = width;
+   d3d->out_vp.Height = height;
    d3d->out_vp.MinZ   = 0.0f;
    d3d->out_vp.MaxZ   = 0.0f;
 
-   d3d->mvp = k_ortho_mvp;
-
-   /* Compute rotated MVP: transpose(ortho(0,1,0,1,0,1) * rot_z(angle))
-    * Folded into a single analytical formula. */
-   {
-      float angle = d3d->dev_rotation * (M_PI / 2.0);
-      float c     = cosf(angle);
-      float s     = sinf(angle);
-      memset(&d3d->mvp_rotate, 0, sizeof(d3d->mvp_rotate));
-      MAT_ELEM_4X4(d3d->mvp_rotate, 0, 0) =  2.0f * c;
-      MAT_ELEM_4X4(d3d->mvp_rotate, 1, 0) = -2.0f * s;
-      MAT_ELEM_4X4(d3d->mvp_rotate, 3, 0) = -c + s;
-      MAT_ELEM_4X4(d3d->mvp_rotate, 0, 1) =  2.0f * s;
-      MAT_ELEM_4X4(d3d->mvp_rotate, 1, 1) =  2.0f * c;
-      MAT_ELEM_4X4(d3d->mvp_rotate, 3, 1) = -s - c;
-      MAT_ELEM_4X4(d3d->mvp_rotate, 2, 2) =  1.0f;
-      MAT_ELEM_4X4(d3d->mvp_rotate, 3, 3) =  1.0f;
-   }
+   d3d_matrix_identity(&ortho);
+   d3d_matrix_ortho_off_center_lh(&ortho, 0, 1, 0, 1, 0.0f, 1.0f);
+   d3d_matrix_identity(&rot);
+   d3d_matrix_rotation_z(&rot, d3d->dev_rotation * (M_PI / 2.0));
+   d3d_matrix_multiply(&proj, &ortho, &rot);
+   d3d_matrix_transpose(&d3d->mvp, &ortho);
+   d3d_matrix_transpose(&d3d->mvp_rotate, &matrix);
 }
 
 static bool d3d8_initialize(d3d8_video_t *d3d, const video_info_t *info)
 {
    struct LinkInfo link_info;
+   unsigned width, height;
+   unsigned i           = 0;
    bool ret             = true;
+   settings_t *settings = config_get_ptr();
 
    if (!d3d)
       return false;
 
-   if (!d3d->d3d8)
+   if (!g_pD3D8)
       ret = d3d8_init_base(d3d, info);
    else if (d3d->needs_restore)
    {
       D3DPRESENT_PARAMETERS d3dpp;
+
       d3d8_make_d3dpp(d3d, info, &d3dpp);
+
+      /* the D3DX font driver uses POOL_DEFAULT resources
+       * and will prevent a clean reset here
+       * another approach would be to keep track of all created D3D
+       * font objects and free/realloc them around the d3d_reset call  */
+#ifdef HAVE_MENU
+      menu_driver_ctl(RARCH_MENU_CTL_DEINIT, NULL);
+#endif
+
       if (!d3d8_reset(d3d->dev, &d3dpp))
       {
          d3d8_deinitialize(d3d);
-         IDirect3D8_Release(d3d->d3d8);
-         d3d->d3d8 = NULL;
+         IDirect3D8_Release(g_pD3D8);
+         g_pD3D8 = NULL;
 
          if ((ret = d3d8_init_base(d3d, info)))
             RARCH_LOG("[D3D8] Recovered from dead state.\n");
@@ -2192,9 +1304,8 @@ static bool d3d8_initialize(d3d8_video_t *d3d, const video_info_t *info)
 
    /* Setup information. */
    link_info.pass               = NULL;
-   link_info.tex_dims           = VIDEO_SCALE_PACK(
-         info->input_scale * RARCH_SCALE_BASE,
-         info->input_scale * RARCH_SCALE_BASE);
+   link_info.tex_w              = info->input_scale * RARCH_SCALE_BASE;
+   link_info.tex_h              = info->input_scale * RARCH_SCALE_BASE;
    link_info.pass               = &d3d->shader.pass[0];
 
    d3d->renderchain_data        = d3d8_renderchain_new();
@@ -2208,11 +1319,14 @@ static bool d3d8_initialize(d3d8_video_t *d3d, const video_info_t *info)
       )
       return false;
 
-   /* d3d->vp.full_* was written by the caller (d3d8_init_internal
-    * has already called set_size at this point). */
+   video_driver_get_size(&width, &height);
    d3d8_set_viewport(d3d,
-	   d3d->vp.full_dims, false, true);
+	   width, height, false, true);
 
+   font_driver_init_osd(d3d, info,
+         false,
+         info->is_threaded,
+         FONT_DRIVER_RENDER_D3D8_API);
 
    d3d->menu_display.offset = 0;
    d3d->menu_display.size   = 1024;
@@ -2225,17 +1339,9 @@ static bool d3d8_initialize(d3d8_video_t *d3d, const video_info_t *info)
    if (!d3d->menu_display.buffer)
       return false;
 
-   /* Pre-computed D3D left-handed orthographic projection (0,1,0,1,0,1) */
-   {
-      static const math_matrix_4x4 k_ortho_transposed = {{
-         2, 0, 0, 0,   0, 2, 0, 0,   0, 0, 1, 0,   -1, -1, 0, 1
-      }};
-      static const math_matrix_4x4 k_ortho = {{
-         2, 0, 0,-1,   0, 2, 0,-1,   0, 0, 1, 0,   0, 0, 0, 1
-      }};
-      d3d->mvp_transposed = k_ortho_transposed;
-      d3d->mvp            = k_ortho;
-   }
+   d3d_matrix_identity(&d3d->mvp_transposed);
+   d3d_matrix_ortho_off_center_lh(&d3d->mvp_transposed, 0, 1, 0, 1, 0, 1);
+   d3d_matrix_transpose(&d3d->mvp, &d3d->mvp_transposed);
 
    IDirect3DDevice8_SetRenderState(d3d->dev, D3DRS_CULLMODE, D3DCULL_NONE);
 
@@ -2266,20 +1372,17 @@ static void d3d8_set_nonblock_state(void *data, bool state,
       bool adaptive_vsync_enabled,
       unsigned swap_interval)
 {
-#ifdef _XBOX
-   int interval      = 0;
-#endif
-   d3d8_video_t *d3d = (d3d8_video_t*)data;
+   int      interval            = 0;
+   d3d8_video_t            *d3d = (d3d8_video_t*)data;
 
    if (!d3d)
       return;
 
+   if (!state)
+      interval                  = 1;
    d3d->video_info.vsync        = !state;
 
 #ifdef _XBOX
-   if (!state)
-      interval                  = 1;
-
    IDirect3DDevice8_SetRenderState(d3d->dev,
          D3D8_PRESENTATIONINTERVAL,
          interval ?
@@ -2292,33 +1395,31 @@ static void d3d8_set_nonblock_state(void *data, bool state,
 }
 
 static void d3d8_set_resize(d3d8_video_t *d3d,
-      unsigned dims)
+      unsigned new_width, unsigned new_height)
 {
    /* No changes? */
-   if (d3d->video_info.dims == dims)
+   if (     (new_width  == d3d->video_info.width)
+         && (new_height == d3d->video_info.height))
       return;
 
-   d3d->video_info.dims   = dims;
-   video_driver_set_output_dims(dims);
-   d3d->vp.full_dims      = dims;
+   d3d->video_info.width  = new_width;
+   d3d->video_info.height = new_height;
+   video_driver_set_size(new_width, new_height);
 }
 
 static bool d3d8_alive(void *data)
 {
-   unsigned temp_dims  = 0;
+   unsigned temp_width  = 0;
+   unsigned temp_height = 0;
    bool ret             = false;
    d3d8_video_t *d3d    = (d3d8_video_t*)data;
    bool        quit     = false;
    bool        resize   = false;
 
-   /* Read from local bookkeeping rather than video_st.
-    * d3d->vp.full_* is written at every set_size call site in
-    * this driver, so it stays in sync with the output size as
-    * long as no other code path sets it.  In practice nothing
-    * does -- see video_driver.c audit. */
-   temp_dims  = d3d->vp.full_dims;
+   /* Needed because some context drivers don't track their sizes */
+   video_driver_get_size(&temp_width, &temp_height);
 
-   win32_check_window(NULL, &quit, &resize, &temp_dims);
+   win32_check_window(NULL, &quit, &resize, &temp_width, &temp_height);
 
    if (quit)
       d3d->quitting = quit;
@@ -2326,17 +1427,14 @@ static bool d3d8_alive(void *data)
    if (resize)
    {
       d3d->should_resize = true;
-      d3d8_set_resize(d3d, temp_dims);
+      d3d8_set_resize(d3d, temp_width, temp_height);
       d3d8_restore(d3d);
    }
 
    ret = !quit;
 
-   if (VIDEO_SCALE_W(temp_dims) != 0 && VIDEO_SCALE_H(temp_dims) != 0)
-   {
-      video_driver_set_output_dims(temp_dims);
-      d3d->vp.full_dims   = temp_dims;
-   }
+   if (temp_width != 0 && temp_height != 0)
+      video_driver_set_size(temp_width, temp_height);
 
    return ret;
 }
@@ -2363,13 +1461,13 @@ static void d3d8_apply_state_changes(void *data)
       d3d->should_resize = true;
 }
 
-static void d3d8_set_osd_msg(void *data, const char *msg, size_t msg_len,
+static void d3d8_set_osd_msg(void *data, const char *msg,
       const struct font_params *params, void *font)
 {
    d3d8_video_t          *d3d = (d3d8_video_t*)data;
 
    IDirect3DDevice8_BeginScene(d3d->dev);
-   font_driver_render_msg(d3d, msg, msg_len, params, font);
+   font_driver_render_msg(d3d, msg, params, font);
    IDirect3DDevice8_EndScene(d3d->dev);
 }
 
@@ -2384,6 +1482,12 @@ static bool d3d8_init_internal(d3d8_video_t *d3d,
    HMONITOR hm_to_use;
 #endif
    struct video_shader_pass *pass = NULL;
+#ifdef HAVE_WINDOW
+   DWORD style;
+   unsigned win_width        = 0;
+   unsigned win_height       = 0;
+   RECT rect                 = {0};
+#endif
    unsigned full_x           = 0;
    unsigned full_y           = 0;
    settings_t    *settings   = config_get_ptr();
@@ -2421,42 +1525,36 @@ static bool d3d8_init_internal(d3d8_video_t *d3d,
    win32_monitor_info(&current_mon, &hm_to_use, &d3d->cur_mon_id);
 
    mon_rect              = current_mon.rcMonitor;
-   g_win32_resize_width  = VIDEO_SCALE_W(info->dims);
-   g_win32_resize_height = VIDEO_SCALE_H(info->dims);
+   g_win32_resize_width  = info->width;
+   g_win32_resize_height = info->height;
 
    windowed_full         = settings->bools.video_windowed_fullscreen;
 
-   full_x                = (windowed_full || VIDEO_SCALE_W(info->dims)  == 0) ?
-      (mon_rect.right  - mon_rect.left) : VIDEO_SCALE_W(info->dims);
-   full_y                = (windowed_full || VIDEO_SCALE_H(info->dims) == 0) ?
-      (mon_rect.bottom - mon_rect.top)  : VIDEO_SCALE_H(info->dims);
+   full_x                = (windowed_full || info->width  == 0) ?
+      (mon_rect.right  - mon_rect.left) : info->width;
+   full_y                = (windowed_full || info->height == 0) ?
+      (mon_rect.bottom - mon_rect.top)  : info->height;
 #else
-   {
-      unsigned full_dims;
-      d3d8_get_video_size(d3d, &full_dims);
-      full_x             = VIDEO_SCALE_W(full_dims);
-      full_y             = VIDEO_SCALE_H(full_dims);
-   }
+   d3d8_get_video_size(d3d, &full_x, &full_y);
 #endif
    {
-      unsigned new_width  = info->fullscreen ? full_x : VIDEO_SCALE_W(info->dims);
-      unsigned new_height = info->fullscreen ? full_y : VIDEO_SCALE_H(info->dims);
-      video_driver_set_output_dims(VIDEO_SCALE_PACK(new_width, new_height));
-      d3d->vp.full_dims   = VIDEO_SCALE_PACK(new_width, new_height);
+      unsigned new_width  = info->fullscreen ? full_x : info->width;
+      unsigned new_height = info->fullscreen ? full_y : info->height;
+      video_driver_set_size(new_width, new_height);
+   }
 
 #ifdef HAVE_WINDOW
-      /* Use new_width / new_height directly rather than reading
-       * them back via video_driver_get_output_dims: nothing in the
-       * codebase sets the output size between the
-       * set_size above and this call except us. */
-      if (!win32_set_video_mode(d3d, VIDEO_SCALE_PACK(new_width, new_height),
-            info->fullscreen))
-      {
-         RARCH_ERR("[D3D8] win32_set_video_mode failed.\n");
-         return false;
-      }
+   video_driver_get_size(&win_width, &win_height);
+
+   win32_set_style(&current_mon, &hm_to_use, &win_width, &win_height,
+         info->fullscreen, windowed_full, &rect, &mon_rect, &style);
+
+   win32_window_create(d3d, style, &mon_rect, win_width,
+         win_height, info->fullscreen);
+
+   win32_set_window(&win_width, &win_height, info->fullscreen,
+	   windowed_full, &rect);
 #endif
-   }
 
    memset(&d3d->shader, 0, sizeof(d3d->shader));
    d3d->shader.passes                    = 1;
@@ -2470,7 +1568,7 @@ static bool d3d8_init_internal(d3d8_video_t *d3d,
    pass->fbo.type_x                      = pass->fbo.type_y;
    pass->fbo.flags                      |= FBO_SCALE_FLAG_VALID;
 
-   if (d3d->shader_path && *d3d->shader_path)
+   if (!string_is_empty(d3d->shader_path))
       strlcpy(pass->source.path, d3d->shader_path,
             sizeof(pass->source.path));
 
@@ -2573,14 +1671,14 @@ static void d3d8_free(void *data)
 
    d3d8_deinitialize(d3d);
 
-   if (d3d->shader_path && *d3d->shader_path)
+   if (!string_is_empty(d3d->shader_path))
       free(d3d->shader_path);
 
    IDirect3DDevice8_Release(d3d->dev);
-   IDirect3D8_Release(d3d->d3d8);
+   IDirect3D8_Release(g_pD3D8);
    d3d->shader_path = NULL;
    d3d->dev         = NULL;
-   d3d->d3d8          = NULL;
+   g_pD3D8          = NULL;
 
 #ifdef HAVE_DYNAMIC_D3D
    d3d8_deinitialize_symbols();
@@ -2601,10 +1699,7 @@ static void d3d8_overlay_tex_geom(
       float w, float h)
 {
    d3d8_video_t *d3d                   = (d3d8_video_t*)data;
-   /* Called whenever the frontend likes, not only after a load that
-    * worked: no page is a NULL array, and an index off the end of the
-    * page is off the end of the allocation. */
-   if (!d3d || !d3d->overlays || index >= d3d->overlays_size)
+   if (!d3d)
       return;
 
    d3d->overlays[index].tex_coords[0]  = x;
@@ -2612,14 +1707,10 @@ static void d3d8_overlay_tex_geom(
    d3d->overlays[index].tex_coords[2]  = w;
    d3d->overlays[index].tex_coords[3]  = h;
 #ifdef _XBOX
-   d3d->overlays[index].tex_coords[0] *=
-      VIDEO_SCALE_W(d3d->overlays[index].tex_dims);
-   d3d->overlays[index].tex_coords[1] *=
-      VIDEO_SCALE_H(d3d->overlays[index].tex_dims);
-   d3d->overlays[index].tex_coords[2] *=
-      VIDEO_SCALE_W(d3d->overlays[index].tex_dims);
-   d3d->overlays[index].tex_coords[3] *=
-      VIDEO_SCALE_H(d3d->overlays[index].tex_dims);
+   d3d->overlays[index].tex_coords[0] *= d3d->overlays[index].tex_w;
+   d3d->overlays[index].tex_coords[1] *= d3d->overlays[index].tex_h;
+   d3d->overlays[index].tex_coords[2] *= d3d->overlays[index].tex_w;
+   d3d->overlays[index].tex_coords[3] *= d3d->overlays[index].tex_h;
 #endif
 }
 
@@ -2630,7 +1721,7 @@ static void d3d8_overlay_vertex_geom(
       float w, float h)
 {
    d3d8_video_t *d3d = (d3d8_video_t*)data;
-   if (!d3d || !d3d->overlays || index >= d3d->overlays_size)
+   if (!d3d)
       return;
 
    y                                   = 1.0f - y;
@@ -2645,6 +1736,7 @@ static bool d3d8_overlay_load(void *data,
       const void *image_data, unsigned num_images)
 {
    unsigned i, y;
+   overlay_t *new_overlays            = NULL;
    d3d8_video_t *d3d                  = (d3d8_video_t*)data;
    const struct texture_image *images = (const struct texture_image*)image_data;
 
@@ -2652,13 +1744,7 @@ static bool d3d8_overlay_load(void *data,
       return false;
 
    d3d8_free_overlays(d3d);
-   if (!num_images)
-      return true;
-   /* A size with no array behind it is a NULL the free, the draw and
-    * the setters would all walk. */
-   if (!(d3d->overlays = (overlay_t*)calloc(num_images,
-               sizeof(*d3d->overlays))))
-      return false;
+   d3d->overlays      = (overlay_t*)calloc(num_images, sizeof(*d3d->overlays));
    d3d->overlays_size = num_images;
 
    for (i = 0; i < num_images; i++)
@@ -2674,13 +1760,8 @@ static bool d3d8_overlay_load(void *data,
                   D3DPOOL_MANAGED, 0, 0, 0,
                   NULL, NULL, false);
 
-      /* A page that cannot be built is no page. */
       if (!overlay->tex)
-      {
-         RARCH_ERR("[D3D8] Failed to create overlay texture.\n");
-         d3d8_free_overlays(d3d);
          return false;
-      }
 
       if (IDirect3DTexture8_LockRect(
                (LPDIRECT3DTEXTURE8)overlay->tex, 0,
@@ -2695,7 +1776,8 @@ static bool d3d8_overlay_load(void *data,
          IDirect3DTexture8_UnlockRect(tex, 0);
       }
 
-      overlay->tex_dims      = VIDEO_SCALE_PACK(width, height);
+      overlay->tex_w         = width;
+      overlay->tex_h         = height;
 
       /* Default. Stretch to whole screen. */
       d3d8_overlay_tex_geom(d3d, i, 0, 0, 1, 1);
@@ -2707,12 +1789,14 @@ static bool d3d8_overlay_load(void *data,
 
 static void d3d8_overlay_enable(void *data, bool state)
 {
+   unsigned i;
    d3d8_video_t            *d3d = (d3d8_video_t*)data;
 
    if (!d3d)
       return;
 
-   d3d->overlays_enabled = state;
+   for (i = 0; i < d3d->overlays_size; i++)
+      d3d->overlays_enabled = state;
 
 #ifndef _XBOX
    win32_show_cursor(d3d, state);
@@ -2724,9 +1808,6 @@ static void d3d8_overlay_full_screen(void *data, bool enable)
    unsigned i;
    d3d8_video_t *d3d = (d3d8_video_t*)data;
 
-   if (!d3d || !d3d->overlays)
-      return;
-
    for (i = 0; i < d3d->overlays_size; i++)
       d3d->overlays[i].fullscreen = enable;
 }
@@ -2734,14 +1815,13 @@ static void d3d8_overlay_full_screen(void *data, bool enable)
 static void d3d8_overlay_set_alpha(void *data, unsigned index, float mod)
 {
    d3d8_video_t *d3d = (d3d8_video_t*)data;
-   if (d3d && d3d->overlays && index < d3d->overlays_size)
+   if (d3d)
       d3d->overlays[index].alpha_mod = mod;
 }
 
 static const video_overlay_interface_t d3d8_overlay_interface = {
    d3d8_overlay_enable,
    d3d8_overlay_load,
-   NULL, /* load_textures */
    d3d8_overlay_tex_geom,
    d3d8_overlay_vertex_geom,
    d3d8_overlay_full_screen,
@@ -2757,25 +1837,20 @@ static void d3d8_get_overlay_interface(void *data,
 #endif
 
 static bool d3d8_frame(void *data, const void *frame,
-      unsigned dims,
+      unsigned frame_width, unsigned frame_height,
       uint64_t frame_count, unsigned pitch,
       const char *msg, video_frame_info_t *video_info)
 {
-   unsigned frame_width = VIDEO_SCALE_W(dims);
-   unsigned frame_height = VIDEO_SCALE_H(dims);
    D3DVIEWPORT8 screen_vp;
    unsigned i                          = 0;
    d3d8_video_t *d3d                    = (d3d8_video_t*)data;
-   unsigned width                      = VIDEO_SCALE_W(video_info->dims);
-   unsigned height                     = VIDEO_SCALE_H(video_info->dims);
+   unsigned width                      = video_info->width;
+   unsigned height                     = video_info->height;
    struct font_params *osd_params      = (struct font_params*)
       &video_info->osd_stat_params;
    const char *stat_text               = video_info->stat_text;
    bool statistics_show                = video_info->statistics_show;
    unsigned black_frame_insertion      = video_info->black_frame_insertion;
-#ifdef HAVE_GFX_WIDGETS
-   bool widgets_active                 = video_info->widgets_active;
-#endif
 #ifdef HAVE_MENU
    bool menu_is_alive                  = (video_info->menu_st_flags & MENU_ST_FLAG_ALIVE) ? true : false;
 #endif
@@ -2801,7 +1876,7 @@ static bool d3d8_frame(void *data, const void *frame,
 
    if (d3d->should_resize)
    {
-      d3d8_set_viewport(d3d, VIDEO_SCALE_PACK(width, height), false, true);
+      d3d8_set_viewport(d3d, width, height, false, true);
       d3d->should_resize = false;
    }
 
@@ -2850,7 +1925,7 @@ static bool d3d8_frame(void *data, const void *frame,
    else if (statistics_show)
    {
       if (osd_params)
-         font_driver_render_msg(d3d, stat_text, video_info->stat_text_len,
+         font_driver_render_msg(d3d, stat_text,
                (const struct font_params*)osd_params, NULL);
    }
 #endif
@@ -2864,53 +1939,12 @@ static bool d3d8_frame(void *data, const void *frame,
    }
 #endif
 
-#ifdef HAVE_GFX_WIDGETS
-   /* Widget overlay (notifications, FPS counter, fast-forward
-    * indicator, achievement popups, load-progress bars, etc.).
-    *
-    * Widgets are drawn in screen-space using the same gfx_display
-    * ctx the menu uses, so all the prep here mirrors the
-    * pre-menu_driver_frame setup above:
-    *   - reset menu_display.offset (gfx_display_d3d8_draw streams
-    *     vertices into a ring at this offset)
-    *   - bind the menu_display vertex buffer
-    *   - full-screen viewport (widgets are positioned in screen
-    *     pixels, not in the game viewport)
-    *   - alpha blend on so semi-transparent widget panels
-    *     composite over the framebuffer (overlay_render disables
-    *     alpha blending on the way out, so we re-enable it here)
-    *   - FVF reset defensively in case the overlay or renderchain
-    *     left a different format bound
-    *
-    * gfx_widgets_frame ultimately calls gfx_display_d3d8_draw and
-    * d3d8_font_render_line, both of which wrap their own
-    * BeginScene/EndScene around each DrawPrimitiveUP, so we
-    * deliberately don't add an outer scene-wrap here. */
-   if (widgets_active)
-   {
-      d3d->menu_display.offset = 0;
-      IDirect3DDevice8_SetStreamSource(d3d->dev,
-            0, d3d->menu_display.buffer, sizeof(Vertex));
-      IDirect3DDevice8_SetViewport(d3d->dev, (D3DVIEWPORT8*)&screen_vp);
-      IDirect3DDevice8_SetRenderState(d3d->dev,
-            D3DRS_SRCBLEND,         D3DBLEND_SRCALPHA);
-      IDirect3DDevice8_SetRenderState(d3d->dev,
-            D3DRS_DESTBLEND,        D3DBLEND_INVSRCALPHA);
-      IDirect3DDevice8_SetRenderState(d3d->dev,
-            D3DRS_ALPHABLENDENABLE, TRUE);
-      IDirect3DDevice8_SetVertexShader(d3d->dev,
-            D3DFVF_XYZ | D3DFVF_TEX1 | D3DFVF_DIFFUSE);
-      gfx_widgets_frame(video_info);
-   }
-#endif
-
-   if (msg && *msg)
+   if (!string_is_empty(msg))
    {
       IDirect3DDevice8_SetViewport(d3d->dev, (D3DVIEWPORT8*)&screen_vp);
-      /* d3d8_font_render_msg wraps its own BeginScene/EndScene
-       * around each DrawPrimitiveUP, matching the per-draw scene
-       * convention used by gfx_display_d3d8_draw. */
-      font_driver_render_msg(d3d, msg, strlen(msg), NULL, NULL);
+      IDirect3DDevice8_BeginScene(d3d->dev);
+      font_driver_render_msg(d3d, msg, NULL, NULL);
+      IDirect3DDevice8_EndScene(d3d->dev);
    }
 
    video_driver_update_title(NULL);
@@ -2926,7 +1960,7 @@ static bool d3d8_set_shader(void *data,
 }
 
 static void d3d8_set_menu_texture_frame(void *data,
-      const void *frame, bool rgb32, unsigned dims,
+      const void *frame, bool rgb32, unsigned width, unsigned height,
       float alpha)
 {
    D3DLOCKED_RECT d3dlr;
@@ -2935,34 +1969,27 @@ static void d3d8_set_menu_texture_frame(void *data,
    if (!d3d || !d3d->menu)
       return;
 
-   if (    !d3d->menu->tex                  ||
-            d3d->menu->tex_dims != dims                  ||
-            d3d->menu_tex_rgb32 != rgb32)
+   if (    !d3d->menu->tex            ||
+            d3d->menu->tex_w != width ||
+            d3d->menu->tex_h != height)
    {
       LPDIRECT3DTEXTURE8 tex = d3d->menu->tex;
       if (tex)
          IDirect3DTexture8_Release(tex);
 
-      /* RGUI sends 16bpp ARGB4444 (the d3d8 case in RGUI's pixel
-       * format dispatcher selects argb32_to_argb4444), so we can
-       * upload it byte-for-byte into a D3DFMT_A4R4G4B4 texture and
-       * skip the per-pixel CPU expansion to ARGB8888 the previous
-       * implementation did every frame.  The rgb32 path is preserved
-       * for callers that hand us 32bpp data; in current practice no
-       * such caller exists, but the API contract supports it. */
       d3d->menu->tex = d3d8_texture_new(d3d->dev,
-            VIDEO_SCALE_W(dims), VIDEO_SCALE_H(dims), 1,
-            0, rgb32 ? D3D8_ARGB8888_FORMAT : D3D8_ARGB4444_FORMAT,
+            width, height, 1,
+            0, D3D8_ARGB8888_FORMAT,
             D3DPOOL_MANAGED, 0, 0, 0, NULL, NULL, false);
 
       if (!d3d->menu->tex)
          return;
 
-      d3d->menu->tex_dims       = dims;
-      d3d->menu_tex_rgb32       = rgb32;
+      d3d->menu->tex_w          = width;
+      d3d->menu->tex_h          = height;
 #ifdef _XBOX
-      d3d->menu->tex_coords [2] = VIDEO_SCALE_W(dims);
-      d3d->menu->tex_coords[3]  = VIDEO_SCALE_H(dims);
+      d3d->menu->tex_coords [2] = width;
+      d3d->menu->tex_coords[3]  = height;
 #endif
    }
 
@@ -2973,39 +2000,40 @@ static void d3d8_set_menu_texture_frame(void *data,
       if (IDirect3DTexture8_LockRect(tex,
                0, &d3dlr, NULL, D3DLOCK_NOSYSLOCK) == D3D_OK)
       {
-         unsigned h;
+         unsigned h, w;
 
          if (rgb32)
          {
             uint8_t        *dst = (uint8_t*)d3dlr.pBits;
             const uint32_t *src = (const uint32_t*)frame;
 
-            for (h = 0; h < VIDEO_SCALE_H(dims); h++, dst += d3dlr.Pitch, src += VIDEO_SCALE_W(dims))
+            for (h = 0; h < height; h++, dst += d3dlr.Pitch, src += width)
             {
-               memcpy(dst, src, VIDEO_SCALE_W(dims) * sizeof(uint32_t));
-               memset(dst + VIDEO_SCALE_W(dims) * sizeof(uint32_t), 0,
-                     d3dlr.Pitch - VIDEO_SCALE_W(dims) * sizeof(uint32_t));
+               memcpy(dst, src, width * sizeof(uint32_t));
+               memset(dst + width * sizeof(uint32_t), 0,
+                     d3dlr.Pitch - width * sizeof(uint32_t));
             }
          }
          else
          {
-            /* Direct ARGB4444 upload.  The bit layout produced by
-             * argb32_to_argb4444 (host-endian uint16_t with A in bits
-             * 15..12, R 11..8, G 7..4, B 3..0) matches D3DFMT_A4R4G4B4
-             * exactly: D3D reads the locked memory as host-endian
-             * 16-bit units with the same bit assignments, so the same
-             * source bytes work on LE PC and LE Original Xbox (NV2A
-             * via D3DFMT_LIN_*) without a byte swap. */
-            uint8_t        *dst = (uint8_t*)d3dlr.pBits;
-            const uint8_t  *src = (const uint8_t*)frame;
-            unsigned src_pitch  = VIDEO_SCALE_W(dims) * sizeof(uint16_t);
-            unsigned row_bytes  = VIDEO_SCALE_W(dims) * sizeof(uint16_t);
+            uint32_t       *dst = (uint32_t*)d3dlr.pBits;
+            const uint16_t *src = (const uint16_t*)frame;
 
-            for (h = 0; h < VIDEO_SCALE_H(dims); h++, dst += d3dlr.Pitch, src += src_pitch)
+            for (h = 0; h < height; h++, dst += d3dlr.Pitch >> 2, src += width)
             {
-               memcpy(dst, src, row_bytes);
-               if (d3dlr.Pitch > (int)row_bytes)
-                  memset(dst + row_bytes, 0, d3dlr.Pitch - row_bytes);
+               for (w = 0; w < width; w++)
+               {
+                  uint16_t c = src[w];
+                  uint32_t r = (c >> 12) & 0xf;
+                  uint32_t g = (c >>  8) & 0xf;
+                  uint32_t b = (c >>  4) & 0xf;
+                  uint32_t a = (c >>  0) & 0xf;
+                  r          = ((r << 4) | r) << 16;
+                  g          = ((g << 4) | g) <<  8;
+                  b          = ((b << 4) | b) <<  0;
+                  a          = ((a << 4) | a) << 24;
+                  dst[w]     = r | g | b | a;
+               }
             }
          }
 
@@ -3059,7 +2087,7 @@ static void d3d8_video_texture_load_d3d(
    *id = (uintptr_t)tex;
 }
 
-static uintptr_t d3d8_video_texture_load_wrap_d3d(void *data)
+static int d3d8_video_texture_load_wrap_d3d(void *data)
 {
    uintptr_t id = 0;
    struct d3d8_texture_info *info = (struct d3d8_texture_info*)data;
@@ -3087,17 +2115,6 @@ static uintptr_t d3d8_load_texture(void *video_data, void *data,
    return id;
 }
 
-static uintptr_t d3d8_video_texture_unload_wrap_d3d(void *data)
-{
-   uintptr_t id = (uintptr_t)data;
-   if (id)
-   {
-      LPDIRECT3DTEXTURE8 texid = (LPDIRECT3DTEXTURE8)id;
-      IDirect3DTexture8_Release(texid);
-   }
-   return 0;
-}
-
 static void d3d8_unload_texture(void *data, bool threaded,
       uintptr_t id)
 {
@@ -3105,24 +2122,12 @@ static void d3d8_unload_texture(void *data, bool threaded,
    if (!id)
 	   return;
 
-   /* Dispatch Release to the video thread when threaded video is
-    * active, so it is serialised with any pending draw calls
-    * that may still reference this texture.  Matches the
-    * threading pattern already used by d3d8_load_texture
-    * above. */
-   if (threaded)
-   {
-      video_thread_texture_handle((void*)id,
-            d3d8_video_texture_unload_wrap_d3d);
-      return;
-   }
-
    texid = (LPDIRECT3DTEXTURE8)id;
    IDirect3DTexture8_Release(texid);
 }
 
 static void d3d8_set_video_mode(void *data,
-      unsigned dims,
+      unsigned width, unsigned height,
       bool fullscreen)
 {
 #ifndef _XBOX
@@ -3140,89 +2145,6 @@ static uint32_t d3d8_get_flags(void *data)
    return flags;
 }
 
-/* --- GPU-native BCn compressed-texture upload --- */
-/* Direct3D 8 samples DXT1/DXT3/DXT5 == BC1/BC2/BC3. */
-static D3DFORMAT d3d8_bc_to_d3dfmt(enum texture_gpu_format fmt)
-{
-   switch (fmt)
-   {
-      case TEXTURE_GPU_FORMAT_BC1: return D3DFMT_DXT1;
-      case TEXTURE_GPU_FORMAT_BC2: return D3DFMT_DXT3;
-      case TEXTURE_GPU_FORMAT_BC3: return D3DFMT_DXT5;
-      default:                     break;
-   }
-   return D3DFMT_UNKNOWN;
-}
-
-static bool d3d8_supports_texture_format(void *data,
-      enum texture_gpu_format fmt)
-{
-   d3d8_video_t *d3d = (d3d8_video_t*)data;
-   D3DFORMAT     f   = d3d8_bc_to_d3dfmt(fmt);
-   if (!d3d || !d3d->d3d8 || f == D3DFMT_UNKNOWN)
-      return false;
-   return SUCCEEDED(IDirect3D8_CheckDeviceFormat(d3d->d3d8,
-         D3DADAPTER_DEFAULT, D3DDEVTYPE_HAL, D3DFMT_X8R8G8B8,
-         0, D3DRTYPE_TEXTURE, f));
-}
-
-static uintptr_t d3d8_load_texture_compressed(void *data,
-      const struct texture_compressed *tc, bool threaded,
-      enum texture_filter_type filter_type)
-{
-   d3d8_video_t      *d3d   = (d3d8_video_t*)data;
-   LPDIRECT3DTEXTURE8 tex   = NULL;
-   D3DFORMAT          f;
-   unsigned           i;
-   unsigned           block_bytes;
-
-   /* Regular texture loads on this driver marshal to the video thread;
-    * the compressed path does not yet, so under threading decline here
-    * and let the CPU-decode fallback go through the marshalled path. */
-   if (threaded)
-      return 0;
-   (void)filter_type;
-
-   if (!d3d || !d3d->dev || !tc || tc->num_mips == 0)
-      return 0;
-   if ((f = d3d8_bc_to_d3dfmt(tc->format)) == D3DFMT_UNKNOWN)
-      return 0;
-   block_bytes = (tc->format == TEXTURE_GPU_FORMAT_BC1) ? 8 : 16;
-
-   if (FAILED(IDirect3DDevice8_CreateTexture(d3d->dev,
-               tc->mips[0].width, tc->mips[0].height, tc->num_mips,
-               0, f, D3DPOOL_MANAGED, &tex)))
-      return 0;
-
-   for (i = 0; i < tc->num_mips; i++)
-   {
-      D3DLOCKED_RECT lr;
-      if (SUCCEEDED(IDirect3DTexture8_LockRect(tex, i, &lr, NULL, 0)))
-      {
-         unsigned       blocks_w  = (tc->mips[i].width  + 3) >> 2;
-         unsigned       blocks_h  = (tc->mips[i].height + 3) >> 2;
-         unsigned       row_bytes = blocks_w * block_bytes;
-         const uint8_t *src       = (const uint8_t*)tc->mips[i].data;
-         uint8_t       *dst       = (uint8_t*)lr.pBits;
-         unsigned       r;
-         for (r = 0; r < blocks_h; r++)
-            memcpy(dst + r * lr.Pitch, src + r * row_bytes, row_bytes);
-         IDirect3DTexture8_UnlockRect(tex, i);
-      }
-   }
-
-   return (uintptr_t)tex;
-}
-
-/* The Direct3D 8 present interval is a presentation parameter whose
- * largest vsync-locked value is D3DPRESENT_INTERVAL_FOUR, so this
- * driver holds a frame for at most four display intervals. */
-static unsigned d3d8_get_swap_interval_cap(void *data)
-{
-   (void)data;
-   return 4;
-}
-
 static const video_poke_interface_t d3d_poke_interface = {
    d3d8_get_flags,
    d3d8_load_texture,
@@ -3232,7 +2154,7 @@ static const video_poke_interface_t d3d_poke_interface = {
    NULL, /* get_refresh_rate */
 #else
    /* UWP does not expose this information easily */
-   NULL, /* refresh_rate - handled by display server */
+   win32_get_refresh_rate,
 #endif
    NULL, /* set_filtering */
    NULL, /* get_video_output_size */
@@ -3250,27 +2172,10 @@ static const video_poke_interface_t d3d_poke_interface = {
    NULL, /* get_current_shader */
    NULL, /* get_current_software_framebuffer */
    NULL, /* get_hw_render_interface */
-   NULL, /* set_hdr_menu_nits */
+   NULL, /* set_hdr_max_nits */
    NULL, /* set_hdr_paper_white_nits */
-   NULL, /* set_hdr_expand_gamut */
-   NULL, /* set_hdr_scanlines */
-   NULL, /* set_hdr_subpixel_layout */
-   d3d8_supports_texture_format,
-   d3d8_load_texture_compressed,
-   NULL, /* present_last */
-   NULL, /* get_last_present_time */
-   NULL, /* hw_ring_install */
-   NULL, /* hw_ring_fence_new */
-   NULL, /* hw_ring_fence_free */
-   NULL, /* hw_ring_fence_signal */
-   NULL, /* hw_ring_fence_wait */
-   NULL, /* hw_ring_capture */
-   NULL, /* hw_ring_present_slot */
-   NULL, /* hw_ring_context_new */
-   NULL, /* hw_ring_context_free */
-   NULL, /* hw_ring_framebuffer */
-   NULL, /* update_texture */
-   d3d8_get_swap_interval_cap
+   NULL, /* set_hdr_contrast */
+   NULL  /* set_hdr_expand_gamut */
 };
 
 static void d3d8_get_poke_interface(void *data,
@@ -3284,36 +2189,6 @@ static bool d3d8_has_windowed(void *data) { return false; }
 #else
 static bool d3d8_has_windowed(void *data) { return true; }
 #endif
-
-#ifdef HAVE_GFX_WIDGETS
-/* Required hook: gfx_widgets initialises only on backends that
- * advertise support via this callback.  When it returns true RA
- * routes things like the fast-forward indicator, FPS counter,
- * achievement popups and load-progress bars to the widget layer
- * (gfx_widgets_status_text + gfx_widgets_frame), bypassing the
- * runloop-msg → font_driver_render_msg fallback that would
- * otherwise fire for text-only notifications.  d3d8_frame calls
- * gfx_widgets_frame each frame after the overlay block, so all
- * the widget rendering (which goes through gfx_display_d3d8_draw
- * + d3d8_font_render_line) is wired up. */
-static bool d3d8_gfx_widgets_enabled(void *data)
-{
-   (void)data;
-   return true;
-}
-#endif
-
-static font_renderer_t d3d8_font = {
-   d3d8_font_init,
-   d3d8_font_free,
-   d3d8_font_render_msg,
-   "d3d8",
-   d3d8_font_get_glyph,
-   NULL, /* bind_block */
-   NULL, /* flush */
-   d3d8_font_get_message_width,
-   d3d8_font_get_line_metrics
-};
 
 video_driver_t video_d3d8 = {
    d3d8_init,
@@ -3334,35 +2209,13 @@ video_driver_t video_d3d8 = {
    d3d8_set_rotation,
    d3d8_viewport_info,
    NULL, /* read_viewport  */
+   NULL, /* read_frame_raw */
 #ifdef HAVE_OVERLAY
    d3d8_get_overlay_interface,
 #endif
    d3d8_get_poke_interface,
    NULL, /* wrap_type_to_enum */
-   NULL, /* shader_load_begin */
-   NULL, /* shader_load_step */
 #ifdef HAVE_GFX_WIDGETS
-   d3d8_gfx_widgets_enabled,
+   NULL  /* gfx_widgets_enabled */
 #endif
-   NULL, /* invalidate_hw_render_cache */
-   NULL, /* read_viewport_hdr */
-   &d3d8_font
 };
-
-gfx_display_ctx_driver_t gfx_display_ctx_d3d8 = {
-   gfx_display_d3d8_draw,
-   gfx_display_d3d8_draw_pipeline,
-   gfx_display_d3d8_blend_begin,
-   gfx_display_d3d8_blend_end,
-   gfx_display_d3d8_get_default_mvp,
-   gfx_display_d3d8_get_default_vertices,
-   gfx_display_d3d8_get_default_tex_coords,
-   &d3d8_font,
-   GFX_VIDEO_DRIVER_DIRECT3D8,
-   "d3d8",
-   false,
-   true,
-   gfx_display_d3d8_scissor_begin,
-   gfx_display_d3d8_scissor_end
-};
-

@@ -43,15 +43,22 @@
 
 struct modeset_buf
 {
-	/* The buffer's pixel size, packed; stride is the row the
-	   scanout walks, which is not always the width. */
-	uint32_t dims;
+	uint32_t width;
+	uint32_t height;
 	uint32_t stride;
 	uint32_t size;
 	uint32_t handle;
 	uint8_t *map;
 	uint32_t fb_id;
 	uint32_t pixel_format;
+};
+
+struct drm_rect
+{
+	int x;
+	int y;
+	int width;
+	int height;
 };
 
 /* Pages are abstractions of buffers, encapsulated together with more
@@ -88,8 +95,9 @@ struct drm_surface
    unsigned int bpp;
    uint32_t pixformat;
 
-   /* The internal buffers size, packed. */
-   unsigned src_dims;
+   /* The internal buffers size. */
+   int src_width;
+   int src_height;
 
    /* Surfaces with a higher layer will be on top of
     * the ones with lower. Default is 0. */
@@ -129,8 +137,8 @@ struct drm_video
 
    /* Total dispmanx video dimensions.
     * Not counting overscan settings. */
-   /* The mode the display is running, packed. */
-   unsigned kms_dims;
+   unsigned int kms_width;
+   unsigned int kms_height;
 
    /* For threading */
    scond_t *vsync_condition;
@@ -147,8 +155,8 @@ struct drm_video
     * We need these outside the surface because we free surfaces
     * and then we want to test if these values have changed before
     * recreating them. */
-   /* The size the core last handed over, packed. */
-   unsigned core_dims;
+   int core_width;
+   int core_height;
    int core_pitch;
    /* Both main and menu surfaces are going to have the same aspect,
     * so we keep it here for future reference. */
@@ -186,21 +194,14 @@ static void drm_surface_free(void *data, struct drm_surface **sp)
 {
    int i;
    struct drm_video *_drmvars = data;
-   struct drm_surface *surface;
+   struct drm_surface *surface = *sp;
 
-   if (sp)
-      surface = *sp;
-   else
-      return;
+   for (i = 0; i < surface->numpages; i++)
+      surface->pages[i].used = false;
 
-   if (surface)
-   {
-      for (i = 0; surface && (i < surface->numpages); i++)
-         surface->pages[i].used = false;
+   free(surface->pages);
 
-      free(surface->pages);
-      free(surface);
-   }
+   free(surface);
    *sp = NULL;
 }
 
@@ -211,29 +212,18 @@ static void drm_surface_set_aspect(struct drm_surface *surface, float aspect)
       surface->aspect = aspect;
 }
 
-static void drm_surface_setup(void *data, unsigned src_dims,
+static void drm_surface_setup(void *data,  int src_width, int src_height,
       int pitch, int bpp, uint32_t pixformat,
       int alpha, float aspect, int numpages, int layer,
       struct drm_surface **sp)
 {
    struct drm_video *_drmvars = data;
    int i;
-   int ret;
    struct drm_surface *surface = NULL;
 
    *sp = calloc (1, sizeof(struct drm_surface));
 
    surface = *sp;
-
-   /* NULL-check the outer calloc: the surface->... field writes
-    * below would NULL-deref on OOM.  Sibling bug to the one in
-    * dispmanx_surface_setup - the two routines share this
-    * structure (output-pointer + void return) and both had the
-    * same missing checks.  void-returning so callers can't see
-    * an error code; letting the function no-op on OOM beats a
-    * segfault. */
-   if (!surface)
-      return;
 
    /* Setup surface parameters */
    surface->numpages = numpages;
@@ -243,26 +233,17 @@ static void drm_surface_setup(void *data, unsigned src_dims,
     *
     * These will be used to increase the offsets for blitting. */
    surface->total_pitch = pitch;
-   surface->pitch       = VIDEO_SCALE_W(src_dims) * bpp;
+   surface->pitch       = src_width * bpp;
    surface->bpp         = bpp;
    surface->pixformat   = pixformat;
-   surface->src_dims    = src_dims;
+   surface->src_width   = src_width;
+   surface->src_height  = src_height;
    surface->aspect      = aspect;
 
    /* Allocate memory for all the pages in each surface
     * and initialize variables inside each page's struct. */
    surface->pages = (struct drm_page*)
       calloc(surface->numpages, sizeof(struct drm_page));
-
-   /* Same NULL-check for the pages array.  Undo the outer
-    * surface allocation on OOM to give callers a consistent
-    * NULL. */
-   if (!surface->pages)
-   {
-      free(surface);
-      *sp = NULL;
-      return;
-   }
 
    for (i = 0; i < surface->numpages; i++)
    {
@@ -275,8 +256,9 @@ static void drm_surface_setup(void *data, unsigned src_dims,
    /* Create the framebuffer for each one of the pages of the surface. */
    for (i = 0; i < surface->numpages; i++)
    {
-      surface->pages[i].buf.dims   = src_dims;
-      ret                          = modeset_create_dumbfb(
+      surface->pages[i].buf.width  = src_width;
+      surface->pages[i].buf.height = src_height;
+      int ret                      = modeset_create_dumbfb(
             drm.fd, &surface->pages[i].buf, bpp, pixformat);
 
       if (ret)
@@ -334,7 +316,7 @@ static void drm_surface_update(void *data, const void *frame,
    int src_offset              = 0;
    int dst_offset              = 0;
 
-   for (line = 0; line < (int)VIDEO_SCALE_H(surface->src_dims); line++)
+   for (line = 0; line < surface->src_height; line++)
    {
       memcpy (
             surface->pages[surface->flip_page].buf.map + dst_offset,
@@ -371,23 +353,7 @@ static uint32_t get_plane_prop_id(uint32_t obj_id, const char *name)
        * This implementation must be improved. */
       props      = drmModeObjectGetProperties(drm.fd,
             plane->plane_id, DRM_MODE_OBJECT_PLANE);
-      /* drmModeObjectGetProperties returns NULL on kernel/driver
-       * error or if the plane has no properties; previously
-       * 'props->count_props' NULL-deref'd in that case.  Also
-       * malloc on the next line was unchecked and props_info[j]
-       * below would NULL-deref on OOM.  On either failure skip
-       * this plane and continue; the caller falls through to
-       * 'return 0' (not-found) if no plane yields the prop.
-       *
-       * NOTE: pre-existing leaks in this function (plane_resources,
-       * plane, props, props_info are all libdrm-allocated and
-       * never freed even on the success path that 'return's from
-       * inside the loop) are out of scope for this fix. */
-      if (!props)
-         continue;
       props_info = malloc(props->count_props * sizeof *props_info);
-      if (!props_info)
-         continue;
 
       for (j = 0; j < props->count_props; ++j)
          props_info[j] =	drmModeGetProperty(drm.fd, props->props[j]);
@@ -458,16 +424,6 @@ static void drm_plane_setup(struct drm_surface *surface)
 {
    int i,j;
    char fmt_name[5];
-   unsigned int crtc_index = 0;
-   uint32_t plane_flags = 0;
-   uint32_t plane_w;
-   uint32_t plane_h;
-   uint32_t plane_x;
-   uint32_t plane_y;
-   uint32_t src_w;
-   uint32_t src_h;
-   uint32_t src_x = 0;
-   uint32_t src_y = 0;
 
    /* Get plane resources */
    drmModePlane *plane;
@@ -476,7 +432,6 @@ static void drm_plane_setup(struct drm_surface *surface)
    if (!plane_resources)
    {
       RARCH_ERR("[DRM] No scaling planes available.\n");
-      return;
    }
 
    RARCH_LOG("[DRM] Number of planes on FD %d is %d.\n",
@@ -489,6 +444,7 @@ static void drm_plane_setup(struct drm_surface *surface)
     * CRTC index first, then iterate over available planes.
     * Yes, strangely we need the in-use CRTC index to mask possible_crtc
     * during the planes iteration... */
+   unsigned int crtc_index = 0;
    for (i = 0; i < (unsigned int)drm.resources->count_crtcs; i++)
    {
       if (drm.crtc_id == drm.resources->crtcs[i])
@@ -558,18 +514,21 @@ static void drm_plane_setup(struct drm_surface *surface)
     * crtc_w and crtc_h are the final size with applied scale/ratio.
     * crtc_x and crtc_y are the position of the plane
     * pw and ph are the input size: the size of the area we read from the fb. */
-   plane_w = drm.current_mode->vdisplay * surface->aspect;
-   plane_h = drm.current_mode->vdisplay;
+   uint32_t plane_flags = 0;
+   uint32_t plane_w = drm.current_mode->vdisplay * surface->aspect;
+   uint32_t plane_h = drm.current_mode->vdisplay;
    /* If we obtain a scaled image width that is bigger than the physical screen width,
     * then we keep the physical screen width as our maximum width. */
    if (plane_w > drm.current_mode->hdisplay)
       plane_w = drm.current_mode->hdisplay;
 
-   plane_x = (drm.current_mode->hdisplay - plane_w) / 2;
-   plane_y = (drm.current_mode->vdisplay - plane_h) / 2;
+   uint32_t plane_x = (drm.current_mode->hdisplay - plane_w) / 2;
+   uint32_t plane_y = (drm.current_mode->vdisplay - plane_h) / 2;
 
-   src_w = VIDEO_SCALE_W(surface->src_dims);
-   src_h = VIDEO_SCALE_H(surface->src_dims);
+   uint32_t src_w = surface->src_width;
+   uint32_t src_h = surface->src_height;
+   uint32_t src_x = 0;
+   uint32_t src_y = 0;
 
    /* We have to set a buffer for the plane, whatever buffer we want,
     * but we must set a buffer so the plane starts reading from it now. */
@@ -597,8 +556,8 @@ static int modeset_create_dumbfb(int fd, struct modeset_buf *buf,
    struct drm_mode_map_dumb map_dumb       = {0};
    struct drm_mode_fb_cmd cmd_dumb         = {0};
 
-   create_dumb.width  = VIDEO_SCALE_W(buf->dims);
-   create_dumb.height = VIDEO_SCALE_H(buf->dims);
+   create_dumb.width  = buf->width;
+   create_dumb.height = buf->height;
    create_dumb.bpp    = bpp * 8;
    create_dumb.flags  = 0;
    create_dumb.pitch  = 0;
@@ -640,8 +599,7 @@ static int modeset_create_dumbfb(int fd, struct modeset_buf *buf,
 static bool init_drm(void)
 {
    uint i;
-   drmModeConnector *connector = NULL;
-   struct modeset_buf buf;
+   drmModeConnector *connector;
 
    drm.fd = open("/dev/dri/card0", O_RDWR);
 
@@ -718,8 +676,9 @@ static bool init_drm(void)
    g_drm_mode = drm.current_mode;
 
    /* Set mode physical video mode. Not really needed, but clears TTY console. */
-   buf.dims = VIDEO_SCALE_PACK(drm.current_mode->hdisplay,
-         drm.current_mode->vdisplay);
+   struct modeset_buf buf;
+   buf.width = drm.current_mode->hdisplay;
+   buf.height = drm.current_mode->vdisplay;
    if (modeset_create_dumbfb(drm.fd, &buf, 4, DRM_FORMAT_XRGB8888))
    {
       RARCH_ERR("[DRM] Can't create dumb fb.\n");
@@ -757,7 +716,8 @@ static void *drm_init(const video_info_t *video,
    _drmvars->vsync_condition  = scond_new();
    _drmvars->vsync_cond_mutex = slock_new();
    _drmvars->pending_mutex    = slock_new();
-   _drmvars->core_dims        = 0;
+   _drmvars->core_width       = 0;
+   _drmvars->core_height      = 0;
 
    _drmvars->main_surface     = NULL;
    _drmvars->menu_surface     = NULL;
@@ -775,30 +735,30 @@ static void *drm_init(const video_info_t *video,
 
    RARCH_LOG ("[DRM] Init successful.\n");
 
-   _drmvars->kms_dims   = VIDEO_SCALE_PACK(drm.current_mode->hdisplay,
-         drm.current_mode->vdisplay);
+   _drmvars->kms_width  = drm.current_mode->hdisplay;
+   _drmvars->kms_height = drm.current_mode->vdisplay;
 
    return _drmvars;
 }
 
-static bool drm_frame(void *data, const void *frame,
-      unsigned dims, uint64_t frame_count, unsigned pitch, const char *msg,
+static bool drm_frame(void *data, const void *frame, unsigned width,
+      unsigned height, uint64_t frame_count, unsigned pitch, const char *msg,
       video_frame_info_t *video_info)
 {
-   unsigned width = VIDEO_SCALE_W(dims);
-   unsigned height = VIDEO_SCALE_H(dims);
    struct drm_video *_drmvars = data;
 #ifdef HAVE_MENU
    bool menu_is_alive         = (video_info->menu_st_flags & MENU_ST_FLAG_ALIVE) ? true : false;
 #endif
 
-   if (_drmvars->core_dims != dims)
+   if (   (width  != _drmvars->core_width)
+       || (height != _drmvars->core_height))
    {
       /* Sanity check. */
       if (width == 0 || height == 0)
          return true;
 
-      _drmvars->core_dims   = dims;
+      _drmvars->core_width  = width;
+      _drmvars->core_height = height;
       _drmvars->core_pitch  = pitch;
 
       if (_drmvars->main_surface)
@@ -806,7 +766,8 @@ static bool drm_frame(void *data, const void *frame,
 
       /* We need to recreate the main surface and it's pages (buffers). */
       drm_surface_setup(_drmvars,
-            dims,
+            width,
+            height,
             pitch,
             _drmvars->rgb32 ? 4 : 2,
             _drmvars->rgb32 ? DRM_FORMAT_XRGB8888 : DRM_FORMAT_RGB565,
@@ -846,15 +807,10 @@ static void drm_set_texture_enable(void *data, bool state, bool full_screen)
 }
 
 static void drm_set_texture_frame(void *data, const void *frame, bool rgb32,
-      unsigned dims, float alpha)
+      unsigned width, unsigned height, float alpha)
 {
-   unsigned width = VIDEO_SCALE_W(dims);
-   unsigned height = VIDEO_SCALE_H(dims);
-   unsigned int i;
-   struct drm_video    *_drmvars = data;
-   struct drm_surface  *surface  = NULL;
-   uint8_t             *dst_base = NULL;
-   unsigned int         dst_pitch;
+   unsigned int i, j;
+   struct drm_video *_drmvars = data;
 
    if (!_drmvars->menu_active)
       return;
@@ -864,7 +820,8 @@ static void drm_set_texture_frame(void *data, const void *frame, bool rgb32,
    if (!_drmvars->menu_surface)
    {
       drm_surface_setup(_drmvars,
-            dims,
+            width,
+            height,
             width * 4,
             4,
             DRM_FORMAT_XRGB8888,
@@ -879,61 +836,36 @@ static void drm_set_texture_frame(void *data, const void *frame, bool rgb32,
       drm_plane_setup(_drmvars->menu_surface);
    }
 
-   surface   = _drmvars->menu_surface;
-   dst_base  = (uint8_t*)surface->pages[surface->flip_page].buf.map;
-   dst_pitch = surface->pitch;
+   /* We have to go on a pixel format conversion adventure
+    * for now, until we can convince RGUI to output
+    * in an 8888 format. */
+   unsigned int src_pitch        = width * 2;
+   unsigned int dst_pitch        = width * 4;
+   unsigned int dst_width        = width;
+   uint32_t line[dst_width];
 
-   /* Defensive clamps: the dumb buffer was sized at the first
-    * menu frame's dimensions and is never resized within an
-    * active menu session. If the caller hands us something
-    * bigger anyway, write only what fits rather than running
-    * off the end of the mapped region. */
-   {
-      unsigned int max_w = VIDEO_SCALE_W(surface->src_dims);
-      unsigned int max_h = VIDEO_SCALE_H(surface->src_dims);
-      if (width  > max_w) VIDEO_SCALE_PUT_W(dims, max_w);
-      if (height > max_h) VIDEO_SCALE_PUT_H(dims, max_h);
-   }
+   /* The output pixel array with the converted pixels. */
+   char *frame_output = (char *) malloc (dst_pitch * height);
 
-   if (rgb32)
-   {
-      /* Source is already XRGB8888 -- just copy row by row to handle
-       * any difference between source stride and dst stride. */
-      const uint8_t *src      = (const uint8_t*)frame;
-      unsigned int   src_pitch = width * 4;
-      unsigned int   row_bytes = (src_pitch < dst_pitch) ? src_pitch : dst_pitch;
+   /* Remember, memcpy() works with 8bits pointers for increments. */
+   char *dst_base_addr           = frame_output;
 
-      for (i = 0; i < height; i++)
-         memcpy(dst_base + (dst_pitch * i), src + (src_pitch * i), row_bytes);
-   }
-   else
+   for (i = 0; i < height; i++)
    {
-      /* RGUI default output is RGBA4444 with channel layout
-       *   R = bits 15..12, G = 11..8, B = 7..4, A = 3..0
-       * Expand each 4-bit channel to 8 bits via nibble replication
-       * (x | (x << 4)) and pack into XRGB8888 for the dumb buffer. */
-      for (i = 0; i < height; i++)
+      for (j = 0; j < src_pitch / 2; j++)
       {
-         const uint16_t *src_row = (const uint16_t*)frame + (width * i);
-         uint32_t       *dst_row = (uint32_t*)(dst_base + (dst_pitch * i));
-         unsigned int    j;
-
-         for (j = 0; j < width; j++)
-         {
-            uint16_t src_pix = src_row[j];
-            uint32_t r4      = (src_pix >> 12) & 0xF;
-            uint32_t g4      = (src_pix >>  8) & 0xF;
-            uint32_t b4      = (src_pix >>  4) & 0xF;
-            uint32_t r8      = (r4 << 4) | r4;
-            uint32_t g8      = (g4 << 4) | g4;
-            uint32_t b8      = (b4 << 4) | b4;
-            dst_row[j]       = (r8 << 16) | (g8 << 8) | b8;
-         }
+         uint16_t src_pix = *((uint16_t*)frame + (src_pitch / 2 * i) + j);
+         /* The hex AND is for keeping only the part we need for each component. */
+         uint32_t R = (src_pix << 8) & 0x00FF0000;
+         uint32_t G = (src_pix << 4) & 0x0000FF00;
+         uint32_t B = (src_pix << 0) & 0x000000FF;
+         line[j] = (0 | R | G | B);
       }
+      memcpy(dst_base_addr + (dst_pitch * i), (char*)line, dst_pitch);
    }
 
-   /* The bytes are in place in the dumb buffer; commit the page flip. */
-   drm_page_flip(surface);
+   /* We update the menu surface if menu is active. */
+   drm_surface_update(_drmvars, frame_output, _drmvars->menu_surface);
 }
 
 static void drm_set_nonblock_state(void *a, bool b, bool c, unsigned d) { }
@@ -947,9 +879,10 @@ static void drm_viewport_info(void *data, struct video_viewport *vp)
    if (!vid)
       return;
 
-   vp->pos = VIDEO_POS_PACK(0, 0);
+   vp->x = vp->y = 0;
 
-   vp->dims   = vp->full_dims   = vid->core_dims;
+   vp->width  = vp->full_width  = vid->core_width;
+   vp->height = vp->full_height = vid->core_height;
 }
 
 static bool drm_suppress_screensaver(void *a, bool b) { return false; }
@@ -979,7 +912,7 @@ static const video_poke_interface_t drm_poke_interface = {
    NULL, /* load_texture */
    NULL, /* unload_texture */
    NULL, /* set_video_mode */
-   NULL, /* refresh_rate - handled by display server */
+   drm_get_refresh_rate,
    NULL, /* set_filtering */
    NULL, /* get_video_output_size */
    NULL, /* get_video_output_prev */
@@ -996,11 +929,10 @@ static const video_poke_interface_t drm_poke_interface = {
    NULL, /* get_current_shader */
    NULL, /* get_current_software_framebuffer */
    NULL, /* get_hw_render_interface */
-   NULL, /* set_hdr_menu_nits */
+   NULL, /* set_hdr_max_nits */
    NULL, /* set_hdr_paper_white_nits */
-   NULL, /* set_hdr_expand_gamut */
-   NULL, /* set_hdr_scanlines */
-   NULL  /* set_hdr_subpixel_layout */
+   NULL, /* set_hdr_contrast */
+   NULL  /* set_hdr_expand_gamut */
 };
 
 static void drm_get_poke_interface(void *data,
@@ -1046,13 +978,12 @@ video_driver_t video_drm = {
    NULL, /* set_rotation */
    drm_viewport_info,
    NULL, /* read_viewport */
+   NULL, /* read_frame_raw */
 #ifdef HAVE_OVERLAY
    NULL, /* get_overlay_interface */
 #endif
    drm_get_poke_interface,
    NULL, /* wrap_type_to_enum */
-   NULL, /* shader_load_begin */
-   NULL, /* shader_load_step */
 #ifdef HAVE_GFX_WIDGETS
    NULL  /* gfx_widgets_enabled */
 #endif
