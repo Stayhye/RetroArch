@@ -146,7 +146,8 @@ endif
 
 debug: clean all run
 
-release: all; cp $(EE_BIN) $(TARGET_RELEASE)
+release: all
+	cp $(EE_BIN) $(TARGET_RELEASE)
 
 #Include preferences
 include $(PS2SDK)/samples/Makefile.pref
