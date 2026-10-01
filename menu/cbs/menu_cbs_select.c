@@ -40,78 +40,70 @@ static int action_select_default(
    int ret                    = 0;
    enum menu_action action    = MENU_ACTION_NOOP;
    menu_file_list_cbs_t *cbs  = NULL;
-   struct menu_state *menu_st = menu_state_get_ptr();
-   menu_list_t *menu_list     = menu_st->entries.list;
-   file_list_t *selection_buf = menu_list ? MENU_LIST_GET_SELECTION(menu_list, 0) : NULL;
+   file_list_t *selection_buf = menu_entries_get_selection_buf_ptr(0);
 
    if (selection_buf)
-      if (!(cbs = (menu_file_list_cbs_t*)
-         file_list_get_actiondata_at_offset(selection_buf, idx)))
-         return -1;
+      cbs                     = (menu_file_list_cbs_t*)
+         file_list_get_actiondata_at_offset(selection_buf, idx);
 
-   if (cbs)
+   if (!cbs)
+      return -1;
+
+   if (cbs->setting)
    {
-      if (cbs->setting)
+      switch (cbs->setting->type)
       {
-         switch (cbs->setting->type)
-         {
-            case ST_BOOL:
-            case ST_INT:
-            case ST_UINT:
-            case ST_SIZE:
-            case ST_FLOAT:
-            case ST_STRING_OPTIONS:
-               if (cbs->action_ok)
-                  action     = MENU_ACTION_OK;
-               else
-                  action     = MENU_ACTION_RIGHT;
-               break;
-            case ST_PATH:
-            case ST_DIR:
-            case ST_ACTION:
-            case ST_STRING:
-            case ST_BIND:
-               action        = MENU_ACTION_OK;
-               break;
-            default:
-               break;
-         }
-      }
-
-      if (action == MENU_ACTION_NOOP)
-      {
-         if (cbs->action_ok)
-            action     = MENU_ACTION_OK;
-         else
-         {
-            if (cbs->action_start)
-               action = MENU_ACTION_START;
-            if (cbs->action_right)
+         case ST_BOOL:
+         case ST_INT:
+         case ST_UINT:
+         case ST_SIZE:
+         case ST_FLOAT:
+         case ST_STRING_OPTIONS:
+            if (cbs->action_ok)
+               action     = MENU_ACTION_OK;
+            else
                action = MENU_ACTION_RIGHT;
-         }
+            break;
+         case ST_PATH:
+         case ST_DIR:
+         case ST_ACTION:
+         case ST_STRING:
+         case ST_HEX:
+         case ST_BIND:
+            action = MENU_ACTION_OK;
+            break;
+         default:
+            break;
       }
+   }
+
+   if (action == MENU_ACTION_NOOP)
+   {
+       if (cbs->action_ok)
+           action     = MENU_ACTION_OK;
+       else
+       {
+           if (cbs->action_start)
+               action = MENU_ACTION_START;
+           if (cbs->action_right)
+               action = MENU_ACTION_RIGHT;
+       }
    }
 
    if (action != MENU_ACTION_NOOP)
    {
-      /* menu_entry_t carries the entry's path/label/value strings
-       * inline -- several KiB even at console path lengths -- so it
-       * is heap-held here rather than framed on the menu task stack. */
-      menu_entry_t *entry = (menu_entry_t*)malloc(sizeof(*entry));
+      menu_entry_t entry;
+      MENU_ENTRY_INIT(entry);
 
-      if (!entry)
-         return -1;
-      MENU_ENTRY_INITIALIZE((*entry));
-
-      entry->flags |= MENU_ENTRY_FLAG_PATH_ENABLED
-                    | MENU_ENTRY_FLAG_LABEL_ENABLED;
       /* Note: If menu_entry_action() is modified,
        * will have to verify that these parameters
        * remain unused... */
-      menu_entry_get(entry, 0, idx, NULL, false);
+      entry.rich_label_enabled = false;
+      entry.value_enabled      = false;
+      entry.sublabel_enabled   = false;
+      menu_entry_get(&entry, 0, idx, NULL, false);
 
-      ret = menu_entry_action(entry, idx, action);
-      free(entry);
+      ret = menu_entry_action(&entry, idx, action);
    }
 
    task_queue_check();
@@ -125,8 +117,7 @@ static int action_select_path_use_directory(const char *path,
    return action_ok_path_use_directory(path, label, type, idx, 0 /* unused */);
 }
 
-static int action_select_core_setting(const char *path,
-      const char *label, unsigned type,
+static int action_select_core_setting(const char *path, const char *label, unsigned type,
       size_t idx, size_t entry_idx)
 {
    return action_ok_core_option_dropdown_list(path, label, type, idx, 0);
@@ -147,6 +138,12 @@ static int menu_cbs_init_bind_select_compare_type(
    return 0;
 }
 
+static int menu_cbs_init_bind_select_compare_label(menu_file_list_cbs_t *cbs,
+      const char *label)
+{
+   return -1;
+}
+
 int menu_cbs_init_bind_select(menu_file_list_cbs_t *cbs,
       const char *path, const char *label, unsigned type, size_t idx)
 {
@@ -161,6 +158,9 @@ int menu_cbs_init_bind_select(menu_file_list_cbs_t *cbs,
       BIND_ACTION_SELECT(cbs, action_select_core_setting);
       return 0;
    }
+
+   if (menu_cbs_init_bind_select_compare_label(cbs, label) == 0)
+      return 0;
 
    if (menu_cbs_init_bind_select_compare_type(cbs, type) == 0)
       return 0;

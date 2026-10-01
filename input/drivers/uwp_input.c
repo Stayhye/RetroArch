@@ -39,12 +39,15 @@ static void *uwp_input_init(const char *a)
 
 static uint64_t uwp_input_get_capabilities(void *data)
 {
-   return
-           (1 << RETRO_DEVICE_JOYPAD)
-         | (1 << RETRO_DEVICE_MOUSE)
-         | (1 << RETRO_DEVICE_KEYBOARD)
-         | (1 << RETRO_DEVICE_POINTER)
-         | (1 << RETRO_DEVICE_ANALOG);
+   uint64_t caps = 0;
+
+   caps |= (1 << RETRO_DEVICE_JOYPAD);
+   caps |= (1 << RETRO_DEVICE_MOUSE);
+   caps |= (1 << RETRO_DEVICE_KEYBOARD);
+   caps |= (1 << RETRO_DEVICE_POINTER);
+   caps |= (1 << RETRO_DEVICE_ANALOG);
+
+   return caps;
 }
 
 static int16_t uwp_input_state(
@@ -67,25 +70,28 @@ static int16_t uwp_input_state(
             unsigned i;
             int16_t ret = 0;
 
-            for (i = 0; i < RARCH_FIRST_CUSTOM_BIND; i++)
-            {
-               if (RETRO_KEYBIND_VALID(&binds[port][i]))
-               {
-                  if (uwp_mouse_state(port, binds[port][i].mbutton, false))
-                     ret |= (1 << i);
-               }
-            }
-
             if (!keyboard_mapping_blocked)
             {
                for (i = 0; i < RARCH_FIRST_CUSTOM_BIND; i++)
                {
-                  if (RETRO_KEYBIND_VALID(&binds[port][i]))
+                  if (binds[port][i].valid)
                   {
-                     if (     (RETRO_KEYBIND_KEY(&binds[port][i]) && RETRO_KEYBIND_KEY(&binds[port][i]) < RETROK_LAST)
-                           && uwp_keyboard_pressed(RETRO_KEYBIND_KEY(&binds[port][i])))
+                     if (     
+                           ((binds[port][i].key < RETROK_LAST) 
+                            && uwp_keyboard_pressed(binds[port][i].key))
+                        )
                         ret |= (1 << i);
                   }
+               }
+            }
+
+            for (i = 0; i < RARCH_FIRST_CUSTOM_BIND; i++)
+            {
+               if (binds[port][i].valid)
+               {
+                  if (uwp_mouse_state(port,
+                           binds[port][i].mbutton, false))
+                     ret |= (1 << i);
                }
             }
 
@@ -94,14 +100,16 @@ static int16_t uwp_input_state(
 
          if (id < RARCH_BIND_LIST_END)
          {
-            if (RETRO_KEYBIND_VALID(&binds[port][id]))
+            if (binds[port][id].valid)
             {
-               if (     (RETRO_KEYBIND_KEY(&binds[port][id]) && RETRO_KEYBIND_KEY(&binds[port][id]) < RETROK_LAST)
-                     && uwp_keyboard_pressed(RETRO_KEYBIND_KEY(&binds[port][id]))
-                     && (id == RARCH_GAME_FOCUS_TOGGLE || !keyboard_mapping_blocked)
-                  )
+               if ((binds[port][id].key < RETROK_LAST) 
+                     && uwp_keyboard_pressed(binds[port][id].key)
+                     && ((id == RARCH_GAME_FOCUS_TOGGLE) || 
+                        !keyboard_mapping_blocked)
+                     )
                   return 1;
-               else if (uwp_mouse_state(port, binds[port][id].mbutton, false))
+               else if (uwp_mouse_state(port,
+                        binds[port][id].mbutton, false))
                   return 1;
             }
          }
@@ -119,17 +127,17 @@ static int16_t uwp_input_state(
 
             input_conv_analog_id_to_bind_id(index, id, id_minus, id_plus);
 
-            id_minus_valid        = RETRO_KEYBIND_VALID(&binds[port][id_minus]);
-            id_plus_valid         = RETRO_KEYBIND_VALID(&binds[port][id_plus]);
-            id_minus_key          = RETRO_KEYBIND_KEY(&binds[port][id_minus]);
-            id_plus_key           = RETRO_KEYBIND_KEY(&binds[port][id_plus]);
+            id_minus_valid        = binds[port][id_minus].valid;
+            id_plus_valid         = binds[port][id_plus].valid;
+            id_minus_key          = binds[port][id_minus].key;
+            id_plus_key           = binds[port][id_plus].key;
 
-            if (id_plus_valid && id_plus_key && id_plus_key < RETROK_LAST)
+            if (id_plus_valid && id_plus_key < RETROK_LAST)
             {
                if (uwp_keyboard_pressed(id_plus_key))
                   ret = 0x7fff;
             }
-            if (id_minus_valid && id_minus_key && id_minus_key < RETROK_LAST)
+            if (id_minus_valid && id_minus_key < RETROK_LAST)
             {
                if (uwp_keyboard_pressed(id_minus_key))
                   ret += -0x7fff;
@@ -139,10 +147,12 @@ static int16_t uwp_input_state(
          }
          break;
       case RETRO_DEVICE_KEYBOARD:
-         return (id && id < RETROK_LAST) && uwp_keyboard_pressed(id);
+         return (id < RETROK_LAST) && uwp_keyboard_pressed(id);
+
       case RETRO_DEVICE_MOUSE:
       case RARCH_DEVICE_MOUSE_SCREEN:
          return uwp_mouse_state(port, id, device == RARCH_DEVICE_MOUSE_SCREEN);
+
       case RETRO_DEVICE_POINTER:
       case RARCH_DEVICE_POINTER_SCREEN:
          return uwp_pointer_state(index, id, device == RARCH_DEVICE_POINTER_SCREEN);
@@ -161,6 +171,5 @@ input_driver_t input_uwp = {
    uwp_input_get_capabilities,
    "uwp",
    NULL,                         /* grab_mouse */
-   NULL,
    NULL
 };

@@ -24,7 +24,7 @@
 
 #include <compat/fnmatch.h>
 
-/* Implementation of fnmatch(3) so it can be
+/* Implemnentation of fnmatch(3) so it can be
  * distributed to non *nix platforms.
  *
  * No flags are implemented ATM.

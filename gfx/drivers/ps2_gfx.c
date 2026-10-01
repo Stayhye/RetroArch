@@ -13,29 +13,17 @@
  *  If not, see <http://www.gnu.org/licenses/>.
  */
 
-#include <stdint.h>
-#include <stdlib.h>
-#include <math.h>
-#include <malloc.h>
-
 #include <kernel.h>
 #include <gsKit.h>
-#include <dmaKit.h>
-#include <gsToolkit.h>
 #include <gsInline.h>
 
-#include <encodings/utf.h>
-#include <libretro_gskit_ps2.h>
-#include <boolean.h>
-
-#include <compat/strl.h>
-
-#include "../video_defines.h"
 #include "../../driver.h"
 #include "../../retroarch.h"
 #include "../../verbosity.h"
 
+#include "../../libretro-common/include/libretro_gskit_ps2.h"
 #include "../gfx_display.h"
+#include "../common/ps2_common.h"
 
 /* Generic tint color */
 #define GS_TEXT GS_SETREG_RGBA(0x80, 0x80, 0x80, 0x80)
@@ -45,13 +33,6 @@
 #define NUM_RM_VMODES 7
 #define PS2_RESOLUTION_LAST NUM_RM_VMODES - 1
 #define RM_VMODE_AUTO 0
-
-#define A_COLOR_SOURCE 0
-#define A_COLOR_DEST 1
-#define A_COLOR_NULL 2
-#define A_ALPHA_SOURCE 0
-#define A_ALPHA_DEST 1
-#define A_ALPHA_FIX 2
 
 /* RM Vmode -> GS Vmode conversion table */
 struct rm_mode
@@ -66,53 +47,6 @@ struct rm_mode
    short int PAR2; /* Pixel Aspect Ratio 2 (For video modes with non-square pixels, like PAL/NTSC) */
    char *desc;
 };
-
-typedef struct
-{
-   GSTEXTURE *texture;
-   const font_renderer_driver_t* font_driver;
-   void* font_data;
-   struct font_atlas* atlas;
-} ps2_font_t;
-
-typedef struct ps2_video
-{
-   /* I need to create this additional field
-    * to be used in the font driver*/
-   bool clearVRAM_font;
-   bool menuVisible;
-   bool vsync;
-   int vsync_callback_id;
-   bool force_aspect;
-
-   int8_t vmode;
-   int video_window_offset_x;
-   int video_window_offset_y;
-
-   int PSM;
-   int tex_filter;
-   int menu_filter;
-
-   video_viewport_t vp;
-
-   /* Palette in the cores */
-   struct retro_hw_render_interface_gskit_ps2 iface;
-
-   GSGLOBAL *gsGlobal;
-   GSTEXTURE *menuTexture;
-   GSTEXTURE *coreTexture;
-
-   /* Last scaling state, for detecting changes */
-   int iTextureWidth;
-   int iTextureHeight;
-   float fDAR;
-   bool bScaleInteger;
-   struct retro_hw_ps2_insets padding;
-
-   /* Current scaling calculation result */
-   int iDisplayWidth;
-   int iDisplayHeight;
-} ps2_video_t;
 
 static struct rm_mode rm_mode_table[NUM_RM_VMODES] = {
     /* SDTV modes */
@@ -129,307 +63,8 @@ static struct rm_mode rm_mode_table[NUM_RM_VMODES] = {
 
 static int vsync_sema_id;
 
-/*
- * FONT DRIVER
- */
-static void* ps2_font_init(void* data, const char* font_path,
-      float font_size, bool is_threaded)
-{
-   uint32_t j;
-   int text_size, clut_size;
-   uint8_t *tex8;
-   uint32_t *clut32;
-   struct font_atlas* atlas = NULL;
-   ps2_font_t* font = (ps2_font_t*)calloc(1, sizeof(*font));
-
-   if (!font)
-      return NULL;
-
-   if (!font_renderer_create_default(
-            &font->font_driver,
-            &font->font_data, font_path, font_size, FONT_ATLAS_FORMAT_A8))
-   {
-      free(font);
-      return NULL;
-   }
-
-   atlas                  = font->font_driver->get_atlas(font->font_data);
-   font->atlas            = atlas;
-   font->texture          = (GSTEXTURE*)calloc(1, sizeof(GSTEXTURE));
-   font->texture->Width   = atlas->width;
-   font->texture->Height  = atlas->height;
-   font->texture->PSM     = GS_PSM_T8;
-   font->texture->ClutPSM = GS_PSM_CT32;
-   font->texture->Filter  = GS_FILTER_NEAREST;
-
-   /* Convert to 8bit texture */
-   text_size           = gsKit_texture_size_ee(atlas->width, atlas->height, GS_PSM_T8);
-   tex8                = (uint8_t*)malloc(text_size);
-   for (j = 0; j <  atlas->width * atlas->height; j++ )
-      tex8[j]          = atlas->buffer[j] & 0x000000FF;
-   font->texture->Mem  = (u32 *)tex8;
-
-   /* Create 8bit CLUT */
-   clut_size           = gsKit_texture_size_ee(16, 16, GS_PSM_CT32);
-   clut32              = (uint32_t*)malloc(clut_size);
-   for (j = 0; j < 256; j++)
-      clut32[j]        = 0x01010101 * j;
-   font->texture->Clut = (u32 *)clut32;
-
-   /* The atlas may grow, kept small for the GS's 4 MB: the EE copy is
-    * made again at its size and the texture sent again, as the menu
-    * texture is when its size changes */
-   atlas->max_width    = 512;
-   atlas->max_height   = 512;
-
-   return font;
-}
-
-static void ps2_font_free(void* data, bool is_threaded)
-{
-   ps2_font_t* font = (ps2_font_t*)data;
-
-   if (!font)
-      return;
-
-   if (font->font_driver && font->font_data)
-      font->font_driver->free(font->font_data);
-
-   if (font->texture->Clut)
-      free(font->texture->Clut);
-
-   if (font->texture->Mem)
-      free(font->texture->Mem);
-
-   if (font->texture)
-      free(font->texture);
-}
-
-static int ps2_font_get_message_width(void *data, const char *msg,
-      size_t msg_len, float scale)
-{
-   ps2_font_t *font = (ps2_font_t*)data;
-   if (!font)
-      return 0;
-   return font_renderer_get_message_width(font->font_driver,
-         font->font_data, msg, msg_len, scale);
-}
-
-static void ps2_font_render_message(
-      ps2_video_t *ps2,
-      ps2_font_t* font, const char* msg, size_t msg_len, float scale,
-      const unsigned int color, float pos_x, float pos_y,
-      unsigned width, unsigned height, unsigned text_align)
-{
-   float line_height;
-   struct font_line_metrics *line_metrics = NULL;
-   int x                                  = 0;
-   int y                                  = 0;
-   /* We need to >> 1, because GS_SETREG_RGBAQ expects 0x80 as max color */
-   int color_a                            = (int)(((color & 0xFF000000) >> 24) >> 2);
-   int color_b                            = (int)(((color & 0x00FF0000) >> 16) >> 1);
-   int color_g                            = (int)(((color & 0x0000FF00) >> 8)  >> 1);
-   int color_r                            = (int)(((color & 0x000000FF) >> 0)  >> 1);
-   const struct font_glyph* (*get_glyph)(void*, uint32_t)
-                                          = font->font_driver->get_glyph;
-   void *font_data                        = font->font_data;
-   const struct font_glyph* glyph_q       = get_glyph(font_data, '?');
-   bool aligned                           = (text_align == TEXT_ALIGN_RIGHT
-                                         || text_align == TEXT_ALIGN_CENTER);
-
-   font->font_driver->get_line_metrics(font->font_data, &line_metrics);
-   line_height = (float)line_metrics->height * scale / (float)height;
-
-#define FONT_LAYOUT_ALIGNED aligned
-#define FONT_LAYOUT_LINE(line, line_width, count, bytes) \
-   do \
-   { \
-      (void)(count); \
-      x = roundf(pos_x * width); \
-      y = roundf((1.0f - (pos_y - (float)(line) * line_height)) * height); \
-      /* Enable Alpha for font */ \
-      gsKit_set_primalpha(ps2->gsGlobal, GS_SETREG_ALPHA(0, 1, 0, 1, 0), 0); \
-      ps2->gsGlobal->PrimAlphaEnable = GS_SETTING_ON; \
-      gsKit_set_test(ps2->gsGlobal, GS_ATEST_ON); \
-      if (text_align == TEXT_ALIGN_RIGHT) \
-         x -= (int)((line_width) * scale); \
-      else if (text_align == TEXT_ALIGN_CENTER) \
-         x -= (int)((line_width) * scale) / 2; \
-   } while (0)
-#define FONT_LAYOUT_GLYPH(glyph, pen_x, pen_y) \
-   do \
-   { \
-      float x1, y1, u1, v1, x2, y2, u2, v2; \
-      int off_x   = (glyph)->draw_offset_x; \
-      int off_y   = (glyph)->draw_offset_y; \
-      int tex_x   = (glyph)->atlas_offset_x; \
-      int tex_y   = (glyph)->atlas_offset_y; \
-      int g_w     = (glyph)->width; \
-      int g_h     = (glyph)->height; \
-      int delta_x = (pen_x); \
-      int delta_y = (pen_y); \
-      /* The -0.5 is needed to achieve pixel perfect. \
-       * More info here (PS2 GSKit uses same logic as Direct3D9) \
-       * https://docs.microsoft.com/en-us/windows/win32/direct3d10/d3d10-graphics-programming-guide-resources-coordinates \
-       */ \
-      x1     = -0.5f + x + (off_x + delta_x) * scale; \
-      y1     = -0.5f + y + (off_y + delta_y) * scale; \
-      u1     = tex_x; \
-      v1     = tex_y; \
-      x2     = x1 + g_w * scale; \
-      y2     = y1 + g_h * scale; \
-      u2     = u1 + g_w; \
-      v2     = v1 + g_h; \
-      gsKit_prim_sprite_texture(ps2->gsGlobal, font->texture, \
-            x1, y1, u1, v1, x2, y2, u2, v2, 5, \
-            GS_SETREG_RGBAQ(color_r, color_g, color_b, color_a, 0x00)); \
-   } while (0)
-#include "../font_layout.h"
-}
-
-static void ps2_font_render_msg(
-      void *userdata,
-      void* data, const char* msg, size_t msg_len,
-      const struct font_params *params)
-{
-   font_params_resolved_t rp;
-   float x, y, scale, drop_mod, drop_alpha;
-   int drop_x, drop_y;
-   enum text_alignment text_align;
-   unsigned color, r, g, b, alpha;
-   ps2_font_t                * font = (ps2_font_t*)data;
-   ps2_video_t                *ps2  = (ps2_video_t*)userdata;
-   unsigned width                   = VIDEO_SCALE_W(ps2->vp.full_dims);
-   unsigned height                  = VIDEO_SCALE_H(ps2->vp.full_dims);
-
-   if (!font || !msg || !*msg)
-      return;
-
-   font_driver_resolve_params(params, &rp);
-   x          = rp.x;
-   y          = rp.y;
-   scale      = rp.scale;
-   text_align = rp.text_align;
-   drop_x     = rp.drop_x;
-   drop_y     = rp.drop_y;
-   drop_mod   = rp.drop_mod;
-   drop_alpha = rp.drop_alpha;
-   r          = rp.rgba[0];
-   g          = rp.rgba[1];
-   b          = rp.rgba[2];
-   alpha           = rp.rgba[3];
-   color      = COLOR_ABGR(r, g, b, alpha);
-   /* This driver's own shadow for the on-screen message */
-   if (!params)
-   {
-      drop_x     = 1;
-      drop_y     = -1;
-      drop_mod   = 0.0f;
-      drop_alpha = 0.75f;
-   }
-
-
-   /* The 8-bit texture copy is made once at init; when the font
-    * renderer has rasterized new glyphs since then, refresh the
-    * changed rows and invalidate the texture so the TexManager
-    * re-sends it, otherwise glyphs added after init (anything
-    * beyond the pre-cached first 256 code points) render from a
-    * stale texture. Only the dirty rectangle tracked by the font
-    * renderers is copied on the EE side; gsKit re-sends the whole
-    * texture on invalidate, which it does for every other texture
-    * as well. */
-   /* Asked for before anything is laid out: it may have grown, which
-    * marks all of it dirty */
-   font->atlas = font->font_driver->get_atlas(font->font_data);
-   if (     font->texture->Mem
-         && (   font->texture->Width  != font->atlas->width
-             || font->texture->Height != font->atlas->height))
-   {
-      void *mem = malloc(gsKit_texture_size_ee(font->atlas->width,
-               font->atlas->height, GS_PSM_T8));
-      if (mem)
-      {
-         free(font->texture->Mem);
-         font->texture->Mem    = (u32*)mem;
-         font->texture->Width  = font->atlas->width;
-         font->texture->Height = font->atlas->height;
-      }
-   }
-
-   if (     font->atlas->dirty && font->texture->Mem
-         && font->texture->Width  == font->atlas->width
-         && font->texture->Height == font->atlas->height)
-   {
-      unsigned j;
-      uint8_t *tex8              = (uint8_t*)font->texture->Mem;
-      const struct font_atlas *a = font->atlas;
-      unsigned x0                = a->dirty_x0;
-      unsigned y0                = a->dirty_y0;
-      unsigned x1                = a->dirty_x1;
-      unsigned y1                = a->dirty_y1;
-
-      if (x1 <= x0 || y1 <= y0 || x1 > a->width || y1 > a->height)
-      {
-         x0 = 0;
-         y0 = 0;
-         x1 = a->width;
-         y1 = a->height;
-      }
-
-      for (j = y0; j < y1; j++)
-         memcpy(tex8 + (size_t)j * a->width + x0,
-                a->buffer + (size_t)j * a->width + x0, x1 - x0);
-
-      gsKit_TexManager_invalidate(ps2->gsGlobal, font->texture);
-      font->atlas->dirty = false;
-   }
-
-   gsKit_TexManager_bind(ps2->gsGlobal, font->texture);
-
-   if (drop_x || drop_y)
-   {
-      unsigned r_dark         = r * drop_mod;
-      unsigned g_dark         = g * drop_mod;
-      unsigned b_dark         = b * drop_mod;
-      unsigned alpha_dark     = alpha * drop_alpha;
-      unsigned color_dark     = COLOR_ABGR(r_dark, g_dark, b_dark, alpha_dark);
-      ps2_font_render_message(ps2, font, msg, msg_len, scale, color_dark,
-                              x + scale * drop_x / width, y +
-                              scale * drop_y / height,
-                              width, height, text_align);
-   }
-
-   ps2_font_render_message(ps2, font, msg, msg_len, scale,
-                           color, x, y,
-                           width, height, text_align);
-}
-
-static const struct font_glyph* ps2_font_get_glyph(
-   void* data, uint32_t code)
-{
-   ps2_font_t* font = (ps2_font_t*)data;
-   if (font && font->font_driver)
-      return font->font_driver->get_glyph((void*)font->font_data, code);
-   return NULL;
-}
-
-static bool ps2_font_get_line_metrics(void* data, struct font_line_metrics **metrics)
-{
-   ps2_font_t* font = (ps2_font_t*)data;
-   if (font && font->font_driver && font->font_data)
-   {
-      font->font_driver->get_line_metrics(font->font_data, metrics);
-      return true;
-   }
-   return false;
-}
-
-/*
- * VIDEO DRIVER
- */
-
 /* PRIVATE METHODS */
-static int vsync_handler(int reason)
+static int vsync_handler()
 {
    iSignalSema(vsync_sema_id);
 
@@ -439,25 +74,31 @@ static int vsync_handler(int reason)
 
 static void rmEnd(ps2_video_t *ps2)
 {
+   if (!ps2->gsGlobal)
+      return;
+
    gsKit_deinit_global(ps2->gsGlobal);
    gsKit_remove_vsync_handler(ps2->vsync_callback_id);
 }
 
-static void ps2_update_offsets_if_needed(ps2_video_t *ps2)
+static void updateOffSetsIfNeeded(ps2_video_t *ps2)
 {
-   settings_t *settings       = config_get_ptr();
-   int video_window_offset_x  = settings->ints.video_window_offset_x;
-   int video_window_offset_y  = settings->ints.video_window_offset_y;
+   bool shouldUpdate = false;
+   settings_t *settings = config_get_ptr();
+   int video_window_offset_x = settings->ints.video_window_offset_x;
+   int video_window_offset_y = settings->ints.video_window_offset_y;
 
-   if (     (video_window_offset_x != ps2->video_window_offset_x)
-         || (video_window_offset_y != ps2->video_window_offset_y))
-   {
-      ps2->video_window_offset_x = video_window_offset_x;
-      ps2->video_window_offset_y = video_window_offset_y;
+   if (video_window_offset_x != ps2->video_window_offset_x || video_window_offset_y != ps2->video_window_offset_y)
+      shouldUpdate = true;
 
-      gsKit_set_display_offset(ps2->gsGlobal, ps2->video_window_offset_x * rm_mode_table[ps2->vmode].VCK, ps2->video_window_offset_y);
-      RARCH_LOG("[PS2_GFX] Change offset: %d, %d.\n", ps2->video_window_offset_x, ps2->video_window_offset_y);
-   }
+   if (!shouldUpdate)
+      return;
+
+   ps2->video_window_offset_x = video_window_offset_x;
+   ps2->video_window_offset_y = video_window_offset_y;
+
+   gsKit_set_display_offset(ps2->gsGlobal, ps2->video_window_offset_x * rm_mode_table[ps2->vmode].VCK, ps2->video_window_offset_y);
+   RARCH_LOG("PS2_GFX Change offset: %d, %d\n", ps2->video_window_offset_x, ps2->video_window_offset_y);
 }
 
 /* Copy of gsKit_sync_flip, but without the 'flip' */
@@ -466,7 +107,8 @@ static void gsKit_sync(GSGLOBAL *gsGlobal)
    if (!gsGlobal->FirstFrame)
       WaitSema(vsync_sema_id);
 
-   while (PollSema(vsync_sema_id) >= 0);
+   while (PollSema(vsync_sema_id) >= 0)
+      ;
 }
 
 /* Copy of gsKit_sync_flip, but without the 'sync' */
@@ -498,33 +140,32 @@ static void rmSetMode(ps2_video_t *ps2, int force)
    /* Cleanup previous gsKit instance */
    if (ps2->vmode >= 0)
    {
-      if (ps2->gsGlobal)
-         rmEnd(ps2);
+      rmEnd(ps2);
       /* Set new mode */
       global->console.screen.resolutions.current.id = ps2->vmode;
    }
    else
       /* first driver init */
-      ps2->vmode                  = global->console.screen.resolutions.current.id;
+      ps2->vmode = global->console.screen.resolutions.current.id;
 
-   mode                           = &rm_mode_table[ps2->vmode];
+   mode = &rm_mode_table[ps2->vmode];
 
    /* Invalidate scaling state */
-   ps2->iTextureWidth             = 0;
-   ps2->iTextureHeight            = 0;
+   ps2->iTextureWidth = 0;
+   ps2->iTextureHeight = 0;
 
-   ps2->gsGlobal                  = gsKit_init_global();
+   ps2->gsGlobal = gsKit_init_global();
    gsKit_TexManager_setmode(ps2->gsGlobal, ETM_DIRECT);
-   ps2->vsync_callback_id         = gsKit_add_vsync_handler(vsync_handler);
-   ps2->gsGlobal->Mode            = mode->mode;
-   ps2->gsGlobal->Width           = mode->width;
-   ps2->gsGlobal->Height          = mode->height;
-   ps2->gsGlobal->Interlace       = mode->interlace;
-   ps2->gsGlobal->Field           = mode->field;
-   ps2->gsGlobal->PSM             = GS_PSM_CT16;
-   ps2->gsGlobal->PSMZ            = GS_PSMZ_16S;
+   ps2->vsync_callback_id = gsKit_add_vsync_handler(vsync_handler);
+   ps2->gsGlobal->Mode = mode->mode;
+   ps2->gsGlobal->Width = mode->width;
+   ps2->gsGlobal->Height = mode->height;
+   ps2->gsGlobal->Interlace = mode->interlace;
+   ps2->gsGlobal->Field = mode->field;
+   ps2->gsGlobal->PSM = GS_PSM_CT16;
+   ps2->gsGlobal->PSMZ = GS_PSMZ_16S;
    ps2->gsGlobal->DoubleBuffering = GS_SETTING_ON;
-   ps2->gsGlobal->ZBuffering      = GS_SETTING_OFF;
+   ps2->gsGlobal->ZBuffering = GS_SETTING_OFF;
    ps2->gsGlobal->PrimAlphaEnable = GS_SETTING_OFF;
 
    if ((ps2->gsGlobal->Interlace == GS_INTERLACED) && (ps2->gsGlobal->Field == GS_FRAME))
@@ -532,7 +173,7 @@ static void rmSetMode(ps2_video_t *ps2, int force)
 
    /* Coordinate space ranges from 0 to 4096 pixels
    * Center the buffer in the coordinate space */
-   ps2->gsGlobal->OffsetX = ((4096 - ps2->gsGlobal->Width)  / 2) * 16;
+   ps2->gsGlobal->OffsetX = ((4096 - ps2->gsGlobal->Width) / 2) * 16;
    ps2->gsGlobal->OffsetY = ((4096 - ps2->gsGlobal->Height) / 2) * 16;
 
    gsKit_init_screen(ps2->gsGlobal);
@@ -546,26 +187,24 @@ static void rmSetMode(ps2_video_t *ps2, int force)
    gsKit_sync(ps2->gsGlobal);
    gsKit_flip(ps2->gsGlobal);
 
-   RARCH_LOG("[PS2_GFX] New vmode: %d, %dx%d.\n", ps2->vmode, ps2->gsGlobal->Width, ps2->gsGlobal->Height);
+   RARCH_LOG("PS2_GFX New vmode: %d, %d x %d\n", ps2->vmode, ps2->gsGlobal->Width, ps2->gsGlobal->Height);
 
-   ps2_update_offsets_if_needed(ps2);
+   updateOffSetsIfNeeded(ps2);
 }
 
 static void rmInit(ps2_video_t *ps2)
 {
    ee_sema_t sema;
-   short int mode;
-
    sema.init_count = 0;
-   sema.max_count  = 1;
-   sema.option     = 0;
+   sema.max_count = 1;
+   sema.option = 0;
+   vsync_sema_id = CreateSema(&sema);
 
-   vsync_sema_id   = CreateSema(&sema);
-   mode            = gsKit_check_rom();
+   short int mode = gsKit_check_rom();
 
-   rm_mode_table[RM_VMODE_AUTO].mode   = mode;
+   rm_mode_table[RM_VMODE_AUTO].mode = mode;
    rm_mode_table[RM_VMODE_AUTO].height = (mode == GS_MODE_PAL) ? 576 : 480;
-   rm_mode_table[RM_VMODE_AUTO].PAR1   = (mode == GS_MODE_PAL) ? 12  : 10;
+   rm_mode_table[RM_VMODE_AUTO].PAR1 = (mode == GS_MODE_PAL) ? 12 : 10;
 
    dmaKit_init(D_CTRL_RELE_OFF, D_CTRL_MFD_OFF, D_CTRL_STS_UNSPEC,
                D_CTRL_STD_OFF, D_CTRL_RCYC_8, 1 << DMA_CHANNEL_GIF);
@@ -576,60 +215,85 @@ static void rmInit(ps2_video_t *ps2)
    rmSetMode(ps2, 1);
 }
 
-static void init_ps2_video(ps2_video_t *ps2)
+static GSTEXTURE *prepare_new_texture(void)
 {
-   ps2->vmode                   = -1;
-   rmInit(ps2);
-
-   ps2->vp.pos                  = VIDEO_POS_PACK(0, 0);
-   ps2->vp.dims                 = VIDEO_SCALE_PACK(ps2->gsGlobal->Width,
-         ps2->gsGlobal->Height);
-   ps2->vp.full_dims            = VIDEO_SCALE_PACK(ps2->gsGlobal->Width,
-         ps2->gsGlobal->Height);
-
-   ps2->menuTexture             = (GSTEXTURE*)calloc(1, sizeof(GSTEXTURE));
-   ps2->coreTexture             = (GSTEXTURE*)calloc(1, sizeof(GSTEXTURE));
-
-   ps2->video_window_offset_x   = 0;
-   ps2->video_window_offset_y   = 0;
-
-   /* Used for cores that supports palette */
-   ps2->iface.interface_type    = RETRO_HW_RENDER_INTERFACE_GSKIT_PS2;
-   ps2->iface.interface_version = RETRO_HW_RENDER_INTERFACE_GSKIT_PS2_VERSION;
-   ps2->iface.coreTexture       = ps2->coreTexture;
+   GSTEXTURE *texture = (GSTEXTURE *)calloc(1, sizeof(GSTEXTURE));
+   return texture;
 }
 
-static void ps2_deinit_texture(GSTEXTURE *texture)
+static void init_ps2_video(ps2_video_t *ps2)
 {
-   texture->Mem  = NULL;
+   ps2->vmode = -1;
+   rmInit(ps2);
+
+   ps2->vp.x = 0;
+   ps2->vp.y = 0;
+   ps2->vp.width = ps2->gsGlobal->Width;
+   ps2->vp.height = ps2->gsGlobal->Height;
+   ps2->vp.full_width = ps2->gsGlobal->Width;
+   ps2->vp.full_height = ps2->gsGlobal->Height;
+
+   ps2->menuTexture = prepare_new_texture();
+   ps2->coreTexture = prepare_new_texture();
+
+   ps2->video_window_offset_x = 0;
+   ps2->video_window_offset_y = 0;
+
+   /* Used for cores that supports palette */
+   ps2->iface.interface_type = RETRO_HW_RENDER_INTERFACE_GSKIT_PS2;
+   ps2->iface.interface_version = RETRO_HW_RENDER_INTERFACE_GSKIT_PS2_VERSION;
+   ps2->iface.coreTexture = ps2->coreTexture;
+}
+
+static void ps2_gfx_deinit_texture(GSTEXTURE *texture)
+{
+   texture->Mem = NULL;
    texture->Clut = NULL;
 }
 
 static void set_texture(GSTEXTURE *texture, const void *frame,
-      int width, int height, int PSM, int filter)
+                        int width, int height, int PSM, int filter)
 {
-   texture->Width  = width;
+   texture->Width = width;
    texture->Height = height;
-   texture->PSM    = PSM;
+   texture->PSM = PSM;
    texture->Filter = filter;
-   texture->Mem    = (void *)frame;
+   texture->Mem = (void *)frame;
 }
 
-static INLINE int ABS(int v)
+static int ABS(int v)
 {
    return (v >= 0) ? v : -v;
 }
 
 static void setupScalingMode(ps2_video_t *ps2, int iWidth, int iHeight, float fDAR, bool bScaleInteger)
 {
-   GSGLOBAL *gsGlobal       = ps2->gsGlobal;
+   GSGLOBAL *gsGlobal = ps2->gsGlobal;
    struct rm_mode *currMode = &rm_mode_table[ps2->vmode];
-   int iBestFBWidth         = currMode->width;
-   int iBestMagH            = currMode->VCK - 1;
-   /* Calculate the pixel aspect ratio (PAR) */
-   float fPAR               = (float)currMode->PAR2 / (float)currMode->PAR1;
+   int iBestFBWidth = currMode->width;
+   int iBestMagH = currMode->VCK - 1;
+   float fPAR;
 
-   if (bScaleInteger)
+   /* Calculate the pixel aspect ratio (PAR) */
+   fPAR = (float)currMode->PAR2 / (float)currMode->PAR1;
+
+#if defined(DEBUG)
+   printf("Aspect ratio: %.4f x %.4f = %.4f\n", fDAR, fPAR, fDAR * fPAR);
+#endif
+
+   if (bScaleInteger == false)
+   {
+      /* Assume black bars left/right */
+      ps2->iDisplayHeight = currMode->height;
+      ps2->iDisplayWidth = (int)((float)ps2->iDisplayHeight * fDAR * fPAR + 0.5f);
+      if (ps2->iDisplayWidth > currMode->width)
+      {
+         /* Really wide screen, black bars top/bottom */
+         ps2->iDisplayWidth = currMode->width;
+         ps2->iDisplayHeight = (int)((float)ps2->iDisplayWidth / (fDAR * fPAR) + 0.5f);
+      }
+   }
+   else
    {
       /* Best match the framebuffer width/height to a multiple of the texture
        * Width, rounded down so it always fits */
@@ -686,18 +350,6 @@ static void setupScalingMode(ps2_video_t *ps2, int iWidth, int iHeight, float fD
          }
       }
    }
-   else
-   {
-      /* Assume black bars left/right */
-      ps2->iDisplayHeight = currMode->height;
-      ps2->iDisplayWidth = (int)((float)ps2->iDisplayHeight * fDAR * fPAR + 0.5f);
-      if (ps2->iDisplayWidth > currMode->width)
-      {
-         /* Really wide screen, black bars top/bottom */
-         ps2->iDisplayWidth = currMode->width;
-         ps2->iDisplayHeight = (int)((float)ps2->iDisplayWidth / (fDAR * fPAR) + 0.5f);
-      }
-   }
 
    if ((gsGlobal->Interlace == GS_INTERLACED) && (gsGlobal->Field == GS_FRAME))
       ps2->iDisplayHeight /= 2;
@@ -745,23 +397,29 @@ static void setupScalingMode(ps2_video_t *ps2, int iWidth, int iHeight, float fD
        gsGlobal->DH - 1);
 }
 
-static void *ps2_init(const video_info_t *video,
-      input_driver_t **input, void **input_data)
+static void *ps2_gfx_init(const video_info_t *video,
+                          input_driver_t **input, void **input_data)
 {
-   void *ps2input   = NULL;
+   void *ps2input = NULL;
    ps2_video_t *ps2 = (ps2_video_t *)calloc(1, sizeof(ps2_video_t));
 
-   *input_data      = NULL;
+   *input_data = NULL;
 
    if (!ps2)
       return NULL;
 
    init_ps2_video(ps2);
+   if (video->font_enable)
+      font_driver_init_osd(ps2,
+                           video,
+                           false,
+                           video->is_threaded,
+                           FONT_DRIVER_RENDER_PS2);
 
-   ps2->PSM          = (video->rgb32 ? GS_PSM_CT32 : GS_PSM_CT16);
-   ps2->tex_filter   = video->smooth ? GS_FILTER_LINEAR : GS_FILTER_NEAREST;
+   ps2->PSM = (video->rgb32 ? GS_PSM_CT32 : GS_PSM_CT16);
+   ps2->tex_filter = video->smooth ? GS_FILTER_LINEAR : GS_FILTER_NEAREST;
    ps2->force_aspect = video->force_aspect;
-   ps2->vsync        = video->vsync;
+   ps2->vsync = video->vsync;
 
    if (input && input_data)
    {
@@ -775,34 +433,33 @@ static void *ps2_init(const video_info_t *video,
    return ps2;
 }
 
-static bool ps2_frame(void *data, const void *frame,
-      unsigned dims, uint64_t frame_count,
-      unsigned pitch, const char *msg, video_frame_info_t *video_info)
+static bool ps2_gfx_frame(void *data, const void *frame,
+                          unsigned width, unsigned height, uint64_t frame_count,
+                          unsigned pitch, const char *msg, video_frame_info_t *video_info)
 {
-   unsigned width = VIDEO_SCALE_W(dims);
-   unsigned height = VIDEO_SCALE_H(dims);
-   ps2_video_t *ps2               = (ps2_video_t *)data;
-   GSGLOBAL *gsGlobal             = ps2->gsGlobal;
+   ps2_video_t *ps2 = (ps2_video_t *)data;
+   GSGLOBAL *gsGlobal = ps2->gsGlobal;
    struct font_params *osd_params = (struct font_params *)&video_info->osd_stat_params;
-   bool statistics_show           = video_info->statistics_show;
-   GSTEXTURE *tex                 = ps2->coreTexture;
+   bool statistics_show = video_info->statistics_show;
+   settings_t *settings = config_get_ptr();
+   GSTEXTURE *tex = ps2->coreTexture;
 
    if (!width || !height)
       return false;
 
 #if defined(DEBUG)
    if (frame_count % 180 == 0)
-      printf("ps2_frame %llu\n", frame_count);
+      printf("ps2_gfx_frame %llu\n", frame_count);
 #endif
 
    /* Check if user change offset values */
-   ps2_update_offsets_if_needed(ps2);
+   updateOffSetsIfNeeded(ps2);
 
    if (frame)
    {
       /* New frame from core, update */
       float fDAR = ps2->force_aspect ? video_driver_get_aspect_ratio() : 0;
-      bool bScaleInteger = video_info->scale_integer;
+      bool bScaleInteger = settings->bools.video_scale_integer;
 
       /* Checking if the transfer is done in the core */
       if (frame != RETRO_HW_FRAME_BUFFER_VALID)
@@ -868,6 +525,12 @@ static bool ps2_frame(void *data, const void *frame,
       bool texture_empty = !ps2->menuTexture->Width || !ps2->menuTexture->Height;
       if (!texture_empty)
       {
+#define A_COLOR_SOURCE 0
+#define A_COLOR_DEST 1
+#define A_COLOR_NULL 2
+#define A_ALPHA_SOURCE 0
+#define A_ALPHA_DEST 1
+#define A_ALPHA_FIX 2
          /* (A - B) * C + D */
          gsKit_set_primalpha(gsGlobal, GS_SETREG_ALPHA(A_COLOR_DEST, A_COLOR_NULL, A_ALPHA_FIX, A_COLOR_SOURCE, 0x20), 0);
          gsGlobal->PrimAlphaEnable = GS_SETTING_ON;
@@ -887,11 +550,11 @@ static bool ps2_frame(void *data, const void *frame,
    else if (statistics_show)
    {
       if (osd_params)
-         font_driver_render_msg(ps2, video_info->stat_text, video_info->stat_text_len, osd_params, NULL);
+         font_driver_render_msg(ps2, video_info->stat_text, osd_params, NULL);
    }
 
-   if (msg)
-      font_driver_render_msg(ps2, msg, strlen(msg), NULL, NULL);
+   if (!string_is_empty(msg))
+      font_driver_render_msg(ps2, msg, NULL, NULL);
 
    if (gsGlobal->DoubleBuffering == GS_SETTING_OFF)
    {
@@ -922,35 +585,36 @@ static bool ps2_frame(void *data, const void *frame,
    return true;
 }
 
-static void ps2_set_nonblock_state(void *data, bool toggle,
-      bool adaptive_vsync_enabled, unsigned swap_interval)
+static void ps2_gfx_set_nonblock_state(void *data, bool toggle,
+                                       bool adaptive_vsync_enabled, unsigned swap_interval)
 {
    ps2_video_t *ps2 = (ps2_video_t *)data;
+
    if (ps2)
       ps2->vsync = !toggle;
 }
 
-static bool ps2_alive(void *data) { return true; }
-static bool ps2_focus(void *data) { return true; }
-static bool ps2_suppress_screensaver(void *a, bool b) { return false; }
-static bool ps2_has_windowed(void *data) { return false; }
+static bool ps2_gfx_alive(void *data) { return true; }
+static bool ps2_gfx_focus(void *data) { return true; }
+static bool ps2_gfx_suppress_screensaver(void *data, bool enable) { return false; }
+static bool ps2_gfx_has_windowed(void *data) { return false; }
 
-static void ps2_free(void *data)
+static void ps2_gfx_free(void *data)
 {
    ps2_video_t *ps2 = (ps2_video_t *)data;
 
    gsKit_clear(ps2->gsGlobal, GS_BLACK);
    gsKit_vram_clear(ps2->gsGlobal);
 
+   font_driver_free_osd();
 
-   ps2_deinit_texture(ps2->menuTexture);
-   ps2_deinit_texture(ps2->coreTexture);
+   ps2_gfx_deinit_texture(ps2->menuTexture);
+   ps2_gfx_deinit_texture(ps2->coreTexture);
 
    free(ps2->menuTexture);
    free(ps2->coreTexture);
 
-   if (ps2->gsGlobal)
-      rmEnd(ps2);
+   rmEnd(ps2);
 
    if (vsync_sema_id >= 0)
       DeleteSema(vsync_sema_id);
@@ -958,11 +622,11 @@ static void ps2_free(void *data)
    free(data);
 }
 
-static bool ps2_set_shader(void *data,
-      enum rarch_shader_type type, const char *path) { return false; }
+static bool ps2_gfx_set_shader(void *data,
+                               enum rarch_shader_type type, const char *path) { return false; }
 
-static void ps2_set_video_mode(void *data, unsigned dims,
-      bool fullscreen)
+static void ps2_set_video_mode(void *data, unsigned fbWidth, unsigned lines,
+                               bool fullscreen)
 {
    ps2_video_t *ps2 = (ps2_video_t *)data;
    if (!ps2)
@@ -979,7 +643,7 @@ static void ps2_set_filtering(void *data, unsigned index, bool smooth, bool ctx_
 }
 
 static void ps2_get_video_output_size(void *data,
-      unsigned *dims, char *desc, size_t desc_len)
+                                      unsigned *width, unsigned *height, char *desc, size_t desc_len)
 {
    ps2_video_t *ps2 = (ps2_video_t *)data;
    if (!ps2)
@@ -989,8 +653,8 @@ static void ps2_get_video_output_size(void *data,
    if (ps2->vmode > PS2_RESOLUTION_LAST || ps2->vmode < 0)
       ps2->vmode = 0;
 
-   *dims = VIDEO_SCALE_PACK(rm_mode_table[ps2->vmode].width,
-         rm_mode_table[ps2->vmode].height);
+   *width = rm_mode_table[ps2->vmode].width;
+   *height = rm_mode_table[ps2->vmode].height;
 
    strlcpy(desc, rm_mode_table[ps2->vmode].desc, desc_len);
 }
@@ -1020,13 +684,13 @@ static void ps2_get_video_output_next(void *data)
 }
 
 static void ps2_set_texture_frame(void *data, const void *frame, bool rgb32,
-                                  unsigned dims, float alpha)
+                                  unsigned width, unsigned height, float alpha)
 {
    ps2_video_t *ps2 = (ps2_video_t *)data;
 
-   int PSM          = (rgb32 ? GS_PSM_CT32 : GS_PSM_CT16);
+   int PSM = (rgb32 ? GS_PSM_CT32 : GS_PSM_CT16);
 
-   set_texture(ps2->menuTexture, frame, VIDEO_SCALE_W(dims), VIDEO_SCALE_H(dims), PSM, ps2->menu_filter);
+   set_texture(ps2->menuTexture, frame, width, height, PSM, ps2->menu_filter);
    gsKit_TexManager_invalidate(ps2->gsGlobal, ps2->menuTexture);
    gsKit_TexManager_bind(ps2->gsGlobal, ps2->menuTexture);
 }
@@ -1038,19 +702,20 @@ static void ps2_set_texture_enable(void *data, bool enable, bool fullscreen)
    ps2->menuVisible = enable;
 }
 
-static void ps2_set_osd_msg(void *data, const char *msg, size_t msg_len,
-      const struct font_params *params, void *font)
+static void ps2_set_osd_msg(void *data,
+                            const char *msg,
+                            const void *params, void *font)
 {
    ps2_video_t *ps2 = (ps2_video_t *)data;
 
    if (ps2)
-      font_driver_render_msg(data, msg, msg_len, params, font);
+      font_driver_render_msg(data, msg, params, font);
 }
 
 static bool ps2_get_hw_render_interface(void *data,
-      const struct retro_hw_render_interface **iface)
+                                        const struct retro_hw_render_interface **iface)
 {
-   ps2_video_t *ps2   = (ps2_video_t *)data;
+   ps2_video_t *ps2 = (ps2_video_t *)data;
    ps2->iface.padding = empty_ps2_insets;
    *iface =
        (const struct retro_hw_render_interface *)&ps2->iface;
@@ -1058,78 +723,62 @@ static bool ps2_get_hw_render_interface(void *data,
 }
 
 static const video_poke_interface_t ps2_poke_interface = {
-   NULL, /* get_flags  */
-   NULL, /* load_texture */
-   NULL, /* unload_texture */
-   ps2_set_video_mode,
-   NULL, /* get_refresh_rate */
-   ps2_set_filtering,
-   ps2_get_video_output_size,
-   ps2_get_video_output_prev,
-   ps2_get_video_output_next,
-   NULL, /* get_current_framebuffer */
-   NULL, /* get_proc_address */
-   NULL, /* set_aspect_ratio */
-   NULL, /* apply_state_changes */
-   ps2_set_texture_frame,
-   ps2_set_texture_enable,
-   ps2_set_osd_msg,
-   NULL, /* show_mouse  */
-   NULL, /* grab_mouse_toggle */
-   NULL, /* get_current_shader */
-   NULL, /* get_current_software_framebuffer */
-   ps2_get_hw_render_interface,
-   NULL, /* set_hdr_menu_nits */
-   NULL, /* set_hdr_paper_white_nits */
-   NULL, /* set_hdr_expand_gamut */
-   NULL, /* set_hdr_scanlines */
-   NULL  /* set_hdr_subpixel_layout */
+    NULL, /* get_flags  */
+    NULL, /* load_texture */
+    NULL, /* unload_texture */
+    ps2_set_video_mode,
+    NULL, /* get_refresh_rate */
+    ps2_set_filtering,
+    ps2_get_video_output_size,
+    ps2_get_video_output_prev,
+    ps2_get_video_output_next,
+    NULL, /* get_current_framebuffer */
+    NULL, /* get_proc_address */
+    NULL, /* set_aspect_ratio */
+    NULL, /* apply_state_changes */
+    ps2_set_texture_frame,
+    ps2_set_texture_enable,
+    ps2_set_osd_msg,
+    NULL, /* show_mouse  */
+    NULL, /* grab_mouse_toggle */
+    NULL, /* get_current_shader */
+    NULL, /* get_current_software_framebuffer */
+    ps2_get_hw_render_interface,
+    NULL, /* set_hdr_max_nits */
+    NULL, /* set_hdr_paper_white_nits */
+    NULL, /* set_hdr_contrast */
+    NULL  /* set_hdr_expand_gamut */
 };
 
-static void ps2_get_poke_interface(void *data,
-      const video_poke_interface_t **iface)
+static void ps2_gfx_get_poke_interface(void *data,
+                                       const video_poke_interface_t **iface)
 {
+   (void)data;
    *iface = &ps2_poke_interface;
 }
 
-static font_renderer_t ps2_font = {
-   ps2_font_init,
-   ps2_font_free,
-   ps2_font_render_msg,
-   "ps2",
-   ps2_font_get_glyph,
-   NULL,                      /* bind_block */
-   NULL,                      /* flush */
-   ps2_font_get_message_width,
-   ps2_font_get_line_metrics
-};
-
 video_driver_t video_ps2 = {
-   ps2_init,
-   ps2_frame,
-   ps2_set_nonblock_state,
-   ps2_alive,
-   ps2_focus,
-   ps2_suppress_screensaver,
-   ps2_has_windowed,
-   ps2_set_shader,
-   ps2_free,
-   "ps2",
-   NULL, /* set_viewport */
-   NULL, /* set_rotation */
-   NULL, /* viewport_info */
-   NULL, /* read_viewport  */
+    ps2_gfx_init,
+    ps2_gfx_frame,
+    ps2_gfx_set_nonblock_state,
+    ps2_gfx_alive,
+    ps2_gfx_focus,
+    ps2_gfx_suppress_screensaver,
+    ps2_gfx_has_windowed,
+    ps2_gfx_set_shader,
+    ps2_gfx_free,
+    "ps2",
+    NULL, /* set_viewport */
+    NULL, /* set_rotation */
+    NULL, /* viewport_info */
+    NULL, /* read_viewport  */
+    NULL, /* read_frame_raw */
+
 #ifdef HAVE_OVERLAY
-   NULL, /* overlay_interface */
+    NULL, /* overlay_interface */
 #endif
-   ps2_get_poke_interface,
-   NULL, /* wrap_type_to_enum */
-   NULL, /* shader_load_begin */
-   NULL, /* shader_load_step */
-#ifdef HAVE_GFX_WIDGETS
-   NULL  /* gfx_widgets_enabled */,
+#ifdef HAVE_VIDEO_LAYOUT
+    NULL,
 #endif
-   NULL, /* invalidate_hw_render_cache */
-   NULL, /* read_viewport_hdr */
-   &ps2_font
+    ps2_gfx_get_poke_interface,
 };

@@ -43,7 +43,6 @@ enum osk_type
    OSK_HIRAGANA_PAGE2,
    OSK_KATAKANA_PAGE1,
    OSK_KATAKANA_PAGE2,
-   OSK_KOREAN_PAGE1,
 #endif
    OSK_TYPE_LAST
 };
@@ -55,33 +54,7 @@ void input_event_osk_append(
       unsigned *osk_last_codepoint_len,
       int ptr,
       bool show_symbol_pages,
-      const char *word,
-      size_t len);
-
-/**
- * input_osk_native_active:
- *
- * Whether a system-provided keyboard panel (platform IME, Steam OSK,
- * ...) is currently on screen and owns text entry.
- *
- * While this is true the frontend must not draw its own on-screen
- * keyboard over the top of it, and must not feed the keyboard line
- * from the OSK grid: the native panel is already doing both.
- *
- * @return true if a native keyboard panel is up.
- **/
-bool input_osk_native_active(void);
-
-/**
- * input_osk_native_available:
- *
- * Whether this device offers a native keyboard panel at all, whether
- * or not one is on screen right now. Menu code uses this to decide
- * if offering the choice between the two keyboards makes sense.
- *
- * @return true if a native keyboard panel could be shown.
- **/
-bool input_osk_native_available(void);
+      const char *word);
 
 void osk_update_last_codepoint(
       unsigned *last_codepoint,

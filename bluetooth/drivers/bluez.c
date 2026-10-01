@@ -15,6 +15,7 @@
 #include <dbus/dbus.h>
 #include <compat/strl.h>
 #include <configuration.h>
+#include <retro_timers.h>
 #include <string/stdstring.h>
 
 #include "../bluetooth_driver.h"
@@ -53,10 +54,6 @@ typedef struct
     struct device_info_vector_list *devices;
     char adapter[256];
     DBusConnection* dbus_connection;
-    /* Discovery started by scan_begin, on the connection it keeps open
-     * until scan_end: BlueZ ends a client's discovery when the client's
-     * connection goes. */
-    bool scanning;
     bool bluez_cache[256];
     int bluez_cache_counter[256];
 } bluez_t;
@@ -66,18 +63,10 @@ static void *bluez_init (void)
    return calloc(1, sizeof(bluez_t));
 }
 
-static void bluez_dbus_disconnect(bluez_t *bluez);
-
 static void bluez_free (void *data)
 {
-   bluez_t *bluez = (bluez_t*)data;
-   if (!bluez)
-      return;
-   /* A scan freed between begin and end still holds its connection. */
-   bluez_dbus_disconnect(bluez);
-   if (bluez->devices)
-      device_info_vector_list_free(bluez->devices);
-   free(bluez);
+   if (data)
+      free(data);
 }
 
 static int
@@ -287,18 +276,18 @@ static int get_default_adapter(bluez_t *bluez, DBusMessage *reply)
       do
       {
          /* empty array? */
-         if (DBUS_TYPE_INVALID ==
+         if (DBUS_TYPE_INVALID == 
                dbus_message_iter_get_arg_type(&array_2_iter))
             continue;
 
          /* a{oa{...}} */
-         if (DBUS_TYPE_DICT_ENTRY !=
+         if (DBUS_TYPE_DICT_ENTRY != 
                dbus_message_iter_get_arg_type(&array_2_iter))
             return 1;
          dbus_message_iter_recurse(&array_2_iter, &dict_2_iter);
 
          /* a{oa{s...}} */
-         if (DBUS_TYPE_STRING !=
+         if (DBUS_TYPE_STRING != 
                dbus_message_iter_get_arg_type(&dict_2_iter))
             return 1;
          dbus_message_iter_get_basic(&dict_2_iter, &interface_name);
@@ -338,14 +327,14 @@ static int read_scanned_devices (bluez_t *bluez, DBusMessage *reply)
    do
    {
       /* a{...} */
-      if (DBUS_TYPE_DICT_ENTRY !=
+      if (DBUS_TYPE_DICT_ENTRY != 
             dbus_message_iter_get_arg_type(&array_1_iter))
          return 1;
 
       dbus_message_iter_recurse(&array_1_iter, &dict_1_iter);
 
       /* a{o...} */
-      if (DBUS_TYPE_OBJECT_PATH !=
+      if (DBUS_TYPE_OBJECT_PATH != 
             dbus_message_iter_get_arg_type(&dict_1_iter))
          return 1;
 
@@ -355,7 +344,7 @@ static int read_scanned_devices (bluez_t *bluez, DBusMessage *reply)
          return 1;
 
       /* a{oa} */
-      if (DBUS_TYPE_ARRAY !=
+      if (DBUS_TYPE_ARRAY != 
             dbus_message_iter_get_arg_type(&dict_1_iter))
          return 1;
 
@@ -363,18 +352,18 @@ static int read_scanned_devices (bluez_t *bluez, DBusMessage *reply)
       do
       {
          /* empty array? */
-         if (DBUS_TYPE_INVALID ==
+         if (DBUS_TYPE_INVALID == 
                dbus_message_iter_get_arg_type(&array_2_iter))
             continue;
 
          /* a{oa{...}} */
-         if (DBUS_TYPE_DICT_ENTRY !=
+         if (DBUS_TYPE_DICT_ENTRY != 
                dbus_message_iter_get_arg_type(&array_2_iter))
             return 1;
          dbus_message_iter_recurse(&array_2_iter, &dict_2_iter);
 
          /* a{oa{s...}} */
-         if (DBUS_TYPE_STRING !=
+         if (DBUS_TYPE_STRING != 
                dbus_message_iter_get_arg_type(&dict_2_iter))
             return 1;
          dbus_message_iter_get_basic(&dict_2_iter, &interface_name);
@@ -401,13 +390,13 @@ static int read_scanned_devices (bluez_t *bluez, DBusMessage *reply)
                continue;
 
             /* a{oa{sa{...}}} */
-            if (DBUS_TYPE_DICT_ENTRY !=
+            if (DBUS_TYPE_DICT_ENTRY != 
                   dbus_message_iter_get_arg_type(&array_3_iter))
                return 1;
             dbus_message_iter_recurse(&array_3_iter, &dict_3_iter);
 
             /* a{oa{sa{s...}}} */
-            if (DBUS_TYPE_STRING !=
+            if (DBUS_TYPE_STRING != 
                   dbus_message_iter_get_arg_type(&dict_3_iter))
                return 1;
 
@@ -417,7 +406,7 @@ static int read_scanned_devices (bluez_t *bluez, DBusMessage *reply)
             if (!dbus_message_iter_next(&dict_3_iter))
                return 1;
             /* a{oa{sa{sv}}} */
-            if (DBUS_TYPE_VARIANT !=
+            if (DBUS_TYPE_VARIANT != 
                   dbus_message_iter_get_arg_type(&dict_3_iter))
                return 1;
 
@@ -492,14 +481,12 @@ static void bluez_dbus_disconnect(bluez_t *bluez)
    bluez->dbus_connection = NULL;
 }
 
-/* Starts discovery and returns; scan_end stops it at the end of the
- * scan window. The window used to be a ten-second sleep in here. */
-static void bluez_scan_begin(void *data)
+static void bluez_scan(void *data)
 {
+   DBusError err;
    DBusMessage *reply;
    bluez_t *bluez = (bluez_t*)data;
 
-   bluez->scanning = false;
    bluez_dbus_connect(bluez);
 
    if (get_managed_objects(bluez, &reply))
@@ -521,21 +508,7 @@ static void bluez_scan_begin(void *data)
    if (adapter_discovery(bluez, "StartDiscovery"))
       return;
 
-   bluez->scanning = true;
-}
-
-static void bluez_scan_end(void *data)
-{
-   DBusMessage *reply;
-   bluez_t *bluez = (bluez_t*)data;
-
-   /* A begin that failed part way left nothing running. */
-   if (!bluez->scanning)
-   {
-      bluez_dbus_disconnect(bluez);
-      return;
-   }
-   bluez->scanning = false;
+   retro_sleep(10000);
 
    /* Stop discovery */
    if (adapter_discovery(bluez, "StopDiscovery"))
@@ -633,9 +606,7 @@ static bool bluez_connect_device(void *data, unsigned i)
 
 static bool bluez_remove_device(void *data, unsigned i)
 {
-   const char *msg = NULL;
-   bluez_t *bluez  = (bluez_t*)data;
-
+   bluez_t *bluez = (bluez_t*)data;
    bluez_dbus_connect(bluez);
 
    /* Disconnect the device */
@@ -645,9 +616,7 @@ static bool bluez_remove_device(void *data, unsigned i)
    if (device_method(bluez, bluez->devices->data[i].path, "RemoveDevice"))
       return false;
 
-   msg = msg_hash_to_str(MSG_BLUETOOTH_PAIRING_REMOVED);
-
-   runloop_msg_queue_push(msg, strlen(msg),
+   runloop_msg_queue_push(msg_hash_to_str(MSG_BLUETOOTH_PAIRING_REMOVED),
          1, 180, true, NULL, MESSAGE_QUEUE_ICON_DEFAULT,
          MESSAGE_QUEUE_CATEGORY_INFO);
 
@@ -659,8 +628,7 @@ static bool bluez_remove_device(void *data, unsigned i)
 bluetooth_driver_t bluetooth_bluez = {
    bluez_init,
    bluez_free,
-   bluez_scan_begin,
-   bluez_scan_end,
+   bluez_scan,
    bluez_get_devices,
    bluez_device_is_connected,
    bluez_device_get_sublabel,

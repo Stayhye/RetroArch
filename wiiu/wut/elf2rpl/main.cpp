@@ -7,7 +7,7 @@
 #include <vector>
 #include <map>
 #include <memory>
-#include "crc32.h"
+#include <zlib.h>
 #include "elf.h"
 
 #pragma pack(push, 1)
@@ -787,6 +787,22 @@ read(ElfFile &file, const std::string &filename)
             {
                std::cout << " -> symbol ";
             }
+#if 0
+         } else if (addend >= DataAddress && addend < WiiuLoadAddress) {
+            relocation->symbol = symData;
+            relocation->addend = addend - DataAddress;
+            if (verbose >= verbose_loaded_relocations)
+            {
+               std::cout << " -> data symbol ";
+            }
+         } else if (addend >= CodeAddress && addend < DataAddress) {
+            relocation->symbol = symText;
+            relocation->addend = addend - CodeAddress;
+            if (verbose >= verbose_loaded_relocations)
+            {
+               std::cout << " -> code symbol ";
+            }
+#else
          } else if ((prevSection = file.findSection(addend)) != nullptr) {
             relocation->symbolSection = prevSection;
             relocation->addend = addend - prevSection->address;
@@ -794,6 +810,7 @@ read(ElfFile &file, const std::string &filename)
             {
                std::cout << " -> section ";
             }
+#endif
          } else {
             if (verbose >= verbose_loaded_relocations)
             {
@@ -885,6 +902,24 @@ read(ElfFile &file, const std::string &filename)
                 {
                    std::cout << " -> symbol ";
                 }
+#if 0
+             } else if (addr >= CodeAddress && addr < DataAddress) {
+               index = 1;
+               relocation->symbol = symText;
+               relocation->addend = rela.addend - CodeAddress;
+               if (verbose >= verbose_loaded_dyn_reloc)
+               {
+                  std::cout << " -> code symbol ";
+               }
+            } else if (addr >= DataAddress && addr < WiiuLoadAddress) {
+               index = 2;
+               relocation->symbol = symData;
+               relocation->addend = rela.addend - DataAddress;
+               if (verbose >= verbose_loaded_dyn_reloc)
+               {
+                  std::cout << " -> data symbol ";
+               }
+#else
             } else if ((prevSection = file.findSection(addend)) != nullptr) {
                relocation->symbolSection = prevSection;
                relocation->addend = addend - prevSection->address;
@@ -892,6 +927,7 @@ read(ElfFile &file, const std::string &filename)
                {
                   std::cout << " -> section ";
                }
+#endif
             } else {
                if (verbose >= verbose_loaded_dyn_reloc)
                {
@@ -1418,7 +1454,7 @@ write(ElfFile &file, const std::string &filename)
 
       if (symSection == nullptr)
       {
-         std::cout << "Could not find section for symbol " << symbol->name
+         std::cout << "Could not find section for symbol " << symbol->name 
             << " 0x" << std::hex << symbol->address << std::endl;
          return false;
       }

@@ -1,3 +1,4 @@
+#include <float.h>
 #include <retro_inline.h>
 
 #ifndef PIXMAN_PRIVATE_H
@@ -30,7 +31,6 @@
 #include <stdio.h>
 #include <string.h>
 #include <stddef.h>
-#include <float.h>
 
 #include "pixman-compiler.h"
 

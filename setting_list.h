@@ -16,15 +16,9 @@
 #ifndef __SETTING_LIST_H
 #define __SETTING_LIST_H
 
-#include <stdint.h>
-#include <stddef.h>
-
 #include <boolean.h>
 
 #include <retro_common_api.h>
-#include <retro_inline.h>
-
-#include "gfx/video_defines.h"
 
 #include "command.h"
 #include "msg_hash.h"
@@ -44,6 +38,7 @@ enum setting_type
    ST_DIR,
    ST_STRING,
    ST_STRING_OPTIONS,
+   ST_HEX,
    ST_BIND,
    ST_GROUP,
    ST_SUB_GROUP,
@@ -75,84 +70,40 @@ enum ui_setting_type
 
 enum setting_flags
 {
-   SD_FLAG_NONE             = 0,
-   SD_FLAG_PATH_DIR         = (1 << 0),
-   SD_FLAG_PATH_FILE        = (1 << 1),
-   SD_FLAG_ALLOW_EMPTY      = (1 << 2),
-   SD_FLAG_HAS_RANGE        = (1 << 3),
-   SD_FLAG_ALLOW_INPUT      = (1 << 4),
-   SD_FLAG_IS_DRIVER        = (1 << 5),
-   SD_FLAG_EXIT             = (1 << 6),
-   SD_FLAG_CMD_APPLY_AUTO   = (1 << 7),
-   SD_FLAG_BROWSER_ACTION   = (1 << 8),
-   SD_FLAG_ADVANCED         = (1 << 9),
-   SD_FLAG_LAKKA_ADVANCED   = (1 << 10),
-   SD_FLAG_ENFORCE_MINRANGE = (1 << 11),
-   SD_FLAG_ENFORCE_MAXRANGE = (1 << 12),
-   SD_FLAG_DONT_USE_ENUM_IDX_REPRESENTATION = (1 << 13),
-   SD_FLAG_CMD_TRIGGER_EVENT_TRIGGERED      = (1 << 14),
-   SD_FLAG_DEFAULT_VALUE    = (1 << 15)
+   SD_FLAG_NONE           = 0,
+   SD_FLAG_PATH_DIR       = (1 << 0),
+   SD_FLAG_PATH_FILE      = (1 << 1),
+   SD_FLAG_ALLOW_EMPTY    = (1 << 2),
+   SD_FLAG_HAS_RANGE      = (1 << 3),
+   SD_FLAG_ALLOW_INPUT    = (1 << 4),
+   SD_FLAG_IS_DRIVER      = (1 << 5),
+   SD_FLAG_EXIT           = (1 << 6),
+   SD_FLAG_CMD_APPLY_AUTO = (1 << 7),
+   SD_FLAG_BROWSER_ACTION = (1 << 8),
+   SD_FLAG_ADVANCED       = (1 << 9),
+   SD_FLAG_LAKKA_ADVANCED = (1 << 10)
 };
 
 enum settings_free_flags
 {
    SD_FREE_FLAG_VALUES    = (1 << 0),
    SD_FREE_FLAG_NAME      = (1 << 1),
-   SD_FREE_FLAG_SHORT     = (1 << 2),
-   /* Not an ownership bit: set at build time on ST_GROUP entries
-    * whose parent is the main menu, replacing the parent_group
-    * string the callbacks compared against - equality with the main
-    * menu label was the only thing that string was ever read for.
-    * Lives here because the byte has spare bits. */
-   SD_FREE_FLAG_MAIN_MENU_GROUP = (1 << 3),
-   /* Also not ownership bits. A row carrying one of these has a
-    * target that addresses a packed word rather than a value of its
-    * own, and the bit says which half of it the row edits: the high
-    * half for a width or an x, the low half for a height or a y.
-    * Set on every row whose settings_t value shares one word with a
-    * partner axis: the custom viewport's origin and size, the window
-    * size pairs and the desktop menu window geometry.
-    *
-    * Anything that can reach such a row - the generic ST_UINT and
-    * ST_INT handlers, the dropdown lists and the desktop UIs - reads
-    * and writes it through setting_uint_get / setting_uint_set and
-    * the signed pair below, never through value.target directly. */
-   SD_FREE_FLAG_PACKED_HI       = (1 << 4),
-   SD_FREE_FLAG_PACKED_LO       = (1 << 5)
+   SD_FREE_FLAG_SHORT     = (1 << 2)
 };
 
-#define SD_FREE_FLAG_PACKED_ANY \
-   (SD_FREE_FLAG_PACKED_HI | SD_FREE_FLAG_PACKED_LO)
-
 typedef struct rarch_setting rarch_setting_t;
-typedef struct setting_actions setting_actions_t;
 typedef struct rarch_setting_group_info rarch_setting_group_info_t;
 
 typedef void (*change_handler_t               )(rarch_setting_t *setting);
 typedef int  (*action_left_handler_t          )(rarch_setting_t *setting, size_t idx, bool wraparound);
 typedef int  (*action_right_handler_t         )(rarch_setting_t *setting, size_t idx, bool wraparound);
+typedef int  (*action_up_handler_t            )(rarch_setting_t *setting);
+typedef int  (*action_down_handler_t          )(rarch_setting_t *setting);
 typedef int  (*action_start_handler_t         )(rarch_setting_t *setting);
+typedef int  (*action_cancel_handler_t        )(rarch_setting_t *setting);
 typedef int  (*action_ok_handler_t            )(rarch_setting_t *setting, size_t idx, bool wraparound);
 typedef int  (*action_select_handler_t        )(rarch_setting_t *setting, size_t idx, bool wraparound);
-
-
-typedef size_t (*get_string_representation_t    )(rarch_setting_t *setting, char *s, size_t len);
-
-struct setting_actions
-{
-   action_ok_handler_t         ok;
-   action_start_handler_t      start;
-   /* Named sel, not select: net_compat.h defines select as a
-    * five-argument macro on platforms without a native one, and a
-    * member of that name breaks every consumer that includes the
-    * networking headers first - the Wii found this the hard way. */
-   action_select_handler_t     sel;
-   action_left_handler_t       left;
-   action_right_handler_t      right;
-   change_handler_t            change;
-   change_handler_t            read;
-   get_string_representation_t repr;
-};
+typedef void (*get_string_representation_t    )(rarch_setting_t *setting, char *s, size_t len);
 
 struct rarch_setting_group_info
 {
@@ -161,25 +112,40 @@ struct rarch_setting_group_info
 
 struct rarch_setting
 {
+   double               min;
+   double               max;
 
-   float               min;
-   float               max;
-   /* Disjoint by type: float entries store their printf rounding
-    * string, directory entries the string shown while unset. */
-   union
+   uint64_t             flags;
+   uint64_t             free_flags;
+
+   struct
    {
-      const char        *rounding_fraction;   /* ST_FLOAT */
-      const char        *empty_path;          /* ST_DIR   */
-   } aux;
+      const char     *off_label;
+      const char     *on_label;
+   } boolean;
+   struct
+   {
+      const char     *empty_path;
+   } dir;
+   const char           *rounding_fraction;
    const char           *name;
    const char           *short_description;
+   const char           *group;
+   const char           *subgroup;
+   const char           *parent_group;
    const char           *values;
 
-   /* Every per-entry handler lives in shared interned tuples: the
-    * full eight-handler combination counts 150 distinct blocks
-    * across 1,904 entries, so each entry stores one pointer instead
-    * of eight handlers. Never NULL. */
-   const setting_actions_t      *actions;
+   change_handler_t              change_handler;
+   change_handler_t              read_handler;
+   action_start_handler_t        action_start;
+   action_left_handler_t         action_left;
+   action_right_handler_t        action_right;
+   action_up_handler_t           action_up;
+   action_down_handler_t         action_down;
+   action_cancel_handler_t       action_cancel;
+   action_ok_handler_t           action_ok;
+   action_select_handler_t       action_select;
+   get_string_representation_t   get_string_representation;
 
    struct
    {
@@ -207,69 +173,65 @@ struct rarch_setting
       bool                       boolean;
    } default_value;
 
+   union
+   {
+      size_t         sizet;
+      int            integer;
+      unsigned int   unsigned_integer;
+      float          fraction;
+      bool           boolean;
+   } original_value;
+
    uint32_t             index_offset;
    uint32_t             size;
+   unsigned             bind_type;
    float                step;
 
-   /* Narrow storage for enum-valued fields; every value in use fits,
-    * reads promote back to int, and nothing takes their address.
-    * enum event_command tops out below 1024, the setting and ui type
-    * enums below 64, and the hash enums below 65536. */
-   uint16_t             bind_type;
-   uint16_t             cmd_trigger_idx;   /* enum event_command      */
-   uint16_t             enum_idx;          /* enum msg_hash_enums     */
-   uint16_t             enum_value_idx;    /* enum msg_hash_enums     */
-   uint16_t             flags;
+   enum event_command   cmd_trigger_idx;
+   enum ui_setting_type ui_type;
+   enum setting_type    browser_selection_type;
+   enum msg_hash_enums  enum_idx;
+   enum msg_hash_enums  enum_value_idx;
+   enum setting_type    type;
+
    int16_t              offset_by;
-   uint8_t              ui_type;           /* enum ui_setting_type    */
-   uint8_t              browser_selection_type; /* enum setting_type  */
-   uint8_t              type;              /* enum setting_type       */
-   uint8_t              free_flags;
    uint8_t              index;
+
+   bool                 cmd_trigger_event_triggered;
+   bool                 dont_use_enum_idx_representation;
+   bool                 enforce_minrange;
+   bool                 enforce_maxrange;
 };
 
-/* An ST_UINT or ST_INT row's value. Most rows own the word their
- * target addresses; a row flagged SD_FREE_FLAG_PACKED_HI or _LO owns
- * one half of it, in VIDEO_SCALE_PACK's layout for a uint row and
- * VIDEO_POS_PACK's for an int row, and a write leaves the partner
- * half as it stands. */
-static INLINE unsigned setting_uint_get(const rarch_setting_t *setting)
-{
-   if (setting->free_flags & SD_FREE_FLAG_PACKED_HI)
-      return VIDEO_SCALE_W(*setting->value.target.unsigned_integer);
-   if (setting->free_flags & SD_FREE_FLAG_PACKED_LO)
-      return VIDEO_SCALE_H(*setting->value.target.unsigned_integer);
-   return *setting->value.target.unsigned_integer;
-}
+/**
+ * setting_set_with_string_representation:
+ * @setting            : pointer to setting
+ * @value              : value for the setting (string)
+ *
+ * Set a settings' value with a string. It is assumed
+ * that the string has been properly formatted.
+ **/
+int setting_set_with_string_representation(
+      rarch_setting_t* setting, const char *value);
 
-static INLINE void setting_uint_set(rarch_setting_t *setting, unsigned v)
-{
-   if (setting->free_flags & SD_FREE_FLAG_PACKED_HI)
-      VIDEO_SCALE_PUT_W(*setting->value.target.unsigned_integer, v);
-   else if (setting->free_flags & SD_FREE_FLAG_PACKED_LO)
-      VIDEO_SCALE_PUT_H(*setting->value.target.unsigned_integer, v);
-   else
-      *setting->value.target.unsigned_integer = v;
-}
+unsigned setting_get_bind_type(rarch_setting_t *setting);
 
-static INLINE int setting_int_get(const rarch_setting_t *setting)
-{
-   if (setting->free_flags & SD_FREE_FLAG_PACKED_HI)
-      return VIDEO_POS_X(*setting->value.target.integer);
-   if (setting->free_flags & SD_FREE_FLAG_PACKED_LO)
-      return VIDEO_POS_Y(*setting->value.target.integer);
-   return *setting->value.target.integer;
-}
+int setting_string_action_start_generic(rarch_setting_t *setting);
 
-static INLINE void setting_int_set(rarch_setting_t *setting, int v)
-{
-   if (setting->free_flags & SD_FREE_FLAG_PACKED_HI)
-      VIDEO_POS_PUT_X(*setting->value.target.integer, v);
-   else if (setting->free_flags & SD_FREE_FLAG_PACKED_LO)
-      VIDEO_POS_PUT_Y(*setting->value.target.integer, v);
-   else
-      *setting->value.target.integer = v;
-}
+int setting_generic_action_ok_default(rarch_setting_t *setting, size_t idx, bool wraparound);
+
+int setting_generic_action_start_default(rarch_setting_t *setting);
+
+void setting_get_string_representation_size_in_mb(rarch_setting_t *setting,
+      char *s, size_t len);
+
+int setting_uint_action_left_with_refresh(rarch_setting_t *setting, size_t idx, bool wraparound);
+int setting_uint_action_right_with_refresh(rarch_setting_t *setting, size_t idx, bool wraparound);
+int setting_uint_action_left_default(rarch_setting_t *setting, size_t idx, bool wraparound);
+int setting_uint_action_right_default(rarch_setting_t *setting, size_t idx, bool wraparound);
+
+void setting_get_string_representation_uint(rarch_setting_t *setting, char *s, size_t len);
+void setting_get_string_representation_hex_and_uint(rarch_setting_t *setting, char *s, size_t len);
 
 RETRO_END_DECLS
 

@@ -7,20 +7,18 @@
 //
 
 #import <Foundation/Foundation.h>
-#import "GCDWebDAVServer.h"
 #import "GCDWebUploader.h"
 
 NS_ASSUME_NONNULL_BEGIN
 
 @interface WebServer : NSObject
 
-@property (nonatomic,readonly,strong) GCDWebDAVServer* webDAVServer;
 @property (nonatomic,readonly,strong) GCDWebUploader* webUploader;
 
 +(WebServer*)sharedInstance;
 
--(void)startServers;
--(void)stopServers;
+-(void)startUploader;
+-(void)stopUploader;
 
 @end
 

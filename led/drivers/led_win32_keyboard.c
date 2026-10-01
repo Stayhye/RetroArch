@@ -1,48 +1,33 @@
-#include <stdint.h>
+#include <stdio.h>
 #include "../led_driver.h"
 #include "../led_defines.h"
 
 #include "../../configuration.h"
 #include "../../retroarch.h"
 
+#undef MAX_LEDS
+#define MAX_LEDS 3
+
+#ifdef _WIN32
 #include <windows.h>
+#endif
 
-#include "../../gfx/common/win32_common.h"
-
-/* RETROKMOD_* bit carried by the published modifier mask for each
- * lock key. */
-static uint16_t led_toggle_bit(int key)
+static void key_translate(int *key)
 {
-   switch (key)
-   {
-      case VK_NUMLOCK:
-         return RETROKMOD_NUMLOCK;
-      case VK_CAPITAL:
-         return RETROKMOD_CAPSLOCK;
-      case VK_SCROLL:
-         return RETROKMOD_SCROLLOCK;
-      default:
-         break;
-   }
-
-   return 0;
-}
-
-static int key_translate(int key)
-{
-   switch (key)
+#ifdef _WIN32
+   switch (*key)
    {
       case 0:
-         return VK_NUMLOCK;
+         *key = VK_NUMLOCK;
+         break;
       case 1:
-         return VK_CAPITAL;
+         *key = VK_CAPITAL;
+         break;
       case 2:
-         return VK_SCROLL;
-      default:
+         *key = VK_SCROLL;
          break;
    }
-
-   return 0;
+#endif
 }
 
 typedef struct
@@ -65,24 +50,23 @@ static int keyboard_led(int led, int state)
    if ((led < 0) || (led >= MAX_LEDS))
       return -1;
 
-   if (!(key = key_translate(key)))
-      return -1;
+   key_translate(&key);
 
-   /* GetKeyState reads the calling thread's synchronous key table,
-    * which is empty here whenever the main window belongs to the video
-    * thread. Take the lock state from the mask published by that
-    * thread instead. */
-   status = (win32_get_keyboard_mods() & led_toggle_bit(key)) ? 1 : 0;
+#ifdef _WIN32
+   status = GetKeyState(key);
+#endif
 
    if (state == -1)
       return status;
 
-   if (   ( state && !status)
-       || (!state &&  status))
+   if ((state && !status) ||
+       (!state && status))
    {
+#ifdef _WIN32
       keybd_event(key, 0x45, KEYEVENTF_EXTENDEDKEY | 0, 0);
       keybd_event(key, 0x45, KEYEVENTF_EXTENDEDKEY | KEYEVENTF_KEYUP, 0);
       win32kb_cur->state[led] = state;
+#endif
    }
    return -1;
 }
@@ -97,9 +81,9 @@ static void keyboard_init(void)
 
    for (i = 0; i < MAX_LEDS; i++)
    {
-      win32kb_cur->setup[i]  = keyboard_led(i, -1);
-      win32kb_cur->state[i]  = -1;
-      win32kb_cur->map[i]    = settings->uints.led_map[i];
+      win32kb_cur->setup[i] = keyboard_led(i, -1);
+      win32kb_cur->state[i] = -1;
+      win32kb_cur->map[i]   = settings->uints.led_map[i];
       if (win32kb_cur->map[i] < 0)
          win32kb_cur->map[i] = i;
    }

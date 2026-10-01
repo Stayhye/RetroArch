@@ -1,5 +1,3 @@
-static float4 _21;
-
 static int counter;
 static float4 FragColor;
 
@@ -12,6 +10,8 @@ struct SPIRV_Cross_Output
 {
     float4 FragColor : SV_Target0;
 };
+
+float4 _21;
 
 void frag_main()
 {

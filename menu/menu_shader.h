@@ -18,6 +18,7 @@
 #define _MENU_SHADER_MANAGER_H
 
 #include <retro_common_api.h>
+#include <lists/string_list.h>
 
 #include "../gfx/video_shader_parse.h"
 
@@ -25,7 +26,6 @@ RETRO_BEGIN_DECLS
 
 enum auto_shader_type
 {
-   SHADER_PRESET_CURRENT,
    SHADER_PRESET_GLOBAL,
    SHADER_PRESET_CORE,
    SHADER_PRESET_PARENT,
@@ -41,6 +41,8 @@ enum auto_shader_operation
 
 struct video_shader *menu_shader_get(void);
 
+void menu_shader_manager_free(void);
+
 /**
  * menu_shader_manager_init:
  *
@@ -50,35 +52,16 @@ bool menu_shader_manager_init(void);
 
 /**
  * menu_shader_manager_set_preset:
- * @menu_shader              : Shader handle to the menu shader.
+ * @shader                   : Shader handle.
  * @type                     : Type of shader.
  * @preset_path              : Preset path to load from.
  * @apply                    : Whether to apply the shader or just update shader information
  *
  * Sets shader preset.
  **/
-/* Menu shader from the driver's loaded struct, no disk re-parse;
- * see the definition for why this also removes an index-mapping
- * hazard between reflection-built and parse-built parameter lists. */
-bool menu_shader_manager_set_preset_from_live(
-      struct video_shader *menu_shader,
-      const struct video_shader *live_shader);
-
 bool menu_shader_manager_set_preset(
-      struct video_shader *menu_shader,
-      enum rarch_shader_type type,
-      const char *preset_path,
-      bool apply);
-
-/**
- * menu_shader_manager_append_preset:
- * @shader                   : current shader
- * @preset_path              : path to the preset to append
- * @dir_video_shader         : temporary directory
- *
- * combine current shader with a shader preset on disk
- **/
-bool menu_shader_manager_append_preset(struct video_shader *shader, const char* preset_path, const bool prepend);
+      struct video_shader *shader,
+      enum rarch_shader_type type, const char *preset_path, bool apply);
 
 /**
  * menu_shader_manager_save_auto_preset:
@@ -114,6 +97,17 @@ bool menu_shader_manager_save_preset(const struct video_shader *shader,
       const char *dir_video_shader,
       const char *dir_menu_config,
       bool apply);
+
+/**
+ * menu_shader_manager_get_type:
+ * @shader                   : shader handle
+ *
+ * Gets type of shader.
+ *
+ * Returns: type of shader.
+ **/
+enum rarch_shader_type menu_shader_manager_get_type(
+      const struct video_shader *shader);
 
 /**
  * menu_shader_manager_apply_changes:
@@ -154,6 +148,30 @@ bool menu_shader_manager_auto_preset_exists(
       enum auto_shader_type type,
       const char *dir_video_shader,
       const char *dir_menu_config);
+
+bool menu_shader_manager_save_preset_internal(
+      bool save_reference,
+      const struct video_shader *shader,
+      const char *basename,
+      const char *dir_video_shader,
+      bool apply,
+      const char **target_dirs,
+      size_t num_target_dirs);
+
+bool menu_shader_manager_operate_auto_preset(
+      struct retro_system_info *system,
+      bool video_shader_preset_save_reference_enable,
+      enum auto_shader_operation op,
+      const struct video_shader *shader,
+      const char *dir_video_shader,
+      const char *dir_menu_config,
+      enum auto_shader_type type, bool apply);
+
+void menu_driver_set_last_shader_path_int(
+      const char *shader_path,
+      enum rarch_shader_type *type,
+      char *shader_dir, size_t dir_len,
+      char *shader_file, size_t file_len);
 
 RETRO_END_DECLS
 

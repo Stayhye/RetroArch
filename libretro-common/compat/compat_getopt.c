@@ -35,6 +35,8 @@
 #include <compat/strcasestr.h>
 #include <compat/posix_string.h>
 
+#include <retro_assert.h>
+
 char *optarg;
 int optind, opterr, optopt;
 
@@ -48,12 +50,10 @@ static bool is_long_option(const char *str)
    return str[0] == '-' && str[1] == '-';
 }
 
-/* Bounded by count, not by a NULL past the last argument: a real
- * main() has one, an argv a caller built may not. */
-static int find_short_index(char * const *argv, int count)
+static int find_short_index(char * const *argv)
 {
    int idx;
-   for (idx = 0; idx < count && argv[idx]; idx++)
+   for (idx = 0; argv[idx]; idx++)
    {
       if (is_short_option(argv[idx]))
          return idx;
@@ -62,10 +62,10 @@ static int find_short_index(char * const *argv, int count)
    return -1;
 }
 
-static int find_long_index(char * const *argv, int count)
+static int find_long_index(char * const *argv)
 {
    int idx;
-   for (idx = 0; idx < count && argv[idx]; idx++)
+   for (idx = 0; argv[idx]; idx++)
    {
       if (is_long_option(argv[idx]))
          return idx;
@@ -74,7 +74,7 @@ static int find_long_index(char * const *argv, int count)
    return -1;
 }
 
-static int parse_short(const char *optstring, char * const *argv, int count)
+static int parse_short(const char *optstring, char * const *argv)
 {
    bool extra_opt, takes_arg, embedded_arg;
    const char *opt = NULL;
@@ -103,79 +103,88 @@ static int parse_short(const char *optstring, char * const *argv, int count)
       }
       else
       {
-         optarg = count > 1 ? argv[1] : NULL;
+         optarg = argv[1];
          optind += 2;
       }
 
       return optarg ? opt[0] : '?';
    }
 
-   /* If we see additional characters,
-    * and they don't take arguments, this
-    * means we have multiple flags in one. */
    if (embedded_arg)
+   {
+      /* If we see additional characters,
+       * and they don't take arguments, this
+       * means we have multiple flags in one. */
       memmove(&argv[0][1], &argv[0][2], strlen(&argv[0][2]) + 1);
-   else
-      optind++;
+      return opt[0];
+   }
 
+   optind++;
    return opt[0];
 }
 
-static int parse_long(const struct option *longopts, char * const *argv, int count)
+static int parse_long(const struct option *longopts, char * const *argv)
 {
-   const char *arg = &argv[0][2];
-   const char *eq  = strchr(arg, '=');
-   size_t len      = eq ? (size_t)(eq - arg) : strlen(arg);
+   size_t indice;
+   char *save  = NULL;
+   char *argv0 = strdup(&argv[0][2]);
+   char *token = strtok_r(argv0, "=", &save);
+   const struct option *opt = NULL;
 
-   for (; longopts->name; longopts++)
+   for (indice = 0; longopts[indice].name; indice++)
    {
-      const char *n = longopts->name;
-      const char *a = arg;
-      size_t rem    = len;
-
-      while (rem && *n == *a)
+      if (token && !strcmp(longopts[indice].name, token))
       {
-         n++;
-         a++;
-         rem--;
+         opt = &longopts[indice];
+         break;
       }
-
-      if (rem || *n)
-         continue;
-
-      if (longopts->has_arg)
-      {
-         if (eq)
-         {
-            optarg = (char *)(eq + 1);
-            optind++;
-         }
-         else if (count > 1 && argv[1])
-         {
-            optarg = argv[1];
-            optind += 2;
-         }
-         else
-            return '?';
-      }
-      else
-         optind++;
-
-      if (longopts->flag)
-      {
-         *longopts->flag = longopts->val;
-         return 0;
-      }
-      return longopts->val;
    }
 
-   return '?';
+   free(argv0);
+   argv0 = NULL;
+
+   if (!opt)
+      return '?';
+
+   /* Handle args with '=' instead of space */
+   if (opt->has_arg)
+   {
+      char *special_arg = strchr(argv[0], '=');
+      if (special_arg)
+      {
+         optarg = ++special_arg;
+         optind++;
+         return opt->val;
+      }
+   }
+
+   /* getopt_long has an "optional" arg, but we don't bother with that. */
+   if (opt->has_arg && !argv[1])
+      return '?';
+
+   if (opt->has_arg)
+   {
+      optarg = argv[1];
+      optind += 2;
+   }
+   else
+      optind++;
+
+   if (opt->flag)
+   {
+      *opt->flag = opt->val;
+      return 0;
+   }
+
+   return opt->val;
 }
 
 static void shuffle_block(char **begin, char **last, char **end)
 {
    ptrdiff_t    len = last - begin;
    const char **tmp = (const char**)calloc(len, sizeof(const char*));
+
+   retro_assert(tmp);
 
    memcpy((void*)tmp, begin, len * sizeof(const char*));
    memmove(begin, last, (end - last) * sizeof(const char*));
@@ -189,17 +198,16 @@ int getopt_long(int argc, char *argv[],
 {
    int short_index, long_index;
 
+   (void)longindex;
+
    if (optind == 0)
       optind = 1;
 
    if (argc < 2)
       return -1;
 
-   if (optind >= argc)
-      return -1;
-
-   short_index = find_short_index(&argv[optind], argc - optind);
-   long_index  = find_long_index(&argv[optind], argc - optind);
+   short_index = find_short_index(&argv[optind]);
+   long_index  = find_long_index(&argv[optind]);
 
    /* We're done here. */
    if (short_index == -1 && long_index == -1)
@@ -219,10 +227,12 @@ int getopt_long(int argc, char *argv[],
       long_index = 0;
    }
 
+   retro_assert(short_index == 0 || long_index == 0);
+
    if (short_index == 0)
-      return parse_short(optstring, &argv[optind], argc - optind);
+      return parse_short(optstring, &argv[optind]);
    if (long_index == 0)
-      return parse_long(longopts, &argv[optind], argc - optind);
+      return parse_long(longopts, &argv[optind]);
 
    return '?';
 }

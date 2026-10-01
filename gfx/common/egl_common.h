@@ -17,7 +17,7 @@
 #define __EGL_COMMON_H
 
 #ifdef HAVE_GBM
-/* presence or absence of this include makes egl.h change NativeWindowType between gbm_device* and _XDisplay* */
+/* presense or absense of this include makes egl.h change NativeWindowType between gbm_device* and _XDisplay* */
 #include <gbm.h>
 #endif
 #include <EGL/egl.h>
@@ -74,7 +74,7 @@ extern bool g_egl_inited;
 extern unsigned g_egl_major;
 extern unsigned g_egl_minor;
 
-void egl_destroy_gl_dll(void);
+void egl_report_error(void);
 
 void egl_destroy(egl_ctx_data_t *egl);
 
@@ -83,15 +83,12 @@ gfx_ctx_proc_t egl_get_proc_address(const char *symbol);
 void egl_terminate(EGLDisplay dpy);
 
 void egl_bind_hw_render(egl_ctx_data_t *egl, bool enable);
-/* Make no context current on the calling thread; see
- * gfx_ctx_driver_t::release_current. */
-void egl_release_current(egl_ctx_data_t *egl);
 
 void egl_swap_buffers(void *data);
 
 void egl_set_swap_interval(egl_ctx_data_t *egl, int interval);
 
-void egl_get_video_size(egl_ctx_data_t *egl, unsigned *dims);
+void egl_get_video_size(egl_ctx_data_t *egl, unsigned *width, unsigned *height);
 
 typedef bool (*egl_accept_config_cb_t)(void *display_data, EGLDisplay dpy, EGLConfig config);
 bool egl_default_accept_config_cb(void *display_data, EGLDisplay dpy, EGLConfig config);
@@ -121,44 +118,12 @@ bool egl_create_context(egl_ctx_data_t *egl, const EGLint *egl_attribs);
 
 bool egl_create_surface(egl_ctx_data_t *egl, void *native_window);
 
-bool egl_destroy_surface(egl_ctx_data_t *egl);
-
 bool egl_get_native_visual_id(egl_ctx_data_t *egl, EGLint *value);
 
 bool egl_get_config_attrib(EGLDisplay dpy, EGLConfig config,
       EGLint attribute, EGLint *value);
 
-void egl_report_error(void);
-
 bool egl_has_config(egl_ctx_data_t *egl);
-
-/* Whether the display has an RGBA16F window config for desktop GL
- * (EGL_EXT_pixel_format_float), as scRGB output needs; with 'apply' it
- * becomes the context's config. */
-bool egl_choose_scrgb_config(egl_ctx_data_t *egl, bool apply);
-
-struct string_list;
-
-/* The GPUs a GL GPU index can choose, as menu labels: entry 0 is the
- * implementation's own choice, the rest EGL's hardware devices.
- * NULL where EGL cannot enumerate devices or make a display on one. */
-struct string_list *egl_gpu_list_new(void);
-
-/* The device behind entry 'index' of the last list, NULL for entry 0. */
-void *egl_gpu_device_at(int index);
-
-/* The DRM card node of entry 'index' (EGL_EXT_device_drm), NULL for
- * entry 0 or a device that does not report one. */
-const char *egl_gpu_device_file(int index);
-
-/* The device the next display is made on, NULL for the default; a
- * display the device cannot make falls back to the default. */
-void egl_set_display_device(void *device);
-
-/* The next window surface is presented opaque (EGL_EXT_present_opaque)
- * where the display supports it: for a config with alpha the frame
- * does not mean as transparency. */
-void egl_set_surface_opaque(bool opaque);
 
 RETRO_END_DECLS
 

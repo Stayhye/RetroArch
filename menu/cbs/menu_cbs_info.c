@@ -17,10 +17,10 @@
 
 #include "../menu_driver.h"
 #include "../menu_cbs.h"
+#include "../menu_dialog.h"
 
 #include "../../configuration.h"
 #include "../../audio/audio_driver.h"
-#include "../../msg_hash_lbl_str.h"
 
 #ifdef HAVE_NETWORKING
 #include "../../network/netplay/netplay.h"
@@ -33,25 +33,21 @@
 static int action_info_default(unsigned type, const char *label)
 {
    menu_displaylist_info_t info;
-   struct menu_state *menu_st    = menu_state_get_ptr();
-   menu_list_t *menu_list        = menu_st->entries.list;
-   file_list_t *menu_stack       = MENU_LIST_GET(menu_list, 0);
-   size_t selection              = menu_st->selection_ptr;
+   file_list_t *menu_stack       = menu_entries_get_menu_stack_ptr(0);
+   size_t selection              = menu_navigation_get_selection();
    settings_t *settings          = config_get_ptr();
 #ifdef HAVE_AUDIOMIXER
    bool        audio_enable_menu = settings->bools.audio_enable_menu;
    bool audio_enable_menu_notice = settings->bools.audio_enable_menu_notice;
 #endif
 
-   if (settings->bools.menu_disable_info_button)
-      return 0;
-
    menu_displaylist_info_init(&info);
 
    info.list                    = menu_stack;
    info.directory_ptr           = selection;
    info.enum_idx                = MENU_ENUM_LABEL_INFO_SCREEN;
-   info.label                   = strdup(MENU_ENUM_LABEL_INFO_SCREEN_STR);
+   info.label                   = strdup(
+         msg_hash_to_str(MENU_ENUM_LABEL_INFO_SCREEN));
 
    if (!menu_displaylist_ctl(DISPLAYLIST_HELP, &info, settings))
       goto error;
@@ -80,11 +76,9 @@ int  generic_action_ok_help(const char *path,
 
 static int action_info_cheevos(unsigned type, const char *label)
 {
-   struct menu_state    *menu_st  = menu_state_get_ptr();
-   menu_dialog_t        *p_dialog = &menu_st->dialog_st;
-   unsigned new_id                = type - MENU_SETTINGS_CHEEVOS_START;
+   unsigned new_id        = type - MENU_SETTINGS_CHEEVOS_START;
 
-   p_dialog->current_id           = new_id;
+   menu_dialog_set_current_id(new_id);
 
    return generic_action_ok_help(NULL, label, new_id, 0, 0,
       MENU_ENUM_LABEL_CHEEVOS_DESCRIPTION,
@@ -95,19 +89,19 @@ static int action_info_cheevos(unsigned type, const char *label)
 int menu_cbs_init_bind_info(menu_file_list_cbs_t *cbs,
       const char *path, const char *label, unsigned type, size_t idx)
 {
-   if (cbs)
-   {
+   if (!cbs)
+      return -1;
+
 #ifdef HAVE_CHEEVOS
-      if ((type >= MENU_SETTINGS_CHEEVOS_START) &&
-            (type < MENU_SETTINGS_NETPLAY_ROOMS_START))
-      {
-         BIND_ACTION_INFO(cbs, action_info_cheevos);
-         return 0;
-      }
+   if ((type >= MENU_SETTINGS_CHEEVOS_START) &&
+      (type < MENU_SETTINGS_NETPLAY_ROOMS_START))
+   {
+      BIND_ACTION_INFO(cbs, action_info_cheevos);
+      return 0;
+   }
 #endif
 
-      BIND_ACTION_INFO(cbs, action_info_default);
-   }
+   BIND_ACTION_INFO(cbs, action_info_default);
 
    return -1;
 }

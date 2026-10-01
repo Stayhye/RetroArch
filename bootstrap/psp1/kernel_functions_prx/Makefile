@@ -1,5 +1,5 @@
 TARGET = kernel_functions
-OBJS = main.o LoadExecEf.o
+OBJS = main.o
 PSP_FW_VERSION = 150
 
 INCDIR =

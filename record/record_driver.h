@@ -2,9 +2,6 @@
 #define _RECORD_DRIVER_H
 
 #include <boolean.h>
-#include <retro_miscellaneous.h>
-
-#include "../gfx/video_defines.h"   /* VIDEO_SCALE_PACK */
 
 enum ffemu_pix_format
 {
@@ -18,7 +15,6 @@ enum streaming_mode
    STREAMING_MODE_TWITCH = 0,
    STREAMING_MODE_YOUTUBE,
    STREAMING_MODE_FACEBOOK,
-   STREAMING_MODE_KICK,
    STREAMING_MODE_LOCAL,
    STREAMING_MODE_CUSTOM
 };
@@ -57,11 +53,13 @@ struct record_params
 
    const char *audio_resampler;
 
-   /* Desired output resolution, VIDEO_SCALE_PACK'd. */
-   unsigned out_dims;
+   /* Desired output resolution. */
+   unsigned out_width;
+   unsigned out_height;
 
-   /* Total size of framebuffer used in input, VIDEO_SCALE_PACK'd. */
-   unsigned fb_dims;
+   /* Total size of framebuffer used in input. */
+   unsigned fb_width;
+   unsigned fb_height;
 
    /* Audio channels. */
    unsigned channels;
@@ -87,8 +85,8 @@ struct record_params
 struct record_video_data
 {
    const void *data;
-   /* Both axes in one word, VIDEO_SCALE_PACK's layout. */
-   unsigned dims;
+   unsigned width;
+   unsigned height;
    int pitch;
    bool is_dupe;
 };
@@ -117,24 +115,16 @@ struct recording
    const record_driver_t *driver;
    void *data;
 
-   /* The viewport the GPU recording was opened at, both axes in one
-    * word - VIDEO_SCALE_PACK's layout, so a resize is one comparison
-    * against a freshly packed viewport rather than two. */
-   unsigned gpu_dims;
+   size_t gpu_width;
+   size_t gpu_height;
 
-   /* --size's override of the recording's output size, same layout;
-    * zero when it was not given, which is one test instead of two. */
-   unsigned out_dims;
-   /* The speaker layout the recorder was opened with (an AUDIO_LAYOUT_
-    * mask): stereo, or the core's own wider layout when it had one at
-    * the start of the recording. Every push is brought to it. */
-   uint32_t layout;
-   unsigned channels;
+   unsigned width;
+   unsigned height;
 
-   char path[PATH_MAX_LENGTH];
-   char config[PATH_MAX_LENGTH];
-   char output_dir[DIR_MAX_LENGTH];
-   char config_dir[DIR_MAX_LENGTH];
+   char path[8192];
+   char config[8192];
+   char output_dir[8192];
+   char config_dir[8192];
 
    bool enable;
    bool streaming_enable;
@@ -142,6 +132,8 @@ struct recording
 };
 
 typedef struct recording recording_state_t;
+
+extern const record_driver_t record_ffmpeg;
 
 /**
  * config_get_record_driver_options:

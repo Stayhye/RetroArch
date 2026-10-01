@@ -325,17 +325,12 @@ NS_ASSUME_NONNULL_END
     return [GCDWebServerErrorResponse responseWithClientError:kGCDWebServerHTTPStatusCode_NotFound message:@"\"%@\" does not exist", oldRelativePath];
   }
 
-  NSString* oldItemName = [oldAbsolutePath lastPathComponent];
-  if ((!_allowHiddenItems && [oldItemName hasPrefix:@"."]) || (!isDirectory && ![self _checkFileExtension:oldItemName])) {
-    return [GCDWebServerErrorResponse responseWithClientError:kGCDWebServerHTTPStatusCode_Forbidden message:@"Moving from item name \"%@\" is not allowed", oldItemName];
-  }
-
   NSString* newRelativePath = [request.arguments objectForKey:@"newPath"];
   NSString* newAbsolutePath = [self _uniquePathForPath:[_uploadDirectory stringByAppendingPathComponent:GCDWebServerNormalizePath(newRelativePath)]];
 
-  NSString* newItemName = [newAbsolutePath lastPathComponent];
-  if ((!_allowHiddenItems && [newItemName hasPrefix:@"."]) || (!isDirectory && ![self _checkFileExtension:newItemName])) {
-    return [GCDWebServerErrorResponse responseWithClientError:kGCDWebServerHTTPStatusCode_Forbidden message:@"Moving to item name \"%@\" is not allowed", newItemName];
+  NSString* itemName = [newAbsolutePath lastPathComponent];
+  if ((!_allowHiddenItems && [itemName hasPrefix:@"."]) || (!isDirectory && ![self _checkFileExtension:itemName])) {
+    return [GCDWebServerErrorResponse responseWithClientError:kGCDWebServerHTTPStatusCode_Forbidden message:@"Moving to item name \"%@\" is not allowed", itemName];
   }
 
   if (![self shouldMoveItemFromPath:oldAbsolutePath toPath:newAbsolutePath]) {

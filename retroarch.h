@@ -38,9 +38,10 @@
 
 #include "core.h"
 
-#include "driver.h"
 #include "runloop.h"
 #include "retroarch_types.h"
+
+RETRO_BEGIN_DECLS
 
 #define RETRO_ENVIRONMENT_RETROARCH_START_BLOCK 0x800000
 
@@ -59,7 +60,7 @@
 
 #define RETRO_ENVIRONMENT_POLL_TYPE_OVERRIDE (4 | RETRO_ENVIRONMENT_RETROARCH_START_BLOCK)
                                             /* unsigned * --
-                                            * Tells the frontend to override the poll type behavior.
+                                            * Tells the frontend to override the poll type behavior. 
                                             * Allows the frontend to influence the polling behavior of the
                                             * frontend.
                                             *
@@ -71,52 +72,22 @@
                                             * 3 - Late
                                             */
 
-#define RETRO_ENVIRONMENT_SET_SAVE_STATE_DISABLE_UNDO (5 | RETRO_ENVIRONMENT_RETROARCH_START_BLOCK)
-                                            /* bool * --
-                                            * If true, disables the save state save/load undo feature to conserve memory.
-                                            */
-
 #define DRIVERS_CMD_ALL \
       ( DRIVER_AUDIO_MASK \
-      | DRIVER_MICROPHONE_MASK \
       | DRIVER_VIDEO_MASK \
       | DRIVER_INPUT_MASK \
       | DRIVER_CAMERA_MASK \
       | DRIVER_LOCATION_MASK \
       | DRIVER_MENU_MASK \
+      | DRIVERS_VIDEO_INPUT_MASK \
       | DRIVER_BLUETOOTH_MASK \
       | DRIVER_WIFI_MASK \
       | DRIVER_LED_MASK \
       | DRIVER_MIDI_MASK )
 
-
-RETRO_BEGIN_DECLS
-
-enum rarch_state_flags
-{
-   RARCH_FLAGS_HAS_SET_USERNAME             = (1 << 0),
-   RARCH_FLAGS_HAS_SET_VERBOSITY            = (1 << 1),
-   RARCH_FLAGS_HAS_SET_LIBRETRO             = (1 << 2),
-   RARCH_FLAGS_HAS_SET_LIBRETRO_DIRECTORY   = (1 << 3),
-   RARCH_FLAGS_HAS_SET_SAVE_PATH            = (1 << 4),
-   RARCH_FLAGS_HAS_SET_STATE_PATH           = (1 << 5),
-   RARCH_FLAGS_HAS_SET_UPS_PREF             = (1 << 6),
-   RARCH_FLAGS_HAS_SET_BPS_PREF             = (1 << 7),
-   RARCH_FLAGS_HAS_SET_IPS_PREF             = (1 << 8),
-   RARCH_FLAGS_HAS_SET_LOG_TO_FILE          = (1 << 9),
-   RARCH_FLAGS_UPS_PREF                     = (1 << 10),
-   RARCH_FLAGS_BPS_PREF                     = (1 << 11),
-   RARCH_FLAGS_IPS_PREF                     = (1 << 12),
-   RARCH_FLAGS_BLOCK_CONFIG_READ            = (1 << 13),
-   RARCH_FLAGS_CLI_DATABASE_SCAN            = (1 << 14),
-   RARCH_FLAGS_HAS_SET_XDELTA_PREF          = (1 << 15),
-   RARCH_FLAGS_XDELTA_PREF                  = (1 << 16),
-   RARCH_FLAGS_HAS_SET_OVERLAY_PRESET       = (1 << 17)
-};
-
 bool retroarch_ctl(enum rarch_ctl_state state, void *data);
 
-size_t retroarch_get_capabilities(enum rarch_capabilities type,
+int retroarch_get_capabilities(enum rarch_capabilities type,
       char *s, size_t len);
 
 void retroarch_override_setting_set(enum rarch_override_setting enum_idx, void *data);
@@ -125,12 +96,7 @@ void retroarch_override_setting_unset(enum rarch_override_setting enum_idx, void
 
 bool retroarch_override_setting_is_set(enum rarch_override_setting enum_idx, void *data);
 
-const char* video_shader_get_current_shader_preset(void);
-
-/* Cancels and drains the task queue (bounded) so in-flight tasks
- * retire while the subsystems their callbacks reach are alive.
- * main_exit() runs it first; exposed for the exit-drain harness. */
-void retroarch_drain_tasks_for_exit(void);
+const char* retroarch_get_shader_preset(void);
 
 /**
  * retroarch_main_init:
@@ -139,32 +105,9 @@ void retroarch_drain_tasks_for_exit(void);
  *
  * Initializes the program.
  *
- * @return true on success, otherwise false if there was an error.
+ * Returns: 1 (true) on success, otherwise false (0) if there was an error.
  **/
 bool retroarch_main_init(int argc, char *argv[]);
-
-/**
- * retroarch_main_init_core:
- * retroarch_main_init_drivers:
- *
- * retroarch_main_init() in two phases, for the staged content load:
- * the first parses the configuration and brings the core up (dlopen,
- * retro_init, the content read, retro_load_game), the second finds
- * and initializes the drivers and finishes the session.  The staged
- * load runs the first behind the drivers of the previous session
- * (find_drivers false); the second phase (staged) then frees those,
- * carrying the new core's hardware-render request around the
- * teardown, and finds the drivers with the previous session's no
- * longer in the way.  Startup runs both back to back with the find
- * in the first phase, ahead of the core, as it always has.
- *
- * Both phases report a failure that retroarch_fail() raised; the
- * verbosity the first phase parsed is handed to the second.
- **/
-bool retroarch_main_init_core(int argc, char *argv[],
-      bool find_drivers, bool *verbosity_enabled);
-bool retroarch_main_init_drivers(bool staged,
-      bool verbosity_enabled);
 
 bool retroarch_main_quit(void);
 
@@ -178,13 +121,15 @@ int content_get_subsystem(void);
 
 void retroarch_menu_running(void);
 
+void retroarch_path_set_redirect(settings_t *settings);
+
 void retroarch_menu_running_finished(bool quit);
 
-enum retro_language retroarch_get_language_from_iso(const char *lang);
+enum retro_language rarch_get_language_from_iso(const char *lang);
 
-void retroarch_favorites_init(void);
+void rarch_favorites_init(void);
 
-void retroarch_favorites_deinit(void);
+void rarch_favorites_deinit(void);
 
 /* Audio */
 
@@ -197,56 +142,62 @@ void retroarch_favorites_deinit(void);
  **/
 const char* config_get_audio_driver_options(void);
 
-#ifdef HAVE_MICROPHONE
-/**
- * config_get_microphone_driver_options:
- *
- * Get an enumerated list of all microphone driver names, separated by '|'.
- *
- * Returns: string listing of all microphone driver names, separated by '|'.
- **/
-const char* config_get_microphone_driver_options(void);
-#endif
+/* BSV Movie */
+
+void bsv_movie_frame_rewind(void);
 
 /* Camera */
 
-/*
-   Returns rotation requested by the core regardless of if it has been
-   applied with the final video rotation
-*/
-unsigned int retroarch_get_core_requested_rotation(void);
-
-/*
-   Returns final rotation including both user chosen video rotation
-   and core requested rotation if allowed by video_allow_rotate
-*/
 unsigned int retroarch_get_rotation(void);
 
 void retroarch_init_task_queue(void);
 
-/* Applies the task-queue settings to the running queue. */
-void retroarch_task_queue_configure(void);
-
-/**
- * retroarch_main_deinit_begin:
- * retroarch_main_deinit_pending:
- * retroarch_main_deinit_finish:
- *
- * RARCH_CTL_MAIN_DEINIT in two halves around the wait for a save or
- * load state task still inside the core.  RARCH_CTL_MAIN_DEINIT waits
- * between them; the staged content load returns to the frame loop
- * between them and asks pending() each frame, then finishes.  begin
- * returns false when there is no session to close.
- **/
-bool retroarch_main_deinit_begin(void);
-bool retroarch_main_deinit_pending(void);
-void retroarch_main_deinit_finish(void);
+/* Human readable order of input binds */
+static const unsigned input_config_bind_order[] = {
+   RETRO_DEVICE_ID_JOYPAD_UP,
+   RETRO_DEVICE_ID_JOYPAD_DOWN,
+   RETRO_DEVICE_ID_JOYPAD_LEFT,
+   RETRO_DEVICE_ID_JOYPAD_RIGHT,
+   RETRO_DEVICE_ID_JOYPAD_A,
+   RETRO_DEVICE_ID_JOYPAD_B,
+   RETRO_DEVICE_ID_JOYPAD_X,
+   RETRO_DEVICE_ID_JOYPAD_Y,
+   RETRO_DEVICE_ID_JOYPAD_SELECT,
+   RETRO_DEVICE_ID_JOYPAD_START,
+   RETRO_DEVICE_ID_JOYPAD_L,
+   RETRO_DEVICE_ID_JOYPAD_R,
+   RETRO_DEVICE_ID_JOYPAD_L2,
+   RETRO_DEVICE_ID_JOYPAD_R2,
+   RETRO_DEVICE_ID_JOYPAD_L3,
+   RETRO_DEVICE_ID_JOYPAD_R3,
+   19, /* Left Analog Up */
+   18, /* Left Analog Down */
+   17, /* Left Analog Left */
+   16, /* Left Analog Right */
+   23, /* Right Analog Up */
+   22, /* Right Analog Down */
+   21, /* Right Analog Left */
+   20, /* Right Analog Right */
+};
 
 /* Creates folder and core options stub file for subsequent runs */
 bool core_options_create_override(bool game_specific);
 bool core_options_remove_override(bool game_specific);
-void core_options_reset(const char *label);
+void core_options_reset(void);
 void core_options_flush(void);
+
+typedef enum apple_view_type
+{
+   APPLE_VIEW_TYPE_NONE = 0,
+   APPLE_VIEW_TYPE_OPENGL_ES,
+   APPLE_VIEW_TYPE_OPENGL,
+   APPLE_VIEW_TYPE_VULKAN,
+   APPLE_VIEW_TYPE_METAL
+} apple_view_type_t;
+
+bool retroarch_get_current_savestate_path(char *path, size_t len);
+
+bool retroarch_get_entry_state_path(char *path, size_t len, unsigned slot);
 
 /**
  * retroarch_fail:
@@ -256,10 +207,6 @@ void core_options_flush(void);
  * Sanely kills the program.
  **/
 void retroarch_fail(int error_code, const char *error);
-
-bool should_quit_on_close(void);
-
-uint32_t retroarch_get_flags(void);
 
 RETRO_END_DECLS
 

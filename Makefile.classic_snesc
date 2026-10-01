@@ -47,6 +47,7 @@ clean:
 	rm -f input/*.o
 	rm -f tools/*.o
 	rm -f $(BINDIR)/retroarch
+	rm -f $(BINDIR)/retroarch-joyconfig
 	rm -f $(PNDDIR)/readme.html
 	rm -f retroarch
 

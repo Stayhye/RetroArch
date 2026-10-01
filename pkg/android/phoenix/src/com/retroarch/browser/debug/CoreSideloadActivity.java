@@ -11,6 +11,7 @@ import android.provider.Settings;
 import android.util.Log;
 import android.widget.TextView;
 
+import com.retroarch.browser.mainmenu.MainMenuActivity;
 import com.retroarch.browser.preferences.util.UserPreferences;
 import com.retroarch.browser.retroactivity.RetroActivityFuture;
 
@@ -159,9 +160,14 @@ public class CoreSideloadActivity extends Activity
 
                 Log.d("sideload", "Running RetroArch with core " + destination.getAbsolutePath());
 
-                if (content != null)
-                    retro.putExtra("ROM", content);
-                retro.putExtra("LIBRETRO", destination.getAbsolutePath());
+                MainMenuActivity.startRetroActivity(
+                    retro,
+                    content,
+                    destination.getAbsolutePath(),
+                    UserPreferences.getDefaultConfigPath(ctx),
+                    Settings.Secure.getString(ctx.getContentResolver(), Settings.Secure.DEFAULT_INPUT_METHOD),
+                    ctx.getApplicationInfo().dataDir,
+                    ctx.getApplicationInfo().sourceDir);
 
                 ctx.startActivity(retro);
                 ctx.finish();

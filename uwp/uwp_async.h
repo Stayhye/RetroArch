@@ -20,12 +20,13 @@
 * OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 */
 
-#pragma once
-
-#include <functional>
+#include <ppl.h>
+#include <ppltasks.h>
 #include "uwp_main.h"
 #include "uwp_func.h"
 
+#ifdef __cplusplus
+#ifdef __cplusplus_winrt
 namespace
 {
    /* Dear Microsoft
@@ -36,111 +37,50 @@ namespace
       * async I/O. I hope you like this hack I made instead.
       */
    template<typename T>
-   T RunAsync(std::function<winrt::Windows::Foundation::IAsyncOperation<T>()> func)
+   T RunAsync(std::function<concurrency::task<T>()> func)
    {
       volatile bool finished = false;
-      std::exception_ptr exception = nullptr;
-      T result{};
+      Platform::Exception^ exception = nullptr;
+      T result;
 
-      auto op = func();
-      op.Completed([&finished, &exception, &result](
-         winrt::Windows::Foundation::IAsyncOperation<T> const& sender,
-         winrt::Windows::Foundation::AsyncStatus status)
-      {
+      func().then([&finished, &exception, &result](concurrency::task<T> t) {
          try
          {
-            if (status == winrt::Windows::Foundation::AsyncStatus::Completed)
-               result = sender.GetResults();
-            else if (status == winrt::Windows::Foundation::AsyncStatus::Error)
-               winrt::throw_hresult(sender.ErrorCode());
+            result = t.get();
          }
-         catch (...)
+         catch (Platform::Exception ^ exception_)
          {
-            exception = std::current_exception();
+            exception = exception_;
          }
          finished = true;
-      });
+         });
 
       /* Don't stall the UI thread - prevents a deadlock */
-      auto corewindow = winrt::Windows::UI::Core::CoreWindow::GetForCurrentThread();
+      Windows::UI::Core::CoreWindow^ corewindow = Windows::UI::Core::CoreWindow::GetForCurrentThread();
       while (!finished)
       {
-         if (corewindow)
-            corewindow.Dispatcher().ProcessEvents(winrt::Windows::UI::Core::CoreProcessEventsOption::ProcessAllIfPresent);
+         if (corewindow) {
+            corewindow->Dispatcher->ProcessEvents(Windows::UI::Core::CoreProcessEventsOption::ProcessAllIfPresent);
+         }
       }
 
       if (exception != nullptr)
-         std::rethrow_exception(exception);
+         throw exception;
       return result;
    }
 
-   /* Overload for IAsyncAction (void return) */
-   inline void RunAsync(std::function<winrt::Windows::Foundation::IAsyncAction()> func)
-   {
-      volatile bool finished = false;
-      std::exception_ptr exception = nullptr;
-
-      auto op = func();
-      op.Completed([&finished, &exception](
-         winrt::Windows::Foundation::IAsyncAction const& sender,
-         winrt::Windows::Foundation::AsyncStatus status)
-      {
-         try
-         {
-            if (status == winrt::Windows::Foundation::AsyncStatus::Error)
-               winrt::throw_hresult(sender.ErrorCode());
-         }
-         catch (...)
-         {
-            exception = std::current_exception();
-         }
-         finished = true;
-      });
-
-      /* Don't stall the UI thread - prevents a deadlock */
-      auto corewindow = winrt::Windows::UI::Core::CoreWindow::GetForCurrentThread();
-      while (!finished)
-      {
-         if (corewindow)
-            corewindow.Dispatcher().ProcessEvents(winrt::Windows::UI::Core::CoreProcessEventsOption::ProcessAllIfPresent);
-      }
-
-      if (exception != nullptr)
-         std::rethrow_exception(exception);
-   }
-
    template<typename T>
-   T RunAsyncAndCatchErrors(std::function<winrt::Windows::Foundation::IAsyncOperation<T>()> func, T valueOnError)
+   T RunAsyncAndCatchErrors(std::function<concurrency::task<T>()> func, T valueOnError)
    {
       try
       {
          return RunAsync<T>(func);
       }
-      catch (winrt::hresult_error const&)
+      catch (Platform::Exception ^ e)
       {
          return valueOnError;
-      }
-      catch (...)
-      {
-         return valueOnError;
-      }
-   }
-
-   /* Overload for IAsyncAction (void return) */
-   inline bool RunAsyncAndCatchErrors(std::function<winrt::Windows::Foundation::IAsyncAction()> func)
-   {
-      try
-      {
-         RunAsync(func);
-         return true;
-      }
-      catch (winrt::hresult_error const&)
-      {
-         return false;
-      }
-      catch (...)
-      {
-         return false;
       }
    }
 }
+#endif
+#endif

@@ -42,16 +42,6 @@ RETRO_BEGIN_DECLS
 #define CORE_INFO_SAVESTATE_SERIALIZED    2
 #define CORE_INFO_SAVESTATE_DETERMINISTIC 3
 
-/* Bit flags for core_info_t.flags (MEM-2: pack bools) */
-#define CORE_INFO_FLAG_HAS_INFO                    (1 << 0)
-#define CORE_INFO_FLAG_SUPPORTS_NO_GAME            (1 << 1)
-#define CORE_INFO_FLAG_SINGLE_PURPOSE              (1 << 2)
-#define CORE_INFO_FLAG_DATABASE_MATCH_ARCHIVE_MEMBER (1 << 3)
-#define CORE_INFO_FLAG_IS_EXPERIMENTAL             (1 << 4)
-#define CORE_INFO_FLAG_IS_LOCKED                   (1 << 5)
-#define CORE_INFO_FLAG_IS_STANDALONE_EXEMPT        (1 << 6)
-#define CORE_INFO_FLAG_IS_INSTALLED                (1 << 7)
-
 enum core_info_list_qsort_type
 {
    CORE_INFO_LIST_SORT_PATH = 0,
@@ -112,7 +102,14 @@ typedef struct
    core_file_id_t core_file_id; /* ptr alignment */
    size_t firmware_count;
    uint32_t savestate_support_level;
-   uint8_t flags;              /* packed bools, see CORE_INFO_FLAG_* */
+   bool has_info;
+   bool supports_no_game;
+   bool single_purpose;
+   bool database_match_archive_member;
+   bool is_experimental;
+   bool is_locked;
+   bool is_standalone_exempt;
+   bool is_installed;
 } core_info_t;
 
 /* A subset of core_info parameters required for
@@ -158,7 +155,7 @@ typedef struct core_info_state core_info_state_t;
 void core_info_list_get_supported_cores(core_info_list_t *list,
       const char *path, const core_info_t **infos, size_t *num_infos);
 
-size_t core_info_list_get_display_name(core_info_list_t *list,
+bool core_info_list_get_display_name(core_info_list_t *list,
       const char *core_path, char *s, size_t len);
 
 /* Returns core_info parameters required for
@@ -183,19 +180,13 @@ bool core_info_init_list(const char *path_info, const char *dir_cores,
       const char *exts, bool show_hidden_files,
       bool enable_cache, bool *cache_supported);
 
-/* Returns true if the current core info list was built with the
- * given parameters, i.e. a rescan with these parameters would be
- * redundant. */
-bool core_info_list_is_current(const char *path_info,
-      const char *dir_cores, bool dir_show_hidden_files,
-      bool enable_cache);
-
 bool core_info_get_list(core_info_list_t **core);
 
 /* Returns number of installed cores */
 size_t core_info_count(void);
 
-bool core_info_list_update_missing_firmware(core_info_ctx_firmware_t *info);
+bool core_info_list_update_missing_firmware(core_info_ctx_firmware_t *info,
+      bool *set_missing_bios);
 
 bool core_info_find(const char *core_path,
       core_info_t **core_info);
@@ -211,21 +202,13 @@ void core_info_qsort(core_info_list_t *core_info_list, enum core_info_list_qsort
 bool core_info_list_get_info(core_info_list_t *core_info_list,
       core_info_t *out_info, const char *core_path);
 
+bool core_info_hw_api_supported(core_info_t *info);
+
 /* Convenience wrapper functions used to interpret
  * the 'savestate_support_level' parameter of
  * the currently loaded core. If no core is
  * loaded, will return 'true' (since full
  * savestate functionality is assumed by default) */
-/* Runtime savestate probe seam. The frontend may register a callback that
- * reports whether the currently running core can serialize its state (a
- * nonzero retro_serialize_size()). When registered, it lets a running core
- * override stale info-file metadata for BASIC savestate support. It is
- * optional: core_info.c stays linkable without the runloop/retroarch
- * backend (e.g. the database-task CI sample) when no probe is set. */
-typedef bool (*core_info_savestate_probe_t)(void);
-
-void core_info_set_savestate_probe(core_info_savestate_probe_t probe);
-
 bool core_info_current_supports_savestate(void);
 bool core_info_current_supports_rewind(void);
 bool core_info_current_supports_netplay(void);

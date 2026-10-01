@@ -60,18 +60,20 @@
  * the IPU hardware scaler */
 bool dingux_ipu_set_downscaling_enable(bool enable)
 {
-#if !defined(DINGUX_BETA)
+#if defined(DINGUX_BETA)
+   return true;
+#else
    const char *path       = DINGUX_ALLOW_DOWNSCALING_FILE;
    const char *enable_str = enable ? "1" : "0";
+
    /* Check whether file exists */
    if (!path_is_valid(path))
       return false;
+
    /* Write enable state to file */
-   if (!filestream_write_file(
-            path, enable_str, 1))
-      return false;
+   return filestream_write_file(
+         path, enable_str, 1);
 #endif
-   return true;
 }
 
 /* Sets the video scaling mode when using the
@@ -192,14 +194,20 @@ float dingux_set_video_refresh_rate(enum dingux_refresh_rate refresh_rate)
    const char *refresh_rate_str = "60";
 
    /* Check filter type */
-   if (refresh_rate == DINGUX_REFRESH_RATE_50HZ)
+   switch (refresh_rate)
    {
-      refresh_rate_float     = 50.0f;
-      refresh_rate_str       = "50";
+      case DINGUX_REFRESH_RATE_50HZ:
+         refresh_rate_float = 50.0f;
+         refresh_rate_str   = "50";
+         break;
+      default:
+         /* Refresh rate is already set to 60 Hz
+          * by default */
+         break;
    }
 
    if (setenv(DINGUX_VIDEO_REFRESHRATE_ENVAR, refresh_rate_str, 1) != 0)
-      return 0.0f;
+      refresh_rate_float = 0.0f;
 
    return refresh_rate_float;
 }
@@ -209,16 +217,22 @@ float dingux_set_video_refresh_rate(enum dingux_refresh_rate refresh_rate)
 bool dingux_get_video_refresh_rate(enum dingux_refresh_rate *refresh_rate)
 {
    const char *refresh_rate_str = getenv(DINGUX_VIDEO_REFRESHRATE_ENVAR);
+
    /* If environment variable is unset, refresh
     * rate defaults to 60 Hz */
    if (!refresh_rate_str)
+   {
       *refresh_rate = DINGUX_REFRESH_RATE_60HZ;
-   else if (string_is_equal(refresh_rate_str, "60"))
+      return true;
+   }
+
+   if (string_is_equal(refresh_rate_str, "60"))
       *refresh_rate = DINGUX_REFRESH_RATE_60HZ;
    else if (string_is_equal(refresh_rate_str, "50"))
       *refresh_rate = DINGUX_REFRESH_RATE_50HZ;
    else
       return false;
+
    return true;
 }
 #endif
@@ -231,13 +245,11 @@ bool dingux_ipu_reset(void)
    unsetenv(DINGUX_SCALING_MODE_ENVAR);
    unsetenv(DINGUX_SCALING_SHARPNESS_ENVAR);
    unsetenv(DINGUX_VIDEO_REFRESHRATE_ENVAR);
-#else
-   if (!dingux_ipu_set_scaling_mode(true, false))
-      return false;
-   if (!dingux_ipu_set_filter_type(DINGUX_IPU_FILTER_BICUBIC))
-      return false;
-#endif
    return true;
+#else
+   return dingux_ipu_set_scaling_mode(true, false) &&
+          dingux_ipu_set_filter_type(DINGUX_IPU_FILTER_BICUBIC);
+#endif
 }
 
 #if defined(RETROFW)
@@ -254,10 +266,14 @@ static uint64_t read_battery_ignore_size(const char *path)
 
    memset(file_buf, 0, sizeof(file_buf));
 
-   if (!(file = filestream_open(path,
+   file              = filestream_open(path,
          RETRO_VFS_FILE_ACCESS_READ,
-         RETRO_VFS_FILE_ACCESS_HINT_NONE)))
+         RETRO_VFS_FILE_ACCESS_HINT_NONE);
+
+   if (!file)
+   {
       return -1;
+   }
 
    file_len = filestream_read(file, file_buf, sizeof(file_buf) - 1);
    if (filestream_close(file) != 0)
@@ -275,32 +291,25 @@ int retrofw_get_battery_level(enum frontend_powerstate *state)
    /* retrofw battery only provides "voltage_now". Values are based on gmenu2x with some interpolation */
    uint32_t rawval = read_battery_ignore_size(RETROFW_BATTERY_VOLTAGE_NOW_FILE);
    int voltage_now = rawval & 0x7fffffff;
-   if (voltage_now > 10000)
-   {
+   if (voltage_now > 10000) {
       *state = FRONTEND_POWERSTATE_NONE;
       return -1;
    }
-   if (rawval & 0x80000000)
-   {
+   if (rawval & 0x80000000) {
       *state = FRONTEND_POWERSTATE_CHARGING;
       if (voltage_now > 4000)
-         *state = FRONTEND_POWERSTATE_CHARGED;
-   }
-   else
+	 *state = FRONTEND_POWERSTATE_CHARGED;
+   } else
       *state = FRONTEND_POWERSTATE_ON_POWER_SOURCE;
-   if (voltage_now < 0)
-      return -1; /* voltage_now not available */
-   if (voltage_now > 4000)
-      return 100;
-   if (voltage_now > 3700)
-      return 40 + (voltage_now - 3700) / 5;
-   if (voltage_now > 3520)
-      return 20 + (voltage_now - 3520) / 9;
-   if (voltage_now > 3330)
-      return 1  + (voltage_now - 3330) * 10;
+   if (voltage_now < 0) return -1;     // voltage_now not available
+   if (voltage_now > 4000) return 100;
+   if (voltage_now > 3700) return 40 + (voltage_now - 3700) / 5;
+   if (voltage_now > 3520) return 20 + (voltage_now - 3520) / 9;
+   if (voltage_now > 3330) return 1 + (voltage_now - 3330) * 10;
    return 0;
 }
 #else
+
 static int dingux_read_battery_sys_file(const char *path)
 {
    int64_t file_len   = 0;
@@ -309,21 +318,13 @@ static int dingux_read_battery_sys_file(const char *path)
 
    /* Check whether file exists */
    if (!path_is_valid(path))
-      return -1;
+      goto error;
 
    /* Read file */
    if (!filestream_read_file(path, (void**)&file_buf, &file_len) ||
        (file_len == 0) ||
        !file_buf)
-   {
-      if (file_buf)
-      {
-         free(file_buf);
-         file_buf = NULL;
-      }
-
-      return -1;
-   }
+      goto error;
 
    /* Convert to integer */
    sys_file_value = atoi(file_buf);
@@ -331,6 +332,15 @@ static int dingux_read_battery_sys_file(const char *path)
    file_buf = NULL;
 
    return sys_file_value;
+
+error:
+   if (file_buf)
+   {
+      free(file_buf);
+      file_buf = NULL;
+   }
+
+   return -1;
 }
 
 /* Fetches internal battery level */
@@ -357,8 +367,8 @@ int dingux_get_battery_level(void)
    if (voltage_now < 0)
       return -1;
 
-   if (   (voltage_max <= voltage_min)
-       || (voltage_now <  voltage_min))
+   if ((voltage_max <= voltage_min) ||
+       (voltage_now <  voltage_min))
       return -1;
 
    return (int)(((voltage_now - voltage_min) * 100) / (voltage_max - voltage_min));
@@ -366,33 +376,20 @@ int dingux_get_battery_level(void)
    /* miyoo-battery only provides "voltage_now". Results are based on
     * value distribution while running a game at max load. */
    int voltage_now = dingux_read_battery_sys_file(MIYOO_BATTERY_VOLTAGE_NOW_FILE);
-   if (voltage_now < 0)
-      return -1;     /* voltage_now not available */
-   if (voltage_now > 4300)
-      return 100;    /* 4320 */
-   if (voltage_now > 4200)
-      return 90;     /* 4230 */
-   if (voltage_now > 4100)
-      return 80;     /* 4140 */
-   if (voltage_now > 4000)
-      return 70;     /* 4050 */
-   if (voltage_now > 3900)
-      return 60;     /* 3960 */
-   if (voltage_now > 3800)
-      return 50;     /* 3870 */
-   if (voltage_now > 3700)
-      return 40;     /* 3780 */
-   if (voltage_now > 3600)
-      return 30;     /* 3690 */
-   if (voltage_now > 3550)
-      return 20;     /* 3600 */
-   if (voltage_now > 3500)
-      return 10;     /* 3510 */
-   if (voltage_now > 3400)
-      return 5;      /* 3420 */
-   if (voltage_now > 3300)
-      return 1;      /* 3330 */
-   return 0;         /* 3240 */
+   if (voltage_now < 0) return -1;     // voltage_now not available
+   if (voltage_now > 4300) return 100; // 4320
+   if (voltage_now > 4200) return 90;  // 4230
+   if (voltage_now > 4100) return 80;  // 4140
+   if (voltage_now > 4000) return 70;  // 4050
+   if (voltage_now > 3900) return 60;  // 3960
+   if (voltage_now > 3800) return 50;  // 3870
+   if (voltage_now > 3700) return 40;  // 3780
+   if (voltage_now > 3600) return 30;  // 3690
+   if (voltage_now > 3550) return 20;  // 3600
+   if (voltage_now > 3500) return 10;  // 3510
+   if (voltage_now > 3400) return 5;   // 3420
+   if (voltage_now > 3300) return 1;   // 3330
+   return 0;                           // 3240
 #else
    return dingux_read_battery_sys_file(DINGUX_BATTERY_CAPACITY_FILE);
 #endif
@@ -401,14 +398,16 @@ int dingux_get_battery_level(void)
 
 /* Fetches the path of the base 'retroarch'
  * directory */
-size_t dingux_get_base_path(char *s, size_t len)
+void dingux_get_base_path(char *path, size_t len)
 {
    const char *home             = NULL;
 #if defined(RS90)
    struct string_list *dir_list = NULL;
 #endif
-   if (!s || (len < 1))
-      return 0;
+
+   if (!path || (len < 1))
+      return;
+
 #if defined(RS90)
    /* The RS-90 home directory is located on the
     * device's internal storage. This has limited
@@ -418,10 +417,12 @@ size_t dingux_get_base_path(char *s, size_t len)
     * path on the external microsd card */
 
    /* Get list of directories in /media */
-   if ((dir_list = dir_list_new(DINGUX_RS90_MEDIA_PATH,
-         NULL, true, true, false, false)))
+   dir_list = dir_list_new(DINGUX_RS90_MEDIA_PATH,
+         NULL, true, true, false, false);
+
+   if (dir_list)
    {
-      size_t i, _len  = 0;
+      size_t i;
       bool path_found = false;
 
       for (i = 0; i < dir_list->size; i++)
@@ -430,21 +431,21 @@ size_t dingux_get_base_path(char *s, size_t len)
          int dir_type         = dir_list->elems[i].attr.i;
 
          /* Skip files and invalid entries */
-         if (  (dir_type != RARCH_DIRECTORY)
-             || (!dir_path || !*dir_path)
-             || string_is_equal(dir_path, DINGUX_RS90_DATA_PATH))
+         if ((dir_type != RARCH_DIRECTORY) ||
+             string_is_empty(dir_path) ||
+             string_is_equal(dir_path, DINGUX_RS90_DATA_PATH))
             continue;
 
          /* Build 'retroarch' subdirectory path */
-         _len = snprintf(s, len, "%s%c%s", dir_path,
+         snprintf(path, len, "%s%c%s", dir_path,
                PATH_DEFAULT_SLASH_C(), DINGUX_BASE_DIR);
 
          /* We can use this subdirectory path if:
           * - Directory corresponds to an unlabelled
           *   microsd card
           * - Subdirectory already exists */
-         if (   string_is_equal(dir_path, DINGUX_RS90_DEFAULT_SD_PATH)
-             || path_is_directory(s))
+         if (string_is_equal(dir_path, DINGUX_RS90_DEFAULT_SD_PATH) ||
+             path_is_directory(path))
          {
             path_found = true;
             break;
@@ -454,18 +455,20 @@ size_t dingux_get_base_path(char *s, size_t len)
       dir_list_free(dir_list);
 
       if (path_found)
-         return _len;
+         return;
    }
 #endif
-   /* Get home directory
-    *
-    * If a home directory is found (which should
+   /* Get home directory */
+   home = getenv(DINGUX_HOME_ENVAR);
+
+   /* If a home directory is found (which should
     * always be the case), base path is "$HOME/.retroarch"
     * > If home path is unset, use existing UNIX frontend
     *   driver default of "retroarch" (this will ultimately
     *   fail, but there is nothing else we can do...) */
-   if ((home = getenv(DINGUX_HOME_ENVAR)))
-      return snprintf(s, len, "%s%c%s", home,
+   if (home)
+      snprintf(path, len, "%s%c%s", home,
             PATH_DEFAULT_SLASH_C(), DINGUX_BASE_DIR_HIDDEN);
-   return strlcpy(s, DINGUX_BASE_DIR, len);
+   else
+      strlcpy(path, DINGUX_BASE_DIR, len);
 }

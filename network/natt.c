@@ -1,5 +1,5 @@
 /*  RetroArch - A frontend for libretro.
- *  Copyright (C) 2021-2022 - Libretro team
+ *  Copyright (C) 2021-2022 - Roberto V. Rampim
  *
  *  RetroArch is free software: you can redistribute it and/or modify it under the terms
  *  of the GNU General Public License as published by the Free Software Found-
@@ -16,21 +16,54 @@
 #include <stdlib.h>
 #include <stdio.h>
 
-#include <string/stdstring.h>
 #include <formats/rxml.h>
 #include <features/features_cpu.h>
-
 #include <retro_miscellaneous.h>
 
-#ifdef HAVE_IFINFO
+#include <string/stdstring.h>
+
+#ifndef HAVE_SOCKET_LEGACY
 #include <net/net_ifinfo.h>
 #endif
 
 #include "../tasks/tasks_internal.h"
 
 #include "natt.h"
-#include <compat/strl.h>
-#include "natt_desc.h"
+
+static bool translate_addr(struct sockaddr_in *addr,
+   char *host, size_t hostlen, char *port, size_t portlen)
+{
+#ifndef HAVE_SOCKET_LEGACY
+   if (getnameinfo((struct sockaddr *) addr, sizeof(*addr),
+         host, hostlen, port, portlen,
+         NI_NUMERICHOST | NI_NUMERICSERV))
+      return false;
+#else
+   /* We need to do the conversion/translation manually. */
+   {
+      int res;
+      uint8_t  *addr8 = (uint8_t *) &addr->sin_addr;
+      uint16_t port16 = ntohs(addr->sin_port);
+
+      if (host)
+      {
+         res = snprintf(host, hostlen, "%d.%d.%d.%d",
+            (int) addr8[0], (int) addr8[1],
+            (int) addr8[2], (int) addr8[3]);
+         if (res < 0 || res >= hostlen)
+            return false;
+      }
+      if (port)
+      {
+         res = snprintf(port, portlen, "%hu", port16);
+         if (res < 0 || res >= portlen)
+            return false;
+      }
+   }
+#endif
+
+   return true;
+}
 
 bool natt_init(struct natt_discovery *discovery)
 {
@@ -52,20 +85,18 @@ bool natt_init(struct natt_discovery *discovery)
 
    hints.ai_family   = AF_INET;
    hints.ai_socktype = SOCK_DGRAM;
-   hints.ai_flags    = AI_NUMERICHOST | AI_NUMERICSERV;
    if (getaddrinfo_retro("239.255.255.250", "1900", &hints, &msearch_addr))
       goto failure;
    if (!msearch_addr)
       goto failure;
 
-   fd = socket_init((void**)&bind_addr, 0, NULL,
-      SOCKET_TYPE_DATAGRAM, AF_INET);
+   fd = socket_init((void **) &bind_addr, 0, NULL, SOCKET_TYPE_DATAGRAM);
    if (fd < 0)
       goto failure;
    if (!bind_addr)
       goto failure;
 
-#ifdef HAVE_IFINFO
+#ifndef HAVE_SOCKET_LEGACY
    {
       struct sockaddr_in *addr = (struct sockaddr_in *) bind_addr->ai_addr;
 
@@ -130,14 +161,18 @@ done:
 bool natt_device_next(struct natt_discovery *discovery,
    struct natt_device *device)
 {
+   fd_set  fds;
    char    buf[2048];
    ssize_t recvd;
    char    *data;
    size_t  remaining;
-   struct sockaddr_storage addr = {0};
-   socklen_t addr_size          = sizeof(addr);
+   struct timeval tv   = {0};
+   socklen_t addr_size = sizeof(device->addr);
 
-   if (!discovery || !device || discovery->fd < 0)
+   if (!discovery || !device)
+      return false;
+
+   if (discovery->fd < 0)
       return false;
 
    /* This is faster than memsetting the whole thing. */
@@ -148,42 +183,33 @@ bool natt_device_next(struct natt_discovery *discovery,
    *device->service_type = '\0';
    device->busy          = false;
 
-   recvd = recvfrom(discovery->fd, buf, sizeof(buf), 0,
-      (struct sockaddr*)&addr, &addr_size);
-   if (recvd < 0)
-   {
-      /* If there was no data, check for timeout. */
-      if (isagain((int)recvd))
-         return cpu_features_get_time_usec() < discovery->timeout;
+   /* Check our file descriptor to see if a device sent data to it. */
+   FD_ZERO(&fds);
+   FD_SET(discovery->fd, &fds);
+   if (socket_select(discovery->fd + 1, &fds, NULL, NULL, &tv) < 0)
       return false;
-   }
-   /* Zero-length datagrams are valid, but we can't do anything with them.
-      Don't treat them as an error. */
-   if (!recvd)
-      return true;
+   /* If there was no data, check for timeout. */
+   if (!FD_ISSET(discovery->fd, &fds))
+      return cpu_features_get_time_usec() < discovery->timeout;
 
-   /* Make sure we've an IPv4. */
-   if (!addr_6to4(&addr))
-      return true;
-
-   memcpy(&device->addr, &addr, sizeof(device->addr));
+   recvd = recvfrom(discovery->fd, buf, sizeof(buf), 0,
+      (struct sockaddr *) &device->addr, &addr_size);
+   if (recvd <= 0)
+      return false;
 
    /* Parse the data we received.
       We are only looking for the 'Location' HTTP header. */
    data      = buf;
-   remaining = (size_t)recvd;
+   remaining = (size_t) recvd;
    do
    {
-      char *lnbreak = (char*)memchr(data, '\n', remaining);
-
+      char *lnbreak = (char *) memchr(data, '\n', remaining);
       if (!lnbreak)
          break;
-
       *lnbreak++ = '\0';
 
       /* This also gets rid of any trailing carriage return. */
-      string_trim_whitespace_right(data);
-      string_trim_whitespace_left(data);
+      string_trim_whitespace(data);
 
       if (string_starts_with_case_insensitive(data, "Location:"))
       {
@@ -200,7 +226,7 @@ bool natt_device_next(struct natt_discovery *discovery,
          }
       }
 
-      remaining -= (size_t)lnbreak - (size_t)data;
+      remaining -= (size_t) lnbreak - (size_t) data;
       data = lnbreak;
    } while (remaining);
 
@@ -221,8 +247,103 @@ void natt_device_end(struct natt_discovery *discovery)
    }
 }
 
+static bool build_control_url(rxml_node_t *control_url,
+   struct natt_device *device)
+{
+   if (string_is_empty(control_url->data))
+      return false;
+
+   /* Do we already have the full url? */
+   if (string_starts_with_case_insensitive(control_url->data, "http://"))
+   {
+      /* Make sure the control URL isn't too long. */
+      if (strlcpy(device->control, control_url->data,
+         sizeof(device->control)) >= sizeof(device->control))
+      {
+         *device->control = '\0';
+         return false;
+      }
+   }
+   else
+   {
+      /* We don't have a full url.
+         Build one using the desc url. */
+      char *control_path;
+
+      strlcpy(device->control, device->desc,
+         sizeof(device->control));
+
+      control_path = (char *) strchr(device->control +
+         STRLEN_CONST("http://"), '/');
+
+      if (control_path)
+         *control_path = '\0';
+      if (control_url->data[0] != '/')
+         strlcat(device->control, "/", sizeof(device->control));
+      /* Make sure the control URL isn't too long. */
+      if (strlcat(device->control, control_url->data,
+         sizeof(device->control)) >= sizeof(device->control))
+      {
+         *device->control = '\0';
+         return false;
+      }
+   }
+
+   return true;
+}
+
+static bool parse_desc_node(rxml_node_t *node,
+   struct natt_device *device)
+{
+   rxml_node_t *child = node->children;
+
+   if (!child)
+      return false;
+
+   /* We only care for services. */
+   if (string_is_equal_case_insensitive(node->name, "service"))
+   {
+      rxml_node_t *service_type = NULL;
+      rxml_node_t *control_url  = NULL;
+
+      do
+      {
+        if (string_is_equal_case_insensitive(child->name, "serviceType"))
+           service_type = child;
+        else if (string_is_equal_case_insensitive(child->name, "controlURL"))
+           control_url  = child;
+        if (service_type && control_url)
+           break;
+      } while ((child = child->next));
+
+      if (!service_type || !control_url)
+         return false;
+
+      /* These two are the only IGD service types we can work with. */
+      if (!strstr(service_type->data, ":WANIPConnection:") &&
+            !strstr(service_type->data, ":WANPPPConnection:"))
+         return false;
+      if (!build_control_url(control_url, device))
+         return false;
+
+      strlcpy(device->service_type, service_type->data,
+         sizeof(device->service_type));
+
+      return true;
+   }
+
+   /* XML recursion */
+   do
+   {
+      if (parse_desc_node(child, device))
+         return true;
+   } while ((child = child->next));
+
+   return false;
+}
+
 static void natt_query_device_cb(retro_task_t *task, void *task_data,
-   void *user_data, const char *err)
+   void *user_data, const char *error)
 {
    char *xml                  = NULL;
    rxml_document_t *document  = NULL;
@@ -232,7 +353,7 @@ static void natt_query_device_cb(retro_task_t *task, void *task_data,
    *device->control           = '\0';
    *device->service_type      = '\0';
 
-   if (err)
+   if (error)
       goto done;
    if (!data || !data->data || !data->len)
       goto done;
@@ -251,7 +372,7 @@ static void natt_query_device_cb(retro_task_t *task, void *task_data,
    {
       rxml_node_t *root = rxml_root_node(document);
       if (root)
-         natt_parse_desc_node(root, device);
+         parse_desc_node(root, device);
 
       rxml_free_document(document);
    }
@@ -262,9 +383,15 @@ done:
    device->busy = false;
 }
 
-bool natt_query_device(struct natt_device *device)
+bool natt_query_device(struct natt_device *device, bool block)
 {
-   if (!device || !*device->desc || device->busy)
+   if (!device)
+      return false;
+
+   if (string_is_empty(device->desc))
+      return false;
+
+   if (device->busy)
       return false;
 
    device->busy = true;
@@ -275,10 +402,13 @@ bool natt_query_device(struct natt_device *device)
       return false;
    }
 
+   if (block)
+      task_queue_wait(NULL, NULL);
+
    return true;
 }
 
-static bool natt_parse_external_address_node(rxml_node_t *node,
+static bool parse_external_address_node(rxml_node_t *node,
    struct natt_device *device)
 {
    if (string_is_equal_case_insensitive(node->name, "NewExternalIPAddress"))
@@ -286,11 +416,10 @@ static bool natt_parse_external_address_node(rxml_node_t *node,
       struct addrinfo *addr = NULL;
       struct addrinfo hints = {0};
 
-      if (!node->data || !*node->data)
+      if (string_is_empty(node->data))
          return false;
 
       hints.ai_family = AF_INET;
-      hints.ai_flags  = AI_NUMERICHOST | AI_NUMERICSERV;
       if (getaddrinfo_retro(node->data, "0", &hints, &addr))
          return false;
       if (!addr)
@@ -310,7 +439,7 @@ static bool natt_parse_external_address_node(rxml_node_t *node,
       {
          do
          {
-            if (natt_parse_external_address_node(child, device))
+            if (parse_external_address_node(child, device))
                return true;
          } while ((child = child->next));
       }
@@ -320,7 +449,7 @@ static bool natt_parse_external_address_node(rxml_node_t *node,
 }
 
 static void natt_external_address_cb(retro_task_t *task, void *task_data,
-   void *user_data, const char *err)
+   void *user_data, const char *error)
 {
    char *xml                  = NULL;
    rxml_document_t *document  = NULL;
@@ -329,7 +458,7 @@ static void natt_external_address_cb(retro_task_t *task, void *task_data,
 
    memset(&device->ext_addr, 0, sizeof(device->ext_addr));
 
-   if (err)
+   if (error)
       goto done;
    if (!data || !data->data || !data->len)
       goto done;
@@ -348,7 +477,7 @@ static void natt_external_address_cb(retro_task_t *task, void *task_data,
    {
       rxml_node_t *root = rxml_root_node(document);
       if (root)
-         natt_parse_external_address_node(root, device);
+         parse_external_address_node(root, device);
 
       rxml_free_document(document);
    }
@@ -359,7 +488,7 @@ done:
    device->busy = false;
 }
 
-static bool natt_parse_open_port_node(rxml_node_t *node,
+static bool parse_open_port_node(rxml_node_t *node,
    struct natt_request *request)
 {
    if (string_is_equal_case_insensitive(node->name, "u:AddPortMappingResponse"))
@@ -372,15 +501,12 @@ static bool natt_parse_open_port_node(rxml_node_t *node,
    {
       uint16_t ext_port = 0;
 
-      if (!node->data || !*node->data)
+      if (string_is_empty(node->data))
          return false;
 
-      {
-         unsigned long tmp = strtoul(node->data, NULL, 10);
-         if (tmp == 0 || tmp > 0xFFFF)
-            return false;
-         ext_port = (uint16_t)tmp;
-      }
+      sscanf(node->data, "%hu", &ext_port);
+      if (!ext_port)
+         return false;
 
       request->addr.sin_port = htons(ext_port);
       request->success = true;
@@ -396,7 +522,7 @@ static bool natt_parse_open_port_node(rxml_node_t *node,
       {
          do
          {
-            if (natt_parse_open_port_node(child, request))
+            if (parse_open_port_node(child, request))
                return true;
          } while ((child = child->next));
       }
@@ -406,7 +532,7 @@ static bool natt_parse_open_port_node(rxml_node_t *node,
 }
 
 static void natt_open_port_cb(retro_task_t *task, void *task_data,
-   void *user_data, const char *err)
+   void *user_data, const char *error)
 {
    char *xml                    = NULL;
    rxml_document_t *document    = NULL;
@@ -416,7 +542,7 @@ static void natt_open_port_cb(retro_task_t *task, void *task_data,
 
    request->success             = false;
 
-   if (err)
+   if (error)
       goto done;
    if (!data || !data->data || !data->len)
       goto done;
@@ -435,7 +561,7 @@ static void natt_open_port_cb(retro_task_t *task, void *task_data,
    {
       rxml_node_t *root = rxml_root_node(document);
       if (root)
-         natt_parse_open_port_node(root, request);
+         parse_open_port_node(root, request);
 
       rxml_free_document(document);
    }
@@ -447,7 +573,7 @@ done:
 }
 
 static void natt_close_port_cb(retro_task_t *task, void *task_data,
-   void *user_data, const char *err)
+   void *user_data, const char *error)
 {
    http_transfer_data_t *data   = (http_transfer_data_t*)task_data;
    struct natt_request *request = (struct natt_request*)user_data;
@@ -455,7 +581,7 @@ static void natt_close_port_cb(retro_task_t *task, void *task_data,
 
    request->success             = false;
 
-   if (err)
+   if (error)
       goto done;
    if (!data || !data->data || !data->len)
       goto done;
@@ -479,7 +605,7 @@ static bool natt_action(struct natt_device *device,
    char headers[512];
    void *obj;
 
-   if (!*device->control)
+   if (string_is_empty(device->control))
       return false;
 
    snprintf(headers, sizeof(headers), headers_tmpl,
@@ -497,7 +623,7 @@ static bool natt_action(struct natt_device *device,
       data, true, NULL, headers, cb, obj) != NULL;
 }
 
-bool natt_external_address(struct natt_device *device)
+bool natt_external_address(struct natt_device *device, bool block)
 {
    static const char tmpl[] =
       "<?xml version=\"1.0\"?>"
@@ -528,11 +654,15 @@ bool natt_external_address(struct natt_device *device)
       return false;
    }
 
+   if (block)
+      task_queue_wait(NULL, NULL);
+
    return true;
 }
 
 bool natt_open_port(struct natt_device *device,
-   struct natt_request *request, enum natt_forward_type forward_type)
+   struct natt_request *request, enum natt_forward_type forward_type,
+   bool block)
 {
    static const char tmpl[] =
       "<?xml version=\"1.0\"?>"
@@ -563,9 +693,8 @@ bool natt_open_port(struct natt_device *device,
    if (!request->addr.sin_port)
       return false;
 
-   if (getnameinfo_retro((struct sockaddr*)&request->addr,
-         sizeof(request->addr), host, sizeof(host), port, sizeof(port),
-         NI_NUMERICHOST | NI_NUMERICSERV))
+   if (!translate_addr(&request->addr,
+         host, sizeof(host), port, sizeof(port)))
       return false;
 
    action   = (forward_type == NATT_FORWARD_TYPE_ANY) ?
@@ -588,11 +717,14 @@ bool natt_open_port(struct natt_device *device,
       return false;
    }
 
+   if (block)
+      task_queue_wait(NULL, NULL);
+
    return true;
 }
 
 bool natt_close_port(struct natt_device *device,
-   struct natt_request *request)
+   struct natt_request *request, bool block)
 {
    static const char tmpl[] =
       "<?xml version=\"1.0\"?>"
@@ -618,8 +750,8 @@ bool natt_close_port(struct natt_device *device,
    if (!request->addr.sin_port)
       return false;
 
-   if (getnameinfo_retro((struct sockaddr*)&request->addr,
-         sizeof(request->addr), NULL, 0, port, sizeof(port), NI_NUMERICSERV))
+   if (!translate_addr(&request->addr,
+         NULL, 0, port, sizeof(port)))
       return false;
 
    protocol = (request->proto == SOCKET_PROTOCOL_UDP) ?
@@ -637,6 +769,9 @@ bool natt_close_port(struct natt_device *device,
       device->busy = false;
       return false;
    }
+
+   if (block)
+      task_queue_wait(NULL, NULL);
 
    return true;
 }

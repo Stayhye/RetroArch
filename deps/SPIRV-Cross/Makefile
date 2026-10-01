@@ -1,6 +1,3 @@
-# Copyright 2016-2021 The Khronos Group Inc.
-# SPDX-License-Identifier: Apache-2.0
-
 TARGET := spirv-cross
 
 SOURCES := $(wildcard spirv_*.cpp)
@@ -13,7 +10,7 @@ STATIC_LIB := lib$(TARGET).a
 
 DEPS := $(OBJECTS:.o=.d) $(CLI_OBJECTS:.o=.d)
 
-CXXFLAGS += -std=c++11 -Wall -Wextra -Wshadow -Wno-deprecated-declarations
+CXXFLAGS += -std=c++11 -Wall -Wextra -Wshadow
 
 ifeq ($(DEBUG), 1)
 	CXXFLAGS += -O0 -g

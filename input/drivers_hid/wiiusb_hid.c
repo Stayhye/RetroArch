@@ -15,12 +15,8 @@
  */
 
 #include <stdlib.h>
-#include <unistd.h>
-#include <malloc.h>
 
 #include <gccore.h>
-#include <ogc/machine/processor.h>
-#include <retro_atomic.h>
 #include <rthreads/rthreads.h>
 
 #include "../input_defines.h"
@@ -42,29 +38,10 @@ typedef struct wiiusb_hid
    struct wiiusb_adapter *adapters_head;
 
    sthread_t *poll_thread;
-   /* Set by the thread tearing the driver down, read by the poll
-    * thread's loop. An atomic and not a volatile bool: volatile orders
-    * nothing between two threads. */
-   retro_atomic_int_t poll_thread_quit;
-
-   /* Wakes the poll thread: a read completed, a device arrived or left,
-    * a control message was queued, or it is time to stop. It used to
-    * come up every 10 ms instead, which also held every report back by
-    * up to that long. The signallers include IOS callbacks, which libogc
-    * runs in interrupt context, so this is a bare LWP thread queue and
-    * a pending flag rather than a mutex and condition - the pattern
-    * libogc's own synchronous IPC uses. */
-   lwpq_t wake_queue;
-   volatile u32 wake_pending;
-   bool wake_queue_inited;
+   volatile bool poll_thread_quit;
 
    /* helps on knowing if a new device has been inserted */
-   /* Raised by wiiusb_hid_change_cb, which libogc runs in interrupt
-    * context, and cleared by the poll thread. volatile rather than an
-    * atomic for the same reason the rest of this file's interrupt-shared
-    * state is: the writer is not a thread. It was a plain bool, which
-    * left the poll thread free to keep it in a register. */
-   volatile bool device_detected;
+   bool device_detected;
    /* helps on detecting that a device has just been removed */
    bool removal_cb;
 
@@ -92,39 +69,9 @@ struct wiiusb_adapter
    uint32_t send_control_size;
 };
 
-/* How many times a failed control write is retried before the
- * message is dropped.  These used to loop until success; a pad that
- * had been unplugged mid-message never succeeds, and the poll
- * thread - the one thread that reads every pad and honours
- * poll_thread_quit - was stuck in here for good. */
-#define WIIUSB_SC_RETRIES 3
-
-/* Callable from any thread and from interrupt context. */
-static void wiiusb_hid_wake(wiiusb_hid_t *hid)
-{
-   if (!hid || !hid->wake_queue_inited)
-      return;
-   hid->wake_pending = 1;
-   LWP_ThreadSignal(hid->wake_queue);
-}
-
-/* The poll thread's wait. With interrupts off, a signal cannot land
- * between the check and the sleep; the sleep switches away with them
- * off and they come back on in the next thread, as libogc does. */
-static void wiiusb_hid_wait(wiiusb_hid_t *hid)
-{
-   u32 level;
-   _CPU_ISR_Disable(level);
-   if (!hid->wake_pending)
-      LWP_ThreadSleep(hid->wake_queue);
-   hid->wake_pending = 0;
-   _CPU_ISR_Restore(level);
-}
-
 static void wiiusb_hid_process_control_message(struct wiiusb_adapter* adapter)
 {
-   int32_t r      = 0;
-   unsigned tries = WIIUSB_SC_RETRIES;
+   int32_t r;
    switch (adapter->send_control_type)
    {
       case WIIUSB_SC_INTMSG:
@@ -133,7 +80,7 @@ static void wiiusb_hid_process_control_message(struct wiiusb_adapter* adapter)
             r = USB_WriteIntrMsg(adapter->handle,
                adapter->endpoint_out, adapter->send_control_size,
                adapter->send_control_buffer);
-         } while (r < 0 && --tries);
+         } while (r < 0);
          break;
       case WIIUSB_SC_CTRLMSG:
          do
@@ -141,7 +88,7 @@ static void wiiusb_hid_process_control_message(struct wiiusb_adapter* adapter)
             r = USB_WriteCtrlMsg(adapter->handle, USB_REQTYPE_INTERFACE_SET,
                USB_REQ_SETREPORT, (USB_REPTYPE_FEATURE<<8) | 0xf4, 0x0,
                adapter->send_control_size, adapter->send_control_buffer);
-         } while (r < 0 && --tries);
+         } while (r < 0);
          break;
       case WIIUSB_SC_CTRLMSG2:
          do
@@ -149,14 +96,11 @@ static void wiiusb_hid_process_control_message(struct wiiusb_adapter* adapter)
             r = USB_WriteCtrlMsg(adapter->handle, USB_REQTYPE_INTERFACE_SET,
                   USB_REQ_SETREPORT, (USB_REPTYPE_OUTPUT<<8) | 0x01, 0x0,
                   adapter->send_control_size, adapter->send_control_buffer);
-         } while (r < 0 && --tries);
+         } while (r < 0);
          break;
       /*default:  any other case we do nothing */
    }
-   if (r < 0)
-      RARCH_WARN("[wiiusb] Control message to slot %d dropped after %d failed writes.\n",
-            adapter->slot, WIIUSB_SC_RETRIES);
-   /* Reset the control type: the mailbox is free for the next message. */
+   /* Reset the control type */
    adapter->send_control_type = WIIUSB_SC_NONE;
 }
 
@@ -167,62 +111,52 @@ static int32_t wiiusb_hid_read_cb(int32_t size, void *data)
 
    if (hid && hid->connections && size > 0)
       pad_connection_packet(&hid->connections[adapter->slot],
-            adapter->slot, adapter->data, size);
+            adapter->slot, adapter->data-1, size+1);
 
   if (adapter)
-  {
       adapter->busy = false;
-      wiiusb_hid_wake(hid);
-  }
 
   return size;
 }
 
 static void wiiusb_hid_device_send_control(void *data,
-      uint8_t *s, size_t len)
+      uint8_t* data_buf, size_t size)
 {
    uint8_t control_type;
    struct wiiusb_adapter *adapter = (struct wiiusb_adapter*)data;
-   if (!adapter || !s || !adapter->send_control_buffer)
-      return;
-
-   /* One message at a time.  The buffer is a single mailbox the poll
-    * thread sends from, and a blocking USB write in progress there is
-    * exactly when this thread gets to run (LWP switches on the
-    * block); writing the next message into it under the transfer
-    * handed the device a torn one.  The type is cleared when the
-    * send is done; until then the new message is dropped, which for
-    * rumble and LED updates means the next one wins. */
-   if (adapter->send_control_type != WIIUSB_SC_NONE)
+   if (!adapter || !data_buf || !adapter->send_control_buffer)
       return;
 
    /* first byte contains the type of control to use
-    * which can be NONE, INT_MSG, CTRL_MSG, CTRL_MSG2; the payload is
-    * what follows, and the mailbox is 128 bytes. */
-   if (len < 1 || len - 1 > 128)
-      return;
-   control_type               = s[0];
-   adapter->send_control_size = len - 1;
-   s++;
-   memcpy(adapter->send_control_buffer, s, adapter->send_control_size);
-   /* Publish last: the poll thread sends once it sees a type set. */
+    * which can be NONE, INT_MSG, CTRL_MSG, CTRL_MSG2 */
+   control_type = data_buf[0];
+   /* decrement size by one as we are getting rid of first byte */
+   adapter->send_control_size = size - 1;
+   /* increase the buffer address so we access the actual data */
+   data_buf++;
+   memcpy(adapter->send_control_buffer, data_buf,  adapter->send_control_size);
+   /* Activate it so it can be processed in the adapter thread */
    adapter->send_control_type = control_type;
-   wiiusb_hid_wake(adapter->hid);
 }
 
 static void wiiusb_hid_device_add_autodetect(unsigned idx,
       const char *device_name, const char *driver_name,
       uint16_t dev_vid, uint16_t dev_pid)
 {
-   input_autoconfigure_connect(device_name, NULL, NULL, "hid",
-         idx, dev_vid, dev_pid);
+   input_autoconfigure_connect(
+         device_name,
+         NULL,
+         "hid",
+         idx,
+         dev_vid,
+         dev_pid);
 }
 
 static void wiiusb_get_description(usb_device_entry *device,
       struct wiiusb_adapter *adapter, usb_devdesc *devdesc)
 {
-   unsigned i, k;
    unsigned char c;
+   unsigned i, k;
 
    for (c = 0; c < devdesc->bNumConfigurations; c++)
    {
@@ -350,13 +284,13 @@ static int wiiusb_hid_add_adapter(void *data, usb_device_entry *dev)
    if (!hid)
    {
       free(adapter);
-      RARCH_ERR("[wiiusb] Allocation of adapter failed.\n");
+      RARCH_ERR("Allocation of adapter failed.\n");
       return -1;
    }
 
    if (USB_OpenDevice(dev->device_id, dev->vid, dev->pid, &adapter->handle) < 0)
    {
-      RARCH_ERR("[wiiusb] Error opening device 0x%p (VID/PID: %04x:%04x).\n",
+      RARCH_ERR("Error opening device 0x%p (VID/PID: %04x:%04x).\n",
            dev->device_id, dev->vid, dev->pid);
       free(adapter);
       return -1;
@@ -370,17 +304,17 @@ static int wiiusb_hid_add_adapter(void *data, usb_device_entry *dev)
 
    if (adapter->endpoint_in == 0)
    {
-      RARCH_ERR("[wiiusb] Could not find HID config for device.\n");
+      RARCH_ERR("Could not find HID config for device.\n");
       goto error;
    }
 
    /* Allocate mem for the send control buffer, 32bit aligned */
    adapter->send_control_type   = WIIUSB_SC_NONE;
-   adapter->send_control_buffer = (uint8_t*)memalign(32, 128);
+   adapter->send_control_buffer = memalign(32, 128);
 
    if (!adapter->send_control_buffer)
    {
-      RARCH_ERR("[wiiusb] Error creating send control buffer.\n");
+      RARCH_ERR("Error creating send control buffer.\n");
       goto error;
    }
 
@@ -395,11 +329,11 @@ static int wiiusb_hid_add_adapter(void *data, usb_device_entry *dev)
 
    if (!pad_connection_has_interface(hid->connections, adapter->slot))
    {
-      RARCH_ERR("[wiiusb] Interface not found.\n");
+      RARCH_ERR(" Interface not found.\n");
       goto error;
    }
 
-   adapter->data      = (uint8_t*)memalign(32, 128);
+   adapter->data      = memalign(32, 128);
    adapter->hid       = hid;
    adapter->next      = hid->adapters_head;
    hid->adapters_head = adapter;
@@ -407,9 +341,9 @@ static int wiiusb_hid_add_adapter(void *data, usb_device_entry *dev)
    /*  Get the name from the interface */
    device_name = wiiusb_hid_joypad_name(hid, adapter->slot);
 
-   RARCH_LOG("[wiiusb] Interface found: \"%s\".\n", device_name);
+   RARCH_LOG("Interface found: [%s].\n", device_name);
 
-   RARCH_LOG("[wiiusb] Device 0x%p attached (VID/PID: %04x:%04x).\n",
+   RARCH_LOG("Device 0x%p attached (VID/PID: %04x:%04x).\n",
          adapter->device_id, desc.idVendor, desc.idProduct);
 
    wiiusb_hid_device_add_autodetect(adapter->slot,
@@ -485,7 +419,7 @@ static void wiiusb_hid_poll_thread(void *data)
    if (!hid)
       return;
 
-   while (!retro_atomic_load_acquire_int(&hid->poll_thread_quit))
+   while (!hid->poll_thread_quit)
    {
 
       /* first check for new devices */
@@ -514,9 +448,8 @@ static void wiiusb_hid_poll_thread(void *data)
                adapter->data, wiiusb_hid_read_cb, adapter);
       }
 
-      /* Until a read completes, a device changes, a control message
-       * is queued, or free() asks to stop. */
-      wiiusb_hid_wait(hid);
+      /* Wait 10 milliseconds to process again */
+      usleep(10000);
    }
 }
 
@@ -530,10 +463,7 @@ static int wiiusb_hid_change_cb(int result, void *usrdata)
    /* As it's not coming from the removal callback
       then we detected a new device being inserted */
   if (!hid->removal_cb)
-  {
     hid->device_detected = true;
-    wiiusb_hid_wake(hid);
-  }
   else
     hid->removal_cb      = false;
 
@@ -621,11 +551,11 @@ static int16_t wiiusb_hid_joypad_state(
       const uint32_t joyaxis = (binds[i].joyaxis != AXIS_NONE)
          ? binds[i].joyaxis : joypad_info->auto_binds[i].joyaxis;
       if (
-               (uint16_t)joykey != NO_BTN
+               (uint16_t)joykey != NO_BTN 
             && wiiusb_hid_joypad_button(data, port_idx, (uint16_t)joykey))
          ret |= ( 1 << i);
       else if (joyaxis != AXIS_NONE &&
-            ((float)abs(wiiusb_hid_joypad_axis(data, port_idx, joyaxis))
+            ((float)abs(wiiusb_hid_joypad_axis(data, port_idx, joyaxis)) 
              / 0x8000) > joypad_info->axis_threshold)
          ret |= (1 << i);
    }
@@ -653,13 +583,10 @@ static void wiiusb_hid_free(const void *data)
    if (!hid)
       return;
 
-   retro_atomic_store_release_int(&hid->poll_thread_quit, 1);
-   wiiusb_hid_wake(hid);
+   hid->poll_thread_quit = true;
 
    if (hid->poll_thread)
       sthread_join(hid->poll_thread);
-   if (hid->wake_queue_inited)
-      LWP_CloseQueue(hid->wake_queue);
 
    hid->manual_removal   = TRUE;
 
@@ -683,9 +610,6 @@ static void *wiiusb_hid_init(void)
    if (!hid)
       goto error;
 
-   /* Before the first goto error: free() stores through it. */
-   retro_atomic_int_init(&hid->poll_thread_quit, 0);
-
    connections = pad_connection_init(MAX_USERS);
 
    if (!connections)
@@ -696,19 +620,16 @@ static void *wiiusb_hid_init(void)
    hid->adapters_head    = NULL;
    hid->removal_cb       = FALSE;
    hid->manual_removal   = FALSE;
+   hid->poll_thread_quit = FALSE;
    /* we set it initially to TRUE so we force
     * to add the already connected pads */
    hid->device_detected  = TRUE;
-
-   if (LWP_InitQueue(&hid->wake_queue) < 0)
-      goto error;
-   hid->wake_queue_inited = true;
 
    hid->poll_thread      = sthread_create(wiiusb_hid_poll_thread, hid);
 
    if (!hid->poll_thread)
    {
-      RARCH_ERR("[wiiusb] Error initializing poll thread.\n");
+      RARCH_ERR("Error initializing poll thread.\n");
       goto error;
    }
 

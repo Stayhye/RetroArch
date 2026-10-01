@@ -20,7 +20,7 @@ extern "C" {
 static thread_local long long co_active_buffer[64];
 static thread_local cothread_t co_active_handle = 0;
 #ifndef CO_USE_INLINE_ASM
-static void (*co_swap)(cothread_t, cothread_t)  = 0;
+static void (*co_swap)(cothread_t, cothread_t) = 0;
 #endif
 
 #ifdef _WIN32
@@ -137,8 +137,9 @@ cothread_t co_active(void)
 cothread_t co_create(unsigned int size, void (*entrypoint)(void))
 {
    cothread_t handle;
+
 #ifndef CO_USE_INLINE_ASM
-   if (!co_swap)
+   if(!co_swap)
    {
       co_init();
       co_swap = (void (*)(cothread_t, cothread_t))co_swap_function;
@@ -151,15 +152,15 @@ cothread_t co_create(unsigned int size, void (*entrypoint)(void))
    size &= ~15; /* align stack to 16-byte boundary */
 
 #ifdef __GENODE__
-   if ((handle = (cothread_t)genode_alloc_secondary_stack(size)))
+   if((handle = (cothread_t)genode_alloc_secondary_stack(size)))
    {
-      long long *p        = (long long*)((char*)handle); /* OS returns top of stack */
-      *--p                = (long long)crash;            /* crash if entrypoint returns */
-      *--p                = (long long)entrypoint;       /* start of function */
-      *(long long*)handle = (long long)p;                /* stack pointer */
+      long long *p = (long long*)((char*)handle); /* OS returns top of stack */
+      *--p = (long long)crash;                    /* crash if entrypoint returns */
+      *--p = (long long)entrypoint;               /* start of function */
+      *(long long*)handle = (long long)p;         /* stack pointer */
    }
 #else
-   if ((handle = (cothread_t)malloc(size)))
+   if((handle = (cothread_t)malloc(size)))
    {
       long long *p = (long long*)((char*)handle + size); /* seek to top of stack */
       *--p = (long long)crash;                           /* crash if entrypoint returns */
@@ -192,28 +193,11 @@ void co_switch(cothread_t handle)
 #else
 #define ASM_PREFIX ""
 #endif
-/* The context swap takes both handles as arguments and never touches
- * co_active_handle itself.  The previous revision defined the whole of
- * co_switch here, including
- *    mov rsi, [rip+co_active_handle]
- * - a plain PC-relative global access baked into the asm text.  With
- * the default (empty) thread_local that is correct, which is why it
- * went unnoticed; under LIBCO_MP the C compiler places the variable in
- * .tbss and every C-side access goes through the TLS machinery, while
- * this instruction still addressed it PC-relative.  The linker accepts
- * the mismatched R_X86_64_PC32 against the TLS symbol without a word,
- * and at run time the asm reads and writes the TLS *initialisation
- * template* while each thread's C code uses its own copy: all threads
- * share the asm's notion of the active coroutine (the exact race
- * LIBCO_MP exists to prevent) and writes corrupt the template that
- * seeds TLS for threads created later.  Keeping the handle traffic in
- * C - exactly how the aarch64, ARM and Windows paths already do it -
- * lets the compiler emit the correct addressing for whichever storage
- * class thread_local expands to. */
 __asm__(
 ".intel_syntax noprefix         \n"
-".globl " ASM_PREFIX "co_swap_amd64          \n"
-ASM_PREFIX "co_swap_amd64:                 \n"
+".globl " ASM_PREFIX "co_switch              \n"
+ASM_PREFIX "co_switch:                     \n"
+"mov rsi, [rip+" ASM_PREFIX "co_active_handle]\n"
 "mov [rsi],rsp                  \n"
 "mov [rsi+0x08],rbp             \n"
 "mov [rsi+0x10],rbx             \n"
@@ -221,6 +205,7 @@ ASM_PREFIX "co_swap_amd64:                 \n"
 "mov [rsi+0x20],r13             \n"
 "mov [rsi+0x28],r14             \n"
 "mov [rsi+0x30],r15             \n"
+"mov [rip+" ASM_PREFIX "co_active_handle], rdi\n"
 "mov rsp,[rdi]                  \n"
 "mov rbp,[rdi+0x08]             \n"
 "mov rbx,[rdi+0x10]             \n"
@@ -231,14 +216,6 @@ ASM_PREFIX "co_swap_amd64:                 \n"
 "ret                            \n"
 ".att_syntax                    \n"
 );
-
-void co_swap_amd64(cothread_t to, cothread_t from);
-
-void co_switch(cothread_t handle)
-{
-   register cothread_t co_previous_handle = co_active_handle;
-   co_swap_amd64(co_active_handle = handle, co_previous_handle);
-}
 #endif
 
 #ifdef __cplusplus

@@ -32,9 +32,7 @@
 	extern "C" {
 #endif
 
-#ifndef _POSIX_TIMERS
 int nanosleep(struct timespec *tb);
-#endif
 
 #ifdef __cplusplus
 	}

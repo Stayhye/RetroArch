@@ -34,11 +34,11 @@
 
 int c89_vscprintf_retro__(const char *format, va_list pargs)
 {
-   int _len;
+   int retval;
    va_list argcopy;
    va_copy(argcopy, pargs);
-   _len = vsnprintf(NULL, 0, format, argcopy);
+   retval = vsnprintf(NULL, 0, format, argcopy);
    va_end(argcopy);
-   return _len;
+   return retval;
 }
 #endif

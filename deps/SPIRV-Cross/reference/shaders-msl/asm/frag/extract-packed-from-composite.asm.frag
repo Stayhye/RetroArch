@@ -28,7 +28,6 @@ struct main0_out
     float4 _entryPointOutput [[color(0)]];
 };
 
-static inline __attribute__((always_inline))
 float4 _main(thread const float4& pos, constant buf& v_11)
 {
     int _46 = int(pos.x) % 16;

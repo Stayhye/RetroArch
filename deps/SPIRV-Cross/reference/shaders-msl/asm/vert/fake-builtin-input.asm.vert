@@ -5,7 +5,6 @@ using namespace metal;
 
 struct main0_out
 {
-    half4 out_var_SV_Target [[user(locn0)]];
     float4 gl_Position [[position]];
 };
 

@@ -154,7 +154,7 @@ void __lwp_thread_tickle_timeslice(void *arg)
 
 void __thread_dispatch_fp()
 {
-	u32 level = 0;
+	u32 level;
 	lwp_cntrl *exec;
 
 	_CPU_ISR_Disable(level);
@@ -172,7 +172,7 @@ void __thread_dispatch_fp()
 
 void __thread_dispatch()
 {
-	u32 level = 0;
+	u32 level;
 	lwp_cntrl *exec,*heir;
 
 	_CPU_ISR_Disable(level);
@@ -202,7 +202,7 @@ void __thread_dispatch()
 
 static void __lwp_thread_handler()
 {
-	u32 level = 0;
+	u32 level;
 	lwp_cntrl *exec;
 
 	exec = _thr_executing;
@@ -222,7 +222,7 @@ static void __lwp_thread_handler()
 
 void __lwp_rotate_readyqueue(u32 prio)
 {
-	u32 level = 0;
+	u32 level;
 	lwp_cntrl *exec;
 	lwp_queue *ready;
 	lwp_node *node;
@@ -256,7 +256,7 @@ void __lwp_rotate_readyqueue(u32 prio)
 
 void __lwp_thread_yield()
 {
-	u32 level = 0;
+	u32 level;
 	lwp_cntrl *exec;
 	lwp_queue *ready;
 
@@ -278,7 +278,7 @@ void __lwp_thread_yield()
 
 void __lwp_thread_resettimeslice()
 {
-	u32 level = 0;
+	u32 level;
 	lwp_cntrl *exec;
 	lwp_queue *ready;
 
@@ -305,7 +305,7 @@ void __lwp_thread_resettimeslice()
 
 void __lwp_thread_setstate(lwp_cntrl *thethread,u32 state)
 {
-	u32 level = 0;
+	u32 level;
 	lwp_queue *ready;
 
 	ready = thethread->ready;
@@ -339,8 +339,7 @@ void __lwp_thread_setstate(lwp_cntrl *thethread,u32 state)
 
 void __lwp_thread_clearstate(lwp_cntrl *thethread,u32 state)
 {
-	u32 cur_state;
-	u32 level = 0;
+	u32 level,cur_state;
 
 	_CPU_ISR_Disable(level);
 
@@ -379,7 +378,7 @@ u32 __lwp_evaluatemode()
 
 void __lwp_thread_changepriority(lwp_cntrl *thethread,u32 prio,u32 prependit)
 {
-	u32 level = 0;
+	u32 level;
 
 	__lwp_thread_settransient(thethread);
 
@@ -423,7 +422,7 @@ void __lwp_thread_setpriority(lwp_cntrl *thethread,u32 prio)
 
 void __lwp_thread_suspend(lwp_cntrl *thethread)
 {
-	u32 level = 0;
+	u32 level;
 	lwp_queue *ready;
 
 	ready = thethread->ready;
@@ -456,8 +455,7 @@ void __lwp_thread_suspend(lwp_cntrl *thethread)
 
 void __lwp_thread_settransient(lwp_cntrl *thethread)
 {
-	u32 oldstates;
-	u32 level = 0;
+	u32 level,oldstates;
 	lwp_queue *ready;
 
 	ready = thethread->ready;
@@ -481,8 +479,7 @@ void __lwp_thread_settransient(lwp_cntrl *thethread)
 
 void __lwp_thread_resume(lwp_cntrl *thethread,u32 force)
 {
-	u32 state;
-	u32 level = 0;
+	u32 level,state;
 
 	_CPU_ISR_Disable(level);
 
@@ -551,7 +548,7 @@ void __lwp_thread_loadenv(lwp_cntrl *thethread)
 
 void __lwp_thread_ready(lwp_cntrl *thethread)
 {
-	u32 level = 0;
+	u32 level;
 	lwp_cntrl *heir;
 
 	_CPU_ISR_Disable(level);
@@ -618,7 +615,7 @@ u32 __lwp_thread_init(lwp_cntrl *thethread,void *stack_area,u32 stack_size,u32 p
 
 void __lwp_thread_close(lwp_cntrl *thethread)
 {
-	u32 level = 0;
+	u32 level;
 	void **value_ptr;
 	lwp_cntrl *p;
 
@@ -651,8 +648,7 @@ void __lwp_thread_close(lwp_cntrl *thethread)
 
 void __lwp_thread_closeall()
 {
-	u32 i;
-	u32 level = 0;
+	u32 i,level;
 	lwp_queue *header;
 	lwp_cntrl *ptr,*next;
 #ifdef _LWPTHREADS_DEBUG

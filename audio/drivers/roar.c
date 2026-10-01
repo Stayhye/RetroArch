@@ -17,6 +17,8 @@
 #include <stdint.h>
 #include <stdlib.h>
 
+#include <errno.h>
+
 #include <roaraudio.h>
 
 #include <boolean.h>
@@ -32,7 +34,7 @@ typedef struct
 } roar_t;
 
 static void *ra_init(const char *device, unsigned rate, unsigned latency,
-       unsigned *new_rate)
+      unsigned block_frames, unsigned *new_rate)
 {
    int err;
    roar_vs_t *vss = NULL;
@@ -45,7 +47,7 @@ static void *ra_init(const char *device, unsigned rate, unsigned latency,
 
    if (!(vss = roar_vs_new_simple(device, "RetroArch", rate, 2, ROAR_CODEC_PCM_S, 16, ROAR_DIR_PLAY, &err)))
    {
-      RARCH_ERR("[RoarAudio] \"%s\".\n", roar_vs_strerr(err));
+      RARCH_ERR("RoarAudio: \"%s\"\n", roar_vs_strerr(err));
       free(roar);
       return NULL;
    }
@@ -56,45 +58,32 @@ static void *ra_init(const char *device, unsigned rate, unsigned latency,
    return roar;
 }
 
-static ssize_t ra_write(void *data, const void *buf, size_t len)
+static ssize_t ra_write(void *data, const void *buf, size_t size)
 {
    int err;
-   size_t _len  = 0;
-   roar_t *roar = (roar_t*)data;
+   size_t written = 0;
+   roar_t   *roar = (roar_t*)data;
 
-   if (len == 0)
+   if (size == 0)
       return 0;
 
-   while (_len < len)
+   while (written < size)
    {
       ssize_t rc;
-      size_t write_amt = len - _len;
+      size_t write_amt = size - written;
 
       if ((rc = roar_vs_write(roar->vss,
-                  (const char*)buf + _len, write_amt, &err)) < (ssize_t)write_amt)
+                  (const char*)buf + written, write_amt, &err)) < (ssize_t)write_amt)
       {
          if (roar->nonblocking)
-         {
-            /* A full stream refuses with -1 in non-blocking mode, as
-             * with OSS's EAGAIN: that is the normal state of a stream
-             * fed faster than it drains, and the write returns what
-             * went rather than reporting the device gone. A stream
-             * that has failed says so on the next blocking write. */
-            if (rc < 0)
-               return _len;
-            return _len + rc;
-         }
+            return rc;
          else if (rc < 0)
             return -1;
-         else if (rc == 0)
-            /* Blocking, yet nothing taken and no error: the loop has
-             * nothing to wait on and would spin. */
-            break;
       }
-      _len += rc;
+      written += rc;
    }
 
-   return _len;
+   return size;
 }
 
 static bool ra_stop(void *data)
@@ -119,7 +108,7 @@ static void ra_set_nonblock_state(void *data, bool state)
 
    if (roar_vs_blocking(roar->vss, (state) ? ROAR_VS_FALSE : ROAR_VS_TRUE, NULL) < 0)
    {
-      RARCH_ERR("[RoarAudio] Can't set nonblocking. Will not be able to fast-forward.\n");
+      RARCH_ERR("Can't set nonblocking. Will not be able to fast-forward.\n");
    }
    roar->nonblocking = state;
 }
@@ -139,10 +128,16 @@ static void ra_free(void *data)
    free(data);
 }
 
-/* The stream is opened as ROAR_CODEC_PCM_S at 16 bits. libroar has no
- * float PCM codec in the versions this driver has been built against;
- * revisit only if one appears. */
-static bool ra_use_float(void *data) { return false; }
+static bool ra_use_float(void *data)
+{
+   return false;
+}
+
+static size_t ra_write_avail(void *data)
+{
+   (void)data;
+   return 0;
+}
 
 audio_driver_t audio_roar = {
    ra_init,
@@ -156,10 +151,6 @@ audio_driver_t audio_roar = {
    "roar",
    NULL,
    NULL,
-   /* write_avail - the VS API reports neither the room in the stream
-    * nor what the server still holds. NULL disables rate control;
-    * a constant would instead feed it a fill that never changes. */
-   NULL,
-   NULL, /* buffer_size */
-   NULL  /* write_raw */
+   ra_write_avail,
+   NULL
 };

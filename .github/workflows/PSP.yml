@@ -2,32 +2,20 @@ name: CI PSP
 
 on:
   push:
-    branches: [master]
   pull_request:
   repository_dispatch:
     types: [run_build]
 
-permissions:
-  contents: read
-
-env:
-  ACTIONS_ALLOW_USE_UNSECURE_NODE_VERSION: true
-
-concurrency:
-  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
-  cancel-in-progress: ${{ github.ref != 'refs/heads/master' }}
-
 jobs:
   build:
     runs-on: ubuntu-latest
-    timeout-minutes: 30
-    container:
-      image: reallibretroretroarch/libretro-build-psp:latest
+    container: 
+      image: git.libretro.com:5050/libretro-infrastructure/libretro-build-psp:latest
       options: --user root
 
     steps:
-    - uses: actions/checkout@v4
-
+    - uses: actions/checkout@v2
+    
     - name: Compile bootstrap
       run: |
         cd bootstrap/psp1/kernel_functions_prx
@@ -38,7 +26,7 @@ jobs:
       run: |
         make -f Makefile.psp1.salamander -j$(getconf _NPROCESSORS_ONLN) clean
         make -f Makefile.psp1.salamander -j$(getconf _NPROCESSORS_ONLN)
-
+    
     - name: Compile RA
       run: |
         make -f Makefile.psp1 -j$(getconf _NPROCESSORS_ONLN) clean
@@ -47,8 +35,8 @@ jobs:
     - name: Get short SHA
       id: slug
       run: echo "::set-output name=sha8::$(echo ${GITHUB_SHA} | cut -c1-8)"
-
-    - uses: actions/upload-artifact@v4
+    
+    - uses: actions/upload-artifact@v2
       with:
         name: RA-PSP-dummy-${{ steps.slug.outputs.sha8 }}
         path: |

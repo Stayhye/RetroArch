@@ -20,47 +20,14 @@
  * OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
  */
 
-#include <retro_posix_source.h>
-
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 
 #include <retro_common.h>
-#include <retro_inline.h>
 #include <lists/file_list.h>
+#include <string/stdstring.h>
 #include <compat/strcasestr.h>
-
-/* Empty strings are handed to file_list_append() constantly -- a
- * directory listing labels every one of its entries "" -- and each one
- * used to cost a malloc() for a single NUL byte, which the allocator
- * rounds up to a whole chunk anyway.  They all share this instead.
- *
- * The entry still holds a valid empty string rather than NULL, so every
- * reader is unaffected: the alternative, storing NULL, changes what
- * file_list_get_label_at_offset() returns and would have to be audited
- * against every strlen() of an entry field in the menu drivers.
- *
- * Nothing writes to an entry's path, label or alt in place -- they are
- * replaced wholesale by file_list_set_label_at_offset() and
- * file_list_set_alt_at_offset() -- so one shared buffer is safe to hand
- * to every entry of every list. */
-static char file_list_empty_str[1] = "";
-
-static char *file_list_strdup(const char *s)
-{
-   if (!s)
-      return NULL;
-   if (!*s)
-      return file_list_empty_str;
-   return strdup(s);
-}
-
-static void file_list_strfree(char *s)
-{
-   if (s && s != file_list_empty_str)
-      free(s);
-}
 
 static bool file_list_deinitialize_internal(file_list_t *list)
 {
@@ -70,18 +37,33 @@ static bool file_list_deinitialize_internal(file_list_t *list)
       file_list_free_userdata(list, i);
       file_list_free_actiondata(list, i);
 
-      file_list_strfree(list->list[i].path);
-      list->list[i].path  = NULL;
+      if (list->list[i].path)
+         free(list->list[i].path);
+      list->list[i].path = NULL;
 
-      file_list_strfree(list->list[i].label);
+      if (list->list[i].label)
+         free(list->list[i].label);
       list->list[i].label = NULL;
 
-      file_list_strfree(list->list[i].alt);
-      list->list[i].alt   = NULL;
+      if (list->list[i].alt)
+         free(list->list[i].alt);
+      list->list[i].alt = NULL;
    }
    if (list->list)
       free(list->list);
    list->list = NULL;
+   return true;
+}
+
+bool file_list_initialize(file_list_t *list)
+{
+   if (!list)
+      return false;
+
+   list->list     = NULL;
+   list->capacity = 0;
+   list->size     = 0;
+
    return true;
 }
 
@@ -93,7 +75,9 @@ bool file_list_reserve(file_list_t *list, size_t nitems)
    if (nitems < list->capacity || nitems > (size_t)-1/item_size)
       return false;
 
-   if (!(new_data = (struct item_file*)realloc(list->list, nitems * item_size)))
+   new_data = (struct item_file*)realloc(list->list, nitems * item_size);
+
+   if (!new_data)
       return false;
 
    memset(&new_data[list->capacity], 0, item_size * (nitems - list->capacity));
@@ -104,25 +88,16 @@ bool file_list_reserve(file_list_t *list, size_t nitems)
    return true;
 }
 
-/* Helper function to initialize item_file structure */
-static INLINE void init_item_file(struct item_file *item,
-    const char *path, const char *label, unsigned type,
-    size_t directory_ptr, size_t entry_idx)
+bool file_list_prepend(file_list_t *list,
+      const char *path, const char *label,
+      unsigned type, size_t directory_ptr,
+      size_t entry_idx)
 {
-    /* NULL-gate both strdup calls: strdup(NULL) is undefined
-     * behaviour (glibc crashes).  The sibling file_list_append
-     * uses the same gating pattern.  Callers have been seen to
-     * pass NULL path here via menu_entries_prepend when
-     * msg_hash_to_str returns NULL for an enum that no active
-     * language handler recognises. */
-    item->path          = file_list_strdup(path);
-    item->label         = file_list_strdup(label);
-    item->alt           = NULL;
-    item->type          = type;
-    item->directory_ptr = directory_ptr;
-    item->entry_idx     = entry_idx;
-    item->userdata      = NULL;
-    item->actiondata    = NULL;
+   return file_list_insert(list, path,
+      label, type,
+      directory_ptr, entry_idx,
+      0
+   );
 }
 
 bool file_list_insert(file_list_t *list,
@@ -131,20 +106,49 @@ bool file_list_insert(file_list_t *list,
       size_t entry_idx,
       size_t idx)
 {
+   int i;
+
    /* Expand file list if needed */
    if (list->size >= list->capacity)
-   {
-      size_t new_capacity = list->capacity > 0 ? list->capacity * 2 : 1;
-      if (!file_list_reserve(list, new_capacity))
+      if (!file_list_reserve(list, list->capacity * 2 + 1))
          return false;
+
+   for (i = (unsigned)list->size; i > (int)idx; i--)
+   {
+      struct item_file *copy = (struct item_file*)
+         malloc(sizeof(struct item_file));
+
+      copy->path             = NULL;
+      copy->label            = NULL;
+      copy->alt              = NULL;
+      copy->type             = 0;
+      copy->directory_ptr    = 0;
+      copy->entry_idx        = 0;
+      copy->userdata         = NULL;
+      copy->actiondata       = NULL;
+
+      memcpy(copy, &list->list[i-1], sizeof(struct item_file));
+
+      memcpy(&list->list[i-1], &list->list[i], sizeof(struct item_file));
+      memcpy(&list->list[i],             copy, sizeof(struct item_file));
+
+      free(copy);
    }
 
-   /* Shift elements to the right using memmove */
-   if (idx < list->size)
-      memmove(&list->list[idx + 1], &list->list[idx],
-            (list->size - idx) * sizeof(struct item_file));
+   list->list[idx].path          = NULL;
+   list->list[idx].label         = NULL;
+   list->list[idx].alt           = NULL;
+   list->list[idx].type          = type;
+   list->list[idx].directory_ptr = directory_ptr;
+   list->list[idx].entry_idx     = entry_idx;
+   list->list[idx].userdata      = NULL;
+   list->list[idx].actiondata    = NULL;
 
-   init_item_file(&list->list[idx], path, label, type, directory_ptr, entry_idx);
+   if (label)
+      list->list[idx].label      = strdup(label);
+   if (path)
+      list->list[idx].path       = strdup(path);
+
    list->size++;
 
    return true;
@@ -170,12 +174,27 @@ bool file_list_append(file_list_t *list,
    list->list[idx].userdata      = NULL;
    list->list[idx].actiondata    = NULL;
 
-   list->list[idx].label         = file_list_strdup(label);
-   list->list[idx].path          = file_list_strdup(path);
+   if (label)
+      list->list[idx].label      = strdup(label);
+   if (path)
+      list->list[idx].path       = strdup(path);
 
    list->size++;
 
    return true;
+}
+
+size_t file_list_get_size(const file_list_t *list)
+{
+   if (!list)
+      return 0;
+   return list->size;
+}
+
+size_t file_list_get_directory_ptr(const file_list_t *list)
+{
+   size_t size = list ? list->size : 0;
+   return list->list[size].directory_ptr;
 }
 
 void file_list_pop(file_list_t *list, size_t *directory_ptr)
@@ -186,28 +205,16 @@ void file_list_pop(file_list_t *list, size_t *directory_ptr)
    if (list->size != 0)
    {
       --list->size;
+      if (list->list[list->size].path)
+         free(list->list[list->size].path);
+      list->list[list->size].path = NULL;
 
-      /* Every allocation the entry owns goes back here, matching
-       * file_list_deinitialize_internal. The two helpers clear the
-       * slot as they go, so a caller that has already released
-       * userdata or actiondata itself - menu_list_pop_stack does,
-       * through the driver's list_free hook - passes through them. */
-      file_list_free_userdata  (list, list->size);
-      file_list_free_actiondata(list, list->size);
-
-      file_list_strfree(list->list[list->size].path);
-      list->list[list->size].path  = NULL;
-
-      file_list_strfree(list->list[list->size].label);
+      if (list->list[list->size].label)
+         free(list->list[list->size].label);
       list->list[list->size].label = NULL;
-
-      file_list_strfree(list->list[list->size].alt);
-      list->list[list->size].alt   = NULL;
    }
 
-   /* A list that never had an entry has no backing array to read a
-    * directory_ptr out of. */
-   if (directory_ptr && list->list)
+   if (directory_ptr)
       *directory_ptr = list->list[list->size].directory_ptr;
 }
 
@@ -239,20 +246,37 @@ void file_list_clear(file_list_t *list)
 
    for (i = 0; i < list->size; i++)
    {
-      file_list_strfree(list->list[i].path);
-      list->list[i].path  = NULL;
+      if (list->list[i].path)
+         free(list->list[i].path);
+      list->list[i].path = NULL;
 
-      file_list_strfree(list->list[i].label);
+      if (list->list[i].label)
+         free(list->list[i].label);
       list->list[i].label = NULL;
 
-      file_list_strfree(list->list[i].alt);
-      list->list[i].alt   = NULL;
+      if (list->list[i].alt)
+         free(list->list[i].alt);
+      list->list[i].alt = NULL;
    }
 
    list->size = 0;
 }
 
-static void file_list_get_label_at_offset(const file_list_t *list, size_t idx,
+void file_list_set_label_at_offset(file_list_t *list, size_t idx,
+      const char *label)
+{
+   if (!list)
+      return;
+
+   if (list->list[idx].label)
+      free(list->list[idx].label);
+   list->list[idx].alt      = NULL;
+
+   if (label)
+      list->list[idx].label = strdup(label);
+}
+
+void file_list_get_label_at_offset(const file_list_t *list, size_t idx,
       const char **label)
 {
    if (!label || !list)
@@ -263,38 +287,18 @@ static void file_list_get_label_at_offset(const file_list_t *list, size_t idx,
       *label = list->list[idx].label;
 }
 
-/* Releases an entry's label and clears the slot.
- *
- * The label may be the shared empty string rather than an allocation of
- * its own, so it cannot be handed to free(). Callers outside this file
- * that want to relabel an entry -- the menu drivers do, on the stack
- * top -- have to come through here or through
- * file_list_set_label_at_offset() rather than free()ing the pointer
- * themselves. */
-void file_list_free_label(file_list_t *list, size_t idx)
-{
-   if (!list || idx >= list->size)
-      return;
-   file_list_strfree(list->list[idx].label);
-   list->list[idx].label = NULL;
-}
-
-void file_list_set_label_at_offset(file_list_t *list, size_t idx,
-      const char *label)
-{
-   if (!list || !label)
-      return;
-   file_list_strfree(list->list[idx].label);
-   list->list[idx].label = file_list_strdup(label);
-}
-
 void file_list_set_alt_at_offset(file_list_t *list, size_t idx,
       const char *alt)
 {
    if (!list || !alt)
       return;
-   file_list_strfree(list->list[idx].alt);
-   list->list[idx].alt   = file_list_strdup(alt);
+
+   if (list->list[idx].alt)
+      free(list->list[idx].alt);
+   list->list[idx].alt      = NULL;
+
+   if (alt)
+      list->list[idx].alt   = strdup(alt);
 }
 
 static int file_list_alt_cmp(const void *a_, const void *b_)
@@ -330,14 +334,26 @@ void file_list_sort_on_type(file_list_t *list)
 
 void *file_list_get_userdata_at_offset(const file_list_t *list, size_t idx)
 {
-   if (!list || idx >= list->size)
+   if (!list)
       return NULL;
    return list->list[idx].userdata;
 }
 
+void file_list_set_userdata(const file_list_t *list, size_t idx, void *ptr)
+{
+   if (list && ptr)
+      list->list[idx].userdata = ptr;
+}
+
+void file_list_set_actiondata(const file_list_t *list, size_t idx, void *ptr)
+{
+   if (list && ptr)
+      list->list[idx].actiondata = ptr;
+}
+
 void *file_list_get_actiondata_at_offset(const file_list_t *list, size_t idx)
 {
-   if (!list || idx >= list->size)
+   if (!list)
       return NULL;
    return list->list[idx].actiondata;
 }
@@ -347,12 +363,7 @@ void file_list_free_actiondata(const file_list_t *list, size_t idx)
    if (!list)
       return;
    if (list->list[idx].actiondata)
-   {
-      if (list->actiondata_free)
-         list->actiondata_free(list->list[idx].actiondata);
-      else
-         free(list->list[idx].actiondata);
-   }
+       free(list->list[idx].actiondata);
    list->list[idx].actiondata = NULL;
 }
 
@@ -361,13 +372,40 @@ void file_list_free_userdata(const file_list_t *list, size_t idx)
    if (!list)
       return;
    if (list->list[idx].userdata)
-   {
-      if (list->userdata_free)
-         list->userdata_free(list->list[idx].userdata);
-      else
-         free(list->list[idx].userdata);
-   }
+       free(list->list[idx].userdata);
    list->list[idx].userdata = NULL;
+}
+
+void *file_list_get_last_actiondata(const file_list_t *list)
+{
+   if (!list)
+      return NULL;
+   return list->list[list->size - 1].actiondata;
+}
+
+void file_list_get_at_offset(const file_list_t *list, size_t idx,
+      const char **path, const char **label, unsigned *file_type,
+      size_t *entry_idx)
+{
+   if (!list)
+      return;
+
+   if (path)
+      *path      = list->list[idx].path;
+   if (label)
+      *label     = list->list[idx].label;
+   if (file_type)
+      *file_type = list->list[idx].type;
+   if (entry_idx)
+      *entry_idx = list->list[idx].entry_idx;
+}
+
+void file_list_get_last(const file_list_t *list,
+      const char **path, const char **label,
+      unsigned *file_type, size_t *entry_idx)
+{
+   if (list && list->size)
+      file_list_get_at_offset(list, list->size - 1, path, label, file_type, entry_idx);
 }
 
 bool file_list_search(const file_list_t *list, const char *needle, size_t *idx)
@@ -381,8 +419,8 @@ bool file_list_search(const file_list_t *list, const char *needle, size_t *idx)
    for (i = 0; i < list->size; i++)
    {
       const char *str = NULL;
-      const char *alt = list->list[i].alt
-            ? list->list[i].alt
+      const char *alt = list->list[i].alt 
+            ? list->list[i].alt 
             : list->list[i].path;
 
       if (!alt)
@@ -392,7 +430,8 @@ bool file_list_search(const file_list_t *list, const char *needle, size_t *idx)
             continue;
       }
 
-      if ((str = (const char *)compat_strcasestr(alt, needle)) == alt)
+      str = (const char *)strcasestr(alt, needle);
+      if (str == alt)
       {
          /* Found match with first chars, best possible match. */
          *idx = i;

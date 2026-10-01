@@ -62,12 +62,6 @@
 #define SUPPORTS_SDL2 false
 #endif
 
-#ifdef HAVE_SDL3
-#define SUPPORTS_SDL3 true
-#else
-#define SUPPORTS_SDL3 false
-#endif
-
 #ifdef HAVE_THREADS
 #define SUPPORTS_THREAD true
 #else
@@ -78,42 +72,6 @@
 #define SUPPORTS_OPENGL true
 #else
 #define SUPPORTS_OPENGL false
-#endif
-
-#ifdef HAVE_D3D8
-#define SUPPORTS_D3D8 true
-#else
-#define SUPPORTS_D3D8 false
-#endif
-
-#ifdef HAVE_D3D9
-#define SUPPORTS_D3D9 true
-#else
-#define SUPPORTS_D3D9 false
-#endif
-
-#ifdef HAVE_D3D10
-#define SUPPORTS_D3D10 true
-#else
-#define SUPPORTS_D3D10 false
-#endif
-
-#ifdef HAVE_D3D11
-#define SUPPORTS_D3D11 true
-#else
-#define SUPPORTS_D3D11 false
-#endif
-
-#ifdef HAVE_D3D12
-#define SUPPORTS_D3D12 true
-#else
-#define SUPPORTS_D3D12 false
-#endif
-
-#ifdef HAVE_GDI
-#define SUPPORTS_GDI true
-#else
-#define SUPPORTS_GDI false
 #endif
 
 #ifdef HAVE_VULKAN
@@ -176,12 +134,6 @@
 #define SUPPORTS_XVIDEO false
 #endif
 
-#ifdef HAVE_SLANG
-#define SUPPORTS_SLANG true
-#else
-#define SUPPORTS_SLANG false
-#endif
-
 #ifdef HAVE_ALSA
 #define SUPPORTS_ALSA true
 #else
@@ -198,6 +150,12 @@
 #define SUPPORTS_COREAUDIO true
 #else
 #define SUPPORTS_COREAUDIO false
+#endif
+
+#ifdef HAVE_COREAUDIO3
+#define SUPPORTS_COREAUDIO3 true
+#else
+#define SUPPORTS_COREAUDIO3 false
 #endif
 
 #if defined(HAVE_OSS) || defined(HAVE_OSS_BSD)
@@ -260,12 +218,6 @@
 #define SUPPORTS_WASAPI false
 #endif
 
-#ifdef HAVE_PIPEWIRE
-#define SUPPORTS_PIPEWIRE true
-#else
-#define SUPPORTS_PIPEWIRE false
-#endif
-
 #ifdef HAVE_XAUDIO
 #define SUPPORTS_XAUDIO true
 #else
@@ -278,22 +230,10 @@
 #define SUPPORTS_ZLIB false
 #endif
 
-#ifdef HAVE_CHD
-#define SUPPORTS_CHD true
-#else
-#define SUPPORTS_CHD false
-#endif
-
 #ifdef HAVE_7ZIP
 #define SUPPORTS_7ZIP true
 #else
 #define SUPPORTS_7ZIP false
-#endif
-
-#ifdef HAVE_RZSTD
-#define SUPPORTS_ZSTD true
-#else
-#define SUPPORTS_ZSTD false
 #endif
 
 #ifdef HAVE_DYLIB
@@ -350,7 +290,11 @@
 #define SUPPORTS_FREETYPE false
 #endif
 
+#ifdef HAVE_STB_FONT
 #define SUPPORTS_STBFONT true
+#else
+#define SUPPORTS_STBFONT false
+#endif
 
 #ifdef HAVE_NETWORKING
 #define SUPPORTS_NETPLAY true
@@ -358,13 +302,7 @@
 #define SUPPORTS_NETPLAY false
 #endif
 
-#ifdef HAVE_SSL
-#define SUPPORTS_SSL true
-#else
-#define SUPPORTS_SSL false
-#endif
-
-#if defined(HAVE_COCOA) || defined(HAVE_COCOATOUCH)
+#if defined(HAVE_COCOA) || defined(HAVE_COCOATOUCH) || defined(HAVE_COCOA_METAL)
 #define SUPPORTS_COCOA true
 #else
 #define SUPPORTS_COCOA false
@@ -374,12 +312,6 @@
 #define SUPPORTS_QT true
 #else
 #define SUPPORTS_QT false
-#endif
-
-#ifdef HAVE_QT6
-#define SUPPORTS_QT6 true
-#else
-#define SUPPORTS_QT6 false
 #endif
 
 #ifdef HAVE_RPNG
@@ -404,30 +336,6 @@
 #define SUPPORTS_RTGA true
 #else
 #define SUPPORTS_RTGA false
-#endif
-
-#ifdef HAVE_RWEBP
-#define SUPPORTS_RWEBP true
-#else
-#define SUPPORTS_RWEBP false
-#endif
-
-#ifdef HAVE_RWEBM
-#define SUPPORTS_RWEBM true
-#else
-#define SUPPORTS_RWEBM false
-#endif
-
-#ifdef HAVE_RVP9
-#define SUPPORTS_RVP9 true
-#else
-#define SUPPORTS_RVP9 false
-#endif
-
-#ifdef HAVE_RDDS
-#define SUPPORTS_RDDS true
-#else
-#define SUPPORTS_RDDS false
 #endif
 
 #ifdef HAVE_CORETEXT

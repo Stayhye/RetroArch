@@ -87,7 +87,7 @@ static void* hidpad_wiiugca_init(void *data, uint32_t slot, hid_driver_t *driver
       device->pad_data[i].joypad      = NULL;
       device->pad_data[i].pad_index   = i;
    }
-
+   
    device->driver                     = driver;
 
    device->driver->send_control(device->handle, magic_data, sizeof(magic_data));
@@ -108,7 +108,7 @@ static void hidpad_wiiugca_get_buttons(void *pad_data, input_bits_t *state)
    gca_pad_data_t *pad = (gca_pad_data_t *)pad_data;
    if (pad)
    {
-      if (pad->datatype == GCA_TYPE_PAD)
+      if(pad->datatype == GCA_TYPE_PAD)
       {
          BITS_COPY16_PTR(state, pad->buttons);
       }
@@ -134,8 +134,10 @@ static int16_t hidpad_wiiugca_get_axis(void *pad_data, unsigned axis)
 
    if (!pad || axis_data.axis >= 4)
       return 0;
-   if (pad->datatype == GCA_TYPE_PAD)
-      return gamepad_get_axis_value_raw(pad->analog, &axis_data, false);
+
+   if(pad->datatype == GCA_TYPE_PAD)
+      return gamepad_get_axis_value(pad->analog, &axis_data);
+
    return gamepad_get_axis_value(device->pad_data[0].analog, &axis_data);
 }
 
@@ -173,47 +175,61 @@ static void update_button_state(gca_pad_data_t *pad)
 static void update_analog_state(gca_pad_data_t *pad)
 {
    int pad_axis;
+   int16_t interpolated;
+   unsigned stick, axis;
 
    /* GameCube analog axis are 8-bit unsigned, where 128/128 is center.
-    * So, we subtract 128 to get a signed, 0-based value and then multiply
+    * So, we subtract 128 to get a signed, 0-based value and then mulitply
     * by 256 to get the 16-bit range RetroArch expects. */
    for (pad_axis = 0; pad_axis < 4; pad_axis++)
    {
-      unsigned axis            = (pad_axis % 2) ? 0 : 1;
-      unsigned stick           = pad_axis / 2;
-      int16_t interpolated     = pad->data[3 + pad_axis];
+      axis         = (pad_axis % 2) ? 0 : 1;
+      stick        = pad_axis / 2;
+      interpolated = pad->data[3 + pad_axis];
       /* libretro requires "up" to be negative, so we invert the y axis */
-      interpolated             = axis
-         ? ((interpolated - 128) * 256)
-         : ((interpolated - 128) * -256);
+      interpolated = (axis) ?
+         ((interpolated - 128) * 256) :
+         ((interpolated - 128) * -256);
 
       pad->analog[stick][axis] = interpolated;
    }
 }
 
-static void hidpad_wiiugca_pad_packet_handler(gca_pad_data_t *pad, uint8_t *packet, size_t len)
+static void hidpad_wiiugca_pad_packet_handler(gca_pad_data_t *pad, uint8_t *packet, size_t size)
 {
-   if (len > 9)
+   if (size > 9)
       return;
-   memcpy(pad->data, packet, len);
+
+   memcpy(pad->data, packet, size);
    update_button_state(pad);
    update_analog_state(pad);
 }
 
-static void hidpad_wiiugca_packet_handler(void *device_data, uint8_t *packet, uint16_t len)
+static void hidpad_wiiugca_packet_handler(void *device_data, uint8_t *packet, uint16_t size)
 {
    uint32_t i;
+   int port;
+   unsigned char port_connected;
+
    gca_device_data_t *device = (gca_device_data_t *)device_data;
 
    if (!device)
       return;
 
-   memcpy(device->data, packet, len);
+/* Mac OSX reads a 39-byte packet which has both a leading and trailing byte from
+ * the actual packet data.
+ */
+#if defined(__APPLE__) && defined(HAVE_IOHIDMANAGER)
+   packet++;
+   size = 37;
+#endif
+
+   memcpy(device->data, packet, size);
 
    for (i = 1; i < 37; i += 9)
    {
-      int port                     = i / 9;
-      unsigned char port_connected = device->data[i];
+      port           = i / 9;
+      port_connected = device->data[i];
 
       if (port_connected > GCA_PORT_POWERED)
       {
@@ -226,12 +242,17 @@ static void hidpad_wiiugca_packet_handler(void *device_data, uint8_t *packet, ui
 }
 
 static void hidpad_wiiugca_set_rumble(void *data,
-      enum retro_rumble_effect effect, uint16_t strength) { }
+      enum retro_rumble_effect effect, uint16_t strength)
+{
+  (void)data;
+  (void)effect;
+  (void)strength;
+}
 
 const char *hidpad_wiiugca_get_name(void *pad_data)
 {
    gca_pad_data_t *pad = (gca_pad_data_t *)pad_data;
-   if (!pad || pad->datatype != GCA_TYPE_PAD)
+   if(!pad || pad->datatype != GCA_TYPE_PAD)
       return DEVICE_NAME;
 
    switch(pad->device_data->connected[pad->pad_index])
@@ -271,7 +292,7 @@ static void *hidpad_wiiugca_pad_init(void *device_data, int pad_index, joypad_co
 {
    gca_device_data_t *device = (gca_device_data_t *)device_data;
 
-   if (!device || pad_index < 0 || pad_index >= GCA_MAX_PAD || !joypad || device->pad_data[pad_index].joypad || !device->connected[pad_index])
+   if(!device || pad_index < 0 || pad_index >= GCA_MAX_PAD || !joypad || device->pad_data[pad_index].joypad || !device->connected[pad_index])
       return NULL;
 
    device->pad_data[pad_index].joypad = joypad;
@@ -282,16 +303,18 @@ static void hidpad_wiiugca_pad_deinit(void *pad_data)
 {
    gca_pad_data_t *pad = (gca_pad_data_t *)pad_data;
 
-   if (pad)
-      pad->joypad      = NULL;
+   if(!pad)
+      return;
+
+   pad->joypad = NULL;
 }
 
 static int8_t hidpad_wiiugca_status(void *device_data, int pad_index)
 {
-   int8_t result = 0;
    gca_device_data_t *device = (gca_device_data_t *)device_data;
+   int8_t result = 0;
 
-   if (!device || pad_index < 0 || pad_index >= GCA_MAX_PAD)
+   if(!device || pad_index < 0 || pad_index >= GCA_MAX_PAD)
       return 0;
 
    if (device->connected[pad_index])
@@ -306,8 +329,10 @@ static int8_t hidpad_wiiugca_status(void *device_data, int pad_index)
 static joypad_connection_t *hidpad_wiiugca_joypad(void *device_data, int pad_index)
 {
    gca_device_data_t *device = (gca_device_data_t *)device_data;
-   if (!device || pad_index < 0 || pad_index >= GCA_MAX_PAD)
+
+   if(!device || pad_index < 0 || pad_index >= GCA_MAX_PAD)
       return 0;
+
    return device->pad_data[pad_index].joypad;
 }
 

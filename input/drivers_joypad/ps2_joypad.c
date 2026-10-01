@@ -64,7 +64,7 @@ static void *ps2_joypad_init(void *data)
       for (port = 0; port < PS2_MAX_PORT; port++)
       {
          input_autoconfigure_connect( ps2_joypad_name(pad), /* name */
-            NULL, NULL,                                     /* display names */
+            NULL,                                           /* display name */
             ps2_joypad.ident,                               /* driver */
             pad,                                            /* idx */
             0,                                              /* vid */
@@ -80,7 +80,8 @@ static void *ps2_joypad_init(void *data)
             Port 0,3 -> Connector 7
             Port 1,3 -> Connector 8
           */
-         if ((ret = padPortOpen(port, slot, padBuf[port][slot])) == 0)
+
+         if((ret = padPortOpen(port, slot, padBuf[port][slot])) == 0)
             return NULL;
       }
    }
@@ -96,43 +97,41 @@ static int32_t ps2_joypad_button(unsigned port, uint16_t joykey)
 
 static int16_t ps2_joypad_axis_state(unsigned port_num, uint32_t joyaxis)
 {
+   int val     = 0;
+   int axis    = -1;
+   bool is_neg = false;
+   bool is_pos = false;
+
    if (AXIS_NEG_GET(joyaxis) < 4)
    {
-      int16_t val  = 0;
-      int16_t axis = AXIS_NEG_GET(joyaxis);
-      switch (axis)
-      {
-         case 0:
-         case 1:
-            val = analog_state[port_num][0][axis];
-            break;
-         case 2:
-         case 3:
-            val = analog_state[port_num][1][axis - 2];
-            break;
-      }
-      if (val < 0)
-         return val;
+      axis   = AXIS_NEG_GET(joyaxis);
+      is_neg = true;
    }
    else if (AXIS_POS_GET(joyaxis) < 4)
    {
-      int16_t val  = 0;
-      int16_t axis = AXIS_POS_GET(joyaxis);
-      switch (axis)
-      {
-         case 0:
-         case 1:
-            val = analog_state[port_num][0][axis];
-            break;
-         case 2:
-         case 3:
-            val = analog_state[port_num][1][axis - 2];
-            break;
-      }
-      if (val > 0)
-         return val;
+      axis   = AXIS_POS_GET(joyaxis);
+      is_pos = true;
    }
-   return 0;
+   else
+      return 0;
+
+   switch (axis)
+   {
+      case 0:
+      case 1:
+         val = analog_state[port_num][0][axis];
+         break;
+      case 2:
+      case 3:
+         val = analog_state[port_num][1][axis-2];
+         break;
+   }
+
+   if (is_neg && val > 0)
+      return 0;
+   else if (is_pos && val < 0)
+      return 0;
+   return val;
 }
 
 static int16_t ps2_joypad_state(
@@ -140,29 +139,29 @@ static int16_t ps2_joypad_state(
       const struct retro_keybind *binds,
       unsigned port)
 {
+   unsigned i;
    int16_t ret                          = 0;
    uint16_t port_idx                    = joypad_info->joy_idx;
 
-   if (port_idx < DEFAULT_MAX_PADS)
+   if (port_idx >= DEFAULT_MAX_PADS)
+      return 0;
+
+   for (i = 0; i < RARCH_FIRST_CUSTOM_BIND; i++)
    {
-      int i;
-      for (i = 0; i < RARCH_FIRST_CUSTOM_BIND; i++)
-      {
-         /* Auto-binds are per joypad, not per user. */
-         const uint64_t joykey  = (binds[i].joykey != NO_BTN)
-            ? binds[i].joykey  : joypad_info->auto_binds[i].joykey;
-         const uint32_t joyaxis = (binds[i].joyaxis != AXIS_NONE)
-            ? binds[i].joyaxis : joypad_info->auto_binds[i].joyaxis;
-         if (
+      /* Auto-binds are per joypad, not per user. */
+      const uint64_t joykey  = (binds[i].joykey != NO_BTN)
+         ? binds[i].joykey  : joypad_info->auto_binds[i].joykey;
+      const uint32_t joyaxis = (binds[i].joyaxis != AXIS_NONE)
+         ? binds[i].joyaxis : joypad_info->auto_binds[i].joyaxis;
+      if (
                (uint16_t)joykey != NO_BTN
-               && pad_state[port_idx] & (UINT64_C(1) << joykey)
-            )
-            ret |= ( 1 << i);
-         else if (joyaxis != AXIS_NONE &&
-               ((float)abs(ps2_joypad_axis_state(port_idx, joyaxis))
-                / 0x8000) > joypad_info->axis_threshold)
-            ret |= (1 << i);
-      }
+            && pad_state[port_idx] & (UINT64_C(1) << joykey)
+         )
+         ret |= ( 1 << i);
+      else if (joyaxis != AXIS_NONE &&
+            ((float)abs(ps2_joypad_axis_state(port_idx, joyaxis))
+             / 0x8000) > joypad_info->axis_threshold)
+         ret |= (1 << i);
    }
 
    return ret;
@@ -182,72 +181,50 @@ static void ps2_joypad_get_buttons(unsigned port_num, input_bits_t *state)
 
 static void ps2_joypad_poll(void)
 {
-   int i;
+   unsigned player;
    struct padButtonStatus buttons;
 
-   for (i = 0; i < DEFAULT_MAX_PADS; i++)
+   for (player = 0; player < DEFAULT_MAX_PADS; player++)
    {
-      int ps2_slot = i >> 1;
-      int ps2_port = i & 0x1;
+      int ps2_slot = player >> 1;
+      int ps2_port = player & 0x1;
 
       int state = padGetState(ps2_port, ps2_slot);
-      /* Note: this must be '&&'. Chaining '!=' with '||' is always
-       * true, since no single value can equal all three constants
-       * at once, so the guard previously admitted every state
-       * including PAD_STATE_DISCONN. */
-      if (     state != PAD_STATE_DISCONN
-            && state != PAD_STATE_EXECCMD
-            && state != PAD_STATE_ERROR)
+      if (state != PAD_STATE_DISCONN || state != PAD_STATE_EXECCMD || state != PAD_STATE_ERROR)
       {
          int ret = padRead(ps2_port, ps2_slot, &buttons); /* port, slot, buttons */
          if (ret != 0)
          {
             int32_t state_tmp = 0xffff ^ buttons.btns;
-            pad_state[i] = 0;
+            pad_state[player] = 0;
 
-            pad_state[i] |= (state_tmp & PAD_LEFT) ? (UINT64_C(1) << RETRO_DEVICE_ID_JOYPAD_LEFT) : 0;
-            pad_state[i] |= (state_tmp & PAD_DOWN) ? (UINT64_C(1) << RETRO_DEVICE_ID_JOYPAD_DOWN) : 0;
-            pad_state[i] |= (state_tmp & PAD_RIGHT) ? (UINT64_C(1) << RETRO_DEVICE_ID_JOYPAD_RIGHT) : 0;
-            pad_state[i] |= (state_tmp & PAD_UP) ? (UINT64_C(1) << RETRO_DEVICE_ID_JOYPAD_UP) : 0;
-            pad_state[i] |= (state_tmp & PAD_START) ? (UINT64_C(1) << RETRO_DEVICE_ID_JOYPAD_START) : 0;
-            pad_state[i] |= (state_tmp & PAD_SELECT) ? (UINT64_C(1) << RETRO_DEVICE_ID_JOYPAD_SELECT) : 0;
-            pad_state[i] |= (state_tmp & PAD_TRIANGLE) ? (UINT64_C(1) << RETRO_DEVICE_ID_JOYPAD_X) : 0;
-            pad_state[i] |= (state_tmp & PAD_SQUARE) ? (UINT64_C(1) << RETRO_DEVICE_ID_JOYPAD_Y) : 0;
-            pad_state[i] |= (state_tmp & PAD_CROSS) ? (UINT64_C(1) << RETRO_DEVICE_ID_JOYPAD_B) : 0;
-            pad_state[i] |= (state_tmp & PAD_CIRCLE) ? (UINT64_C(1) << RETRO_DEVICE_ID_JOYPAD_A) : 0;
-            pad_state[i] |= (state_tmp & PAD_R1) ? (UINT64_C(1) << RETRO_DEVICE_ID_JOYPAD_R) : 0;
-            pad_state[i] |= (state_tmp & PAD_L1) ? (UINT64_C(1) << RETRO_DEVICE_ID_JOYPAD_L) : 0;
-            pad_state[i] |= (state_tmp & PAD_R2) ? (UINT64_C(1) << RETRO_DEVICE_ID_JOYPAD_R2) : 0;
-            pad_state[i] |= (state_tmp & PAD_L2) ? (UINT64_C(1) << RETRO_DEVICE_ID_JOYPAD_L2) : 0;
-            pad_state[i] |= (state_tmp & PAD_R3) ? (UINT64_C(1) << RETRO_DEVICE_ID_JOYPAD_R3) : 0;
-            pad_state[i] |= (state_tmp & PAD_L3) ? (UINT64_C(1) << RETRO_DEVICE_ID_JOYPAD_L3) : 0;
+            pad_state[player] |= (state_tmp & PAD_LEFT) ? (UINT64_C(1) << RETRO_DEVICE_ID_JOYPAD_LEFT) : 0;
+            pad_state[player] |= (state_tmp & PAD_DOWN) ? (UINT64_C(1) << RETRO_DEVICE_ID_JOYPAD_DOWN) : 0;
+            pad_state[player] |= (state_tmp & PAD_RIGHT) ? (UINT64_C(1) << RETRO_DEVICE_ID_JOYPAD_RIGHT) : 0;
+            pad_state[player] |= (state_tmp & PAD_UP) ? (UINT64_C(1) << RETRO_DEVICE_ID_JOYPAD_UP) : 0;
+            pad_state[player] |= (state_tmp & PAD_START) ? (UINT64_C(1) << RETRO_DEVICE_ID_JOYPAD_START) : 0;
+            pad_state[player] |= (state_tmp & PAD_SELECT) ? (UINT64_C(1) << RETRO_DEVICE_ID_JOYPAD_SELECT) : 0;
+            pad_state[player] |= (state_tmp & PAD_TRIANGLE) ? (UINT64_C(1) << RETRO_DEVICE_ID_JOYPAD_X) : 0;
+            pad_state[player] |= (state_tmp & PAD_SQUARE) ? (UINT64_C(1) << RETRO_DEVICE_ID_JOYPAD_Y) : 0;
+            pad_state[player] |= (state_tmp & PAD_CROSS) ? (UINT64_C(1) << RETRO_DEVICE_ID_JOYPAD_B) : 0;
+            pad_state[player] |= (state_tmp & PAD_CIRCLE) ? (UINT64_C(1) << RETRO_DEVICE_ID_JOYPAD_A) : 0;
+            pad_state[player] |= (state_tmp & PAD_R1) ? (UINT64_C(1) << RETRO_DEVICE_ID_JOYPAD_R) : 0;
+            pad_state[player] |= (state_tmp & PAD_L1) ? (UINT64_C(1) << RETRO_DEVICE_ID_JOYPAD_L) : 0;
+            pad_state[player] |= (state_tmp & PAD_R2) ? (UINT64_C(1) << RETRO_DEVICE_ID_JOYPAD_R2) : 0;
+            pad_state[player] |= (state_tmp & PAD_L2) ? (UINT64_C(1) << RETRO_DEVICE_ID_JOYPAD_L2) : 0;
+            pad_state[player] |= (state_tmp & PAD_R3) ? (UINT64_C(1) << RETRO_DEVICE_ID_JOYPAD_R3) : 0;
+            pad_state[player] |= (state_tmp & PAD_L3) ? (UINT64_C(1) << RETRO_DEVICE_ID_JOYPAD_L3) : 0;
 
             /* Analog */
             if (buttons.ljoy_h || buttons.ljoy_v || buttons.rjoy_h || buttons.rjoy_v)
             {
-               analog_state[i][RETRO_DEVICE_INDEX_ANALOG_LEFT] [RETRO_DEVICE_ID_ANALOG_X] = convert_u8_to_s16(buttons.ljoy_h);
-               analog_state[i][RETRO_DEVICE_INDEX_ANALOG_LEFT] [RETRO_DEVICE_ID_ANALOG_Y] = convert_u8_to_s16(buttons.ljoy_v);;
-               analog_state[i][RETRO_DEVICE_INDEX_ANALOG_RIGHT][RETRO_DEVICE_ID_ANALOG_X] = convert_u8_to_s16(buttons.rjoy_h);;
-               analog_state[i][RETRO_DEVICE_INDEX_ANALOG_RIGHT][RETRO_DEVICE_ID_ANALOG_Y] = convert_u8_to_s16(buttons.rjoy_v);;
+               analog_state[player][RETRO_DEVICE_INDEX_ANALOG_LEFT] [RETRO_DEVICE_ID_ANALOG_X] = convert_u8_to_s16(buttons.ljoy_h);
+               analog_state[player][RETRO_DEVICE_INDEX_ANALOG_LEFT] [RETRO_DEVICE_ID_ANALOG_Y] = convert_u8_to_s16(buttons.ljoy_v);;
+               analog_state[player][RETRO_DEVICE_INDEX_ANALOG_RIGHT][RETRO_DEVICE_ID_ANALOG_X] = convert_u8_to_s16(buttons.rjoy_h);;
+               analog_state[player][RETRO_DEVICE_INDEX_ANALOG_RIGHT][RETRO_DEVICE_ID_ANALOG_Y] = convert_u8_to_s16(buttons.rjoy_v);;
             }
 
          }
-         else
-            /* Read failed: drop the cached state rather than leaving
-             * the previous frame's buttons latched. */
-            pad_state[i] = 0;
-      }
-      else
-      {
-         /* Disconnected, executing a command, or in error - clear
-          * the cached state. ps2_joypad_query_pad() reports a pad
-          * as present based on pad_state[], so stale bits would
-          * also keep a removed pad looking connected. */
-         pad_state[i] = 0;
-         analog_state[i][RETRO_DEVICE_INDEX_ANALOG_LEFT] [RETRO_DEVICE_ID_ANALOG_X] = 0;
-         analog_state[i][RETRO_DEVICE_INDEX_ANALOG_LEFT] [RETRO_DEVICE_ID_ANALOG_Y] = 0;
-         analog_state[i][RETRO_DEVICE_INDEX_ANALOG_RIGHT][RETRO_DEVICE_ID_ANALOG_X] = 0;
-         analog_state[i][RETRO_DEVICE_INDEX_ANALOG_RIGHT][RETRO_DEVICE_ID_ANALOG_Y] = 0;
       }
    }
 
@@ -259,17 +236,20 @@ static bool ps2_joypad_query_pad(unsigned pad)
 }
 
 static bool ps2_joypad_rumble(unsigned pad,
-      enum retro_rumble_effect effect, uint16_t strength) { return false; }
+      enum retro_rumble_effect effect, uint16_t strength)
+{
+   return false;
+}
 
 static void ps2_joypad_destroy(void)
 {
-   int i;
-   for (i = 0; i < PS2_MAX_PORT; i++)
+   unsigned port;
+   unsigned slot;
+   for (port = 0; port < PS2_MAX_PORT; port++)
    {
-      int j;
-      for (j = 0; j < PS2_MAX_SLOT; j++)
-         padPortClose(i, j);
-      mtapPortClose(i);
+      for (slot = 0; slot < PS2_MAX_SLOT; slot++)
+         padPortClose(port, slot);
+      mtapPortClose(port);
    }
 }
 
@@ -283,9 +263,7 @@ input_device_driver_t ps2_joypad = {
    ps2_joypad_axis,
    ps2_joypad_poll,
    ps2_joypad_rumble,
-   NULL, /* set_rumble_gain */
-   NULL, /* set_sensor_state */
-   NULL, /* get_sensor_input */
+   NULL,
    ps2_joypad_name,
    "ps2",
 };

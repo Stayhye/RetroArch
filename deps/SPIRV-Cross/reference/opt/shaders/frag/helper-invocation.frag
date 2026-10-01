@@ -9,15 +9,15 @@ layout(location = 0) out vec4 FragColor;
 
 void main()
 {
-    vec4 _52;
+    vec4 _51;
     if (!gl_HelperInvocation)
     {
-        _52 = textureLod(uSampler, vUV, 0.0);
+        _51 = textureLod(uSampler, vUV, 0.0);
     }
     else
     {
-        _52 = vec4(1.0);
+        _51 = vec4(1.0);
     }
-    FragColor = _52;
+    FragColor = _51;
 }
 

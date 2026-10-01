@@ -196,8 +196,7 @@ static void __AISRCINIT()
 
 void AUDIO_Init(u8 *stack)
 {
-	u32 rate;
-	u32 level = 0;
+	u32 rate,level;
 
 	if(!__AIInitFlag) {
 		bound_32KHz = nanosecs_to_ticks(31524);
@@ -283,8 +282,7 @@ void AUDIO_ResetStreamSampleCnt()
 void AUDIO_SetStreamPlayState(u32 state)
 {
 	u32 playstate,streamrate;
-	u32 volright, volleft;
-	u32 level = 0;
+	u32 volright,volleft,level;
 
 	playstate = AUDIO_GetStreamPlayState();
 	streamrate = AUDIO_GetStreamSampleRate();
@@ -314,7 +312,7 @@ u32 AUDIO_GetStreamPlayState()
 
 AIDCallback AUDIO_RegisterDMACallback(AIDCallback callback)
 {
-	u32 level = 0;
+	u32 level;
 	AIDCallback old;
 
 	_CPU_ISR_Disable(level);
@@ -326,7 +324,7 @@ AIDCallback AUDIO_RegisterDMACallback(AIDCallback callback)
 
 void AUDIO_InitDMA(u32 startaddr,u32 len)
 {
-	u32 level = 0;
+	u32 level;
 
 	_CPU_ISR_Disable(level);
 	_dspReg[24] = (_dspReg[24]&~0x1fff)|(_SHIFTR(startaddr,16,13));
@@ -367,7 +365,7 @@ u32 AUDIO_GetDMALength()
 
 void AUDIO_SetDSPSampleRate(u8 rate)
 {
-	u32 level = 0;
+	u32 level;
 
 	if(AUDIO_GetDSPSampleRate()!=rate) {
 		_aiReg[AI_CONTROL] &= ~AI_DMAFR;

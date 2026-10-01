@@ -11,12 +11,12 @@ struct SPIRV_Cross_Output
     float FragColor : SV_Target0;
 };
 
-float spvReflect(float i, float n)
+float SPIRV_Cross_Reflect(float i, float n)
 {
     return i - 2.0 * dot(n, i) * n;
 }
 
-float spvRefract(float i, float n, float eta)
+float SPIRV_Cross_Refract(float i, float n, float eta)
 {
     float NoI = n * i;
     float NoI2 = NoI * NoI;
@@ -33,8 +33,8 @@ float spvRefract(float i, float n, float eta)
 
 void frag_main()
 {
-    FragColor = spvRefract(vRefract.x, vRefract.y, vRefract.z);
-    FragColor += spvReflect(vRefract.x, vRefract.y);
+    FragColor = SPIRV_Cross_Refract(vRefract.x, vRefract.y, vRefract.z);
+    FragColor += SPIRV_Cross_Reflect(vRefract.x, vRefract.y);
     FragColor += refract(vRefract.xy, vRefract.yz, vRefract.z).y;
     FragColor += reflect(vRefract.xy, vRefract.zy).y;
 }

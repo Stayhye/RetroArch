@@ -22,13 +22,13 @@
 #include "../gfx_widgets.h"
 #include "../gfx_animation.h"
 #include "../gfx_display.h"
+#include "../../retroarch.h"
 #include "../../core_info.h"
 #include "../../playlist.h"
 #include "../../paths.h"
 
 #ifdef HAVE_MENU
 #include "../../menu/menu_driver.h"
-#include <compat/strl.h>
 #endif
 
 #define LOAD_CONTENT_ANIMATION_FADE_IN_DURATION   466.0f
@@ -50,7 +50,6 @@ enum gfx_widget_load_content_animation_status
 
 struct gfx_widget_load_content_animation_state
 {
-   /* Hot fields - accessed every frame in _frame() */
    gfx_display_t *p_disp;
    uintptr_t icon_texture;
    unsigned bg_shadow_height;
@@ -64,7 +63,7 @@ struct gfx_widget_load_content_animation_state
    unsigned bg_width;
    unsigned bg_height;
 
-   float timer;      /* float alignment */
+   gfx_timer_t timer;      /* float alignment */
    float bg_x;
    float bg_y;
    float alpha;
@@ -96,27 +95,12 @@ struct gfx_widget_load_content_animation_state
 
    enum gfx_widget_load_content_animation_status status;
 
-   size_t content_name_len;
-   size_t system_name_len;
-
-   bool has_icon;
-
-   /* Read progress as a percentage, drawn after the content name.
-    * -1 means "no progress to show": the state for a load that did
-    * not stream its content in ahead of time, and the state this
-    * widget has always been in.  Read every frame while a load is
-    * streaming, so it belongs with the hot fields rather than the
-    * cold ones below. */
-   int8_t progress;
-
-   /* Cold fields - only touched at startup/layout, not per-frame.
-    * Kept at end to avoid polluting cache lines used by _frame(). */
    char content_name[512];
    char system_name[512];
-   char icon_directory[DIR_MAX_LENGTH];
-   char icon_file[NAME_MAX_LENGTH];
+   char icon_directory[PATH_MAX_LENGTH];
+   char icon_file[PATH_MAX_LENGTH];
 
-   char icon_path[PATH_MAX_LENGTH];
+   bool has_icon;
 };
 
 typedef struct gfx_widget_load_content_animation_state gfx_widget_load_content_animation_state_t;
@@ -167,18 +151,12 @@ static gfx_widget_load_content_animation_state_t p_w_load_content_animation_st =
 
    GFX_WIDGET_LOAD_CONTENT_IDLE,       /* status */
 
-   0,                                  /* content_name_len */
-   0,                                  /* system_name_len */
-
-   false,                              /* has_icon */
-
-   -1,                                 /* progress */
-
    {'\0'},                             /* content_name */
    {'\0'},                             /* system_name */
    {'\0'},                             /* icon_directory */
    {'\0'},                             /* icon_file */
-   {'\0'}                              /* icon_path */
+
+   false                               /* has_icon */
 };
 
 /* Utilities */
@@ -191,9 +169,9 @@ static void gfx_widget_load_content_animation_reset(void)
    uintptr_t timer_tag                              = (uintptr_t)&state->timer;
 
    /* Kill any existing timers/animations */
-   gfx_animation_kill_widget_by_tag(&timer_tag);
-   gfx_animation_kill_widget_by_tag(&alpha_tag);
-   gfx_animation_kill_widget_by_tag(&slide_offset_tag);
+   gfx_animation_kill_by_tag(&timer_tag);
+   gfx_animation_kill_by_tag(&alpha_tag);
+   gfx_animation_kill_by_tag(&slide_offset_tag);
 
    /* Reset pertinent state parameters */
    state->status             = GFX_WIDGET_LOAD_CONTENT_IDLE;
@@ -201,13 +179,10 @@ static void gfx_widget_load_content_animation_reset(void)
    state->slide_offset       = 0.0f;
    state->content_name[0]    = '\0';
    state->system_name[0]     = '\0';
-   state->progress           = -1;
    state->icon_file[0]       = '\0';
    state->has_icon           = false;
    state->content_name_width = 0;
    state->system_name_width  = 0;
-   state->content_name_len   = 0;
-   state->system_name_len    = 0;
 
    /* Unload any icon texture */
    if (state->icon_texture)
@@ -233,7 +208,7 @@ static void gfx_widget_load_content_animation_load_icon(void)
       gfx_display_reset_textures_list(
             state->icon_file, state->icon_directory,
             &state->icon_texture,
-            gfx_display_texture_filter(), NULL);
+            TEXTURE_FILTER_MIPMAP_LINEAR, NULL, NULL);
 }
 
 /* Callbacks */
@@ -261,7 +236,7 @@ static void gfx_widget_load_content_animation_wait_cb(void *userdata)
    animation_entry.cb           = gfx_widget_load_content_animation_fade_out_cb;
    animation_entry.userdata     = NULL;
 
-   gfx_animation_push_widget(&animation_entry);
+   gfx_animation_push(&animation_entry);
    state->status = GFX_WIDGET_LOAD_CONTENT_FADE_OUT;
 }
 
@@ -275,7 +250,7 @@ static void gfx_widget_load_content_animation_slide_cb(void *userdata)
    timer.cb       = gfx_widget_load_content_animation_wait_cb;
    timer.userdata = state;
 
-   gfx_animation_timer_start_widget(&state->timer, &timer);
+   gfx_animation_timer_start(&state->timer, &timer);
    state->status = GFX_WIDGET_LOAD_CONTENT_WAIT;
 }
 
@@ -296,30 +271,13 @@ static void gfx_widget_load_content_animation_fade_in_cb(void *userdata)
    animation_entry.cb           = gfx_widget_load_content_animation_slide_cb;
    animation_entry.userdata     = state;
 
-   gfx_animation_push_widget(&animation_entry);
+   gfx_animation_push(&animation_entry);
    state->status = GFX_WIDGET_LOAD_CONTENT_SLIDE;
 }
 
 /* Widget interface */
 
-/* Set the read percentage shown after the content name, or -1 to
- * show none.  Safe to call whether or not the animation is running:
- * a value set while idle is simply what the next animation starts
- * with, and the reset on start clears it. */
-static void gfx_widget_set_load_content_progress_state(int8_t progress)
-{
-   p_w_load_content_animation_st.progress =
-         (progress > 100) ? 100 : progress;
-}
-
-void gfx_widget_set_load_content_progress(int8_t progress)
-{
-   gfx_widgets_state_lock();
-   gfx_widget_set_load_content_progress_state(progress);
-   gfx_widgets_state_unlock();
-}
-
-static bool gfx_widget_start_load_content_animation_state(void)
+bool gfx_widget_start_load_content_animation(void)
 {
    gfx_widget_load_content_animation_state_t *state = &p_w_load_content_animation_st;
 
@@ -333,17 +291,26 @@ static bool gfx_widget_start_load_content_animation_state(void)
    bool has_system                                  = false;
    bool has_db_name                                 = false;
 
+   char icon_path[PATH_MAX_LENGTH];
+
+   icon_path[0] = '\0';
+
    /* To ensure we leave the widget in a well defined
     * state, perform a reset before parsing variables */
    gfx_widget_load_content_animation_reset();
 
-   /* Sanity check - we require a valid core path,
-    * and must reject the dummy/builtin core.
-    * Content-less cores are allowed: the absence of
-    * content alone is not a reason to skip the animation,
-    * only the builtin dummy core must be filtered out. */
-   if (   (!core_path || !*core_path)
-       || memcmp(core_path, "builtin", 7) == 0)
+   /* Sanity check - we require both content and
+    * core path
+    * > Note that we would prefer to enable the load
+    *   content animation for 'content-less' cores as
+    *   well, but allowing no content would mean we
+    *   trigger a false positive every time the dummy
+    *   core is started (this higher level behaviour is
+    *   deeply ingrained in RetroArch, and too difficult
+    *   to change...) */
+   if (string_is_empty(content_path) ||
+       string_is_empty(core_path) ||
+       string_is_equal(core_path, "builtin"))
       return false;
 
    /* Check core validity */
@@ -354,9 +321,8 @@ static bool gfx_widget_start_load_content_animation_state(void)
 
    /* Parse content path
     * > If we have a cached playlist, attempt to find
-    *   the entry label for the current content
-    * > Skip playlist lookup for content-less cores */
-   if (playlist && content_path && *content_path)
+    *   the entry label for the current content */
+   if (playlist)
    {
       const struct playlist_entry *entry = NULL;
 #ifdef HAVE_MENU
@@ -380,15 +346,15 @@ static bool gfx_widget_start_load_content_animation_state(void)
          playlist_get_index_by_path(playlist, content_path,
                &entry);
 
-         if (   entry
-             && entry->core_path && *entry->core_path)
+         if (entry &&
+             !string_is_empty(entry->core_path))
          {
             const char *entry_core_file = path_basename_nocompression(
                   entry->core_path);
 
             /* Check whether core matches... */
-            if (    (!entry_core_file || !*entry_core_file)
-                || !string_starts_with(entry_core_file,
+            if (string_is_empty(entry_core_file) ||
+                !string_starts_with(entry_core_file,
                      core_info->core_file_id.str))
                entry = NULL;
          }
@@ -401,19 +367,19 @@ static bool gfx_widget_start_load_content_animation_state(void)
          playlist_entry_found = true;
 
          /* Get entry label */
-         if (entry->label && *entry->label)
+         if (!string_is_empty(entry->label))
          {
-            state->content_name_len = strlcpy(state->content_name,
-                  entry->label, sizeof(state->content_name));
+            strlcpy(state->content_name, entry->label,
+                  sizeof(state->content_name));
             has_content = true;
          }
 
          /* Get entry db_name, */
-         if (entry->db_name && *entry->db_name)
+         if (!string_is_empty(entry->db_name))
          {
-            state->system_name_len = fill_pathname(
-                  state->system_name, entry->db_name, "",
+            strlcpy(state->system_name, entry->db_name,
                   sizeof(state->system_name));
+            path_remove_extension(state->system_name);
 
             has_system  = true;
             has_db_name = true;
@@ -423,32 +389,25 @@ static bool gfx_widget_start_load_content_animation_state(void)
       /* If content was found in playlist but the entry
        * did not have a db_name, use playlist name itself
        * as the system name */
-      if (      playlist_entry_found
-            && !has_system)
+      if (playlist_entry_found && !has_system)
       {
          const char *playlist_path = playlist_get_conf_path(playlist);
 
-         if (playlist_path && *playlist_path)
+         if (!string_is_empty(playlist_path))
          {
-            size_t system_name_len;
-            char new_system_name[512];
-
-            fill_pathname(new_system_name, playlist_path, "", sizeof(new_system_name));
-            system_name_len = fill_pathname_base(
-                  state->system_name, new_system_name,
+            fill_pathname_base_noext(state->system_name, playlist_path,
                   sizeof(state->system_name));
 
             /* Exclude history and favourites playlists */
-            if (   string_ends_with_size(state->system_name, "_history",
-                     system_name_len, STRLEN_CONST("_history"))
-                || string_ends_with_size(state->system_name, "_favorites",
-                     system_name_len, STRLEN_CONST("_favorites")))
+            if (string_ends_with_size(state->system_name, "_history",
+                     strlen(state->system_name), STRLEN_CONST("_history")) ||
+                string_ends_with_size(state->system_name, "_favorites",
+                     strlen(state->system_name), STRLEN_CONST("_favorites")))
                state->system_name[0] = '\0';
 
             /* Check whether a valid system name was found */
-            if (*state->system_name)
+            if (!string_is_empty(state->system_name))
             {
-               state->system_name_len = system_name_len;
                has_system  = true;
                has_db_name = true;
             }
@@ -457,59 +416,41 @@ static bool gfx_widget_start_load_content_animation_state(void)
    }
 
    /* If we haven't yet set the content name,
-    * use content file name as a fallback, or
-    * the core display name for content-less cores */
+    * use content file name as a fallback */
    if (!has_content)
-   {
-      if (content_path && *content_path)
-         state->content_name_len = fill_pathname(
-               state->content_name, path_basename(content_path),
-               "", sizeof(state->content_name));
-      else if (core_info->display_name && *core_info->display_name)
-         state->content_name_len = strlcpy(state->content_name,
-               core_info->display_name, sizeof(state->content_name));
-      else
-         state->content_name_len = strlcpy_lit(state->content_name,
-               "RetroArch", sizeof(state->content_name));
-   }
+      fill_pathname_base_noext(state->content_name, content_path,
+            sizeof(state->content_name));
 
-   /* Check whether system name has been set or if the name
-    * is a copy of info file database with multiple entries */
-   if (!has_system || memchr(state->system_name, '|', state->system_name_len))
+   /* Check whether system name has been set */
+   if (!has_system)
    {
       /* Use core display name, if available */
-      if (core_info->display_name && *core_info->display_name)
-         state->system_name_len = strlcpy(state->system_name,
-               core_info->display_name, sizeof(state->system_name));
+      if (!string_is_empty(core_info->display_name))
+         strlcpy(state->system_name, core_info->display_name,
+               sizeof(state->system_name));
       /* Otherwise, just use 'RetroArch' as a fallback */
       else
-         state->system_name_len = strlcpy_lit(state->system_name,
-               "RetroArch", sizeof(state->system_name));
+         strcpy_literal(state->system_name, "RetroArch");
    }
 
    /* > Content name has been determined
     * > System name has been determined
     * All that remains is the icon */
 
-   /* Skip all icon filesystem checks if no icon directory
-    * is set */
-   if (!*state->icon_directory)
-      goto icon_done;
-
    /* Get icon filename
     * > Use db_name, if available */
    if (has_db_name)
    {
-      fill_pathname(state->icon_file,
-            state->system_name,
-            ".png",
+      strlcpy(state->icon_file, state->system_name,
+            sizeof(state->icon_file));
+      strlcat(state->icon_file, ".png",
             sizeof(state->icon_file));
 
-      fill_pathname_join_special(state->icon_path,
+      fill_pathname_join(icon_path,
             state->icon_directory, state->icon_file,
-            sizeof(state->icon_path));
+            sizeof(icon_path));
 
-      state->has_icon = path_is_valid(state->icon_path);
+      state->has_icon = path_is_valid(icon_path);
    }
 
    /* > If db_name is unavailable (or was extracted
@@ -524,23 +465,26 @@ static bool gfx_widget_start_load_content_animation_state(void)
 
       /* We can only use the core db_name if the
        * core is associated with exactly one database */
-      if (    databases_list
-          && (databases_list->size == 1))
+      if (databases_list &&
+          (databases_list->size == 1))
          core_db_name = databases_list->elems[0].data;
 
-      if (   (core_db_name && *core_db_name)
-          && !string_is_equal(core_db_name, state->system_name))
+      if (!string_is_empty(core_db_name) &&
+          !string_is_equal(core_db_name, state->system_name))
       {
-         fill_pathname(state->icon_file,
-               core_db_name,
-               ".png",
+         state->icon_file[0] = '\0';
+         icon_path[0]        = '\0';
+
+         strlcpy(state->icon_file, core_db_name,
+               sizeof(state->icon_file));
+         strlcat(state->icon_file, ".png",
                sizeof(state->icon_file));
 
-         fill_pathname_join_special(state->icon_path,
+         fill_pathname_join(icon_path,
                state->icon_directory, state->icon_file,
-               sizeof(state->icon_path));
+               sizeof(icon_path));
 
-         state->has_icon = path_is_valid(state->icon_path);
+         state->has_icon = path_is_valid(icon_path);
       }
    }
 
@@ -548,24 +492,16 @@ static bool gfx_widget_start_load_content_animation_state(void)
     *   use default 'retroarch' icon as a fallback */
    if (!state->has_icon)
    {
-      strlcpy_lit(state->icon_file, "retroarch.png", sizeof(state->icon_file));
-      fill_pathname_join_special(state->icon_path,
+      state->icon_file[0] = '\0';
+      icon_path[0]        = '\0';
+
+      strcpy_literal(state->icon_file, "retroarch.png");
+
+      fill_pathname_join(icon_path,
             state->icon_directory, state->icon_file,
-            sizeof(state->icon_path));
+            sizeof(icon_path));
 
-      state->has_icon = path_is_valid(state->icon_path);
-   }
-
-icon_done:
-
-   /* Truncate long system names */
-   if (state->system_name_len > 54)
-   {
-      state->system_name[51]  = '.';
-      state->system_name[52]  = '.';
-      state->system_name[53]  = '.';
-      state->system_name[54]  = '\0';
-      state->system_name_len  = 54;
+      state->has_icon = path_is_valid(icon_path);
    }
 
    /* All parameters are initialised
@@ -575,59 +511,7 @@ icon_done:
    return true;
 }
 
-bool gfx_widget_start_load_content_animation(void)
-{
-   bool ret;
-   gfx_widgets_state_lock();
-   ret = gfx_widget_start_load_content_animation_state();
-   gfx_widgets_state_unlock();
-   return ret;
-}
-
 /* Widget layout() */
-
-static void gfx_widget_load_content_animation_calculate(
-      dispgfx_widget_t *p_dispwidget,
-      gfx_widget_load_content_animation_state_t *state)
-{
-   int content_name_width;
-   int system_name_width;
-   int text_width;
-
-   unsigned last_video_width            = VIDEO_SCALE_W(p_dispwidget->last_video_dims);
-   unsigned widget_padding              = p_dispwidget->simple_widget_padding;
-
-   gfx_widget_font_data_t *font_regular = &p_dispwidget->gfx_widget_fonts.regular;
-   gfx_widget_font_data_t *font_bold    = &p_dispwidget->gfx_widget_fonts.bold;
-
-   /* Get overall text width
-    * > Uses cached string lengths to avoid per-call strlen() */
-   content_name_width = font_driver_get_message_width(
-         font_bold->font, state->content_name,
-         state->content_name_len, 1.0f);
-   system_name_width = font_driver_get_message_width(
-         font_regular->font, state->system_name,
-         state->system_name_len, 1.0f);
-
-   state->content_name_width = (content_name_width > 0) ?
-         (unsigned)content_name_width : 0;
-   state->system_name_width  = (system_name_width > 0) ?
-         (unsigned)system_name_width : 0;
-
-   text_width = (state->content_name_width > state->system_name_width)
-         ? (int)state->content_name_width
-         : (int)state->system_name_width;
-
-   /* Now we have the text width, can determine
-    * final icon/text x draw positions */
-   state->icon_x_end = ((int)last_video_width - text_width -
-         (int)state->icon_size - (3 * (int)widget_padding)) >> 1;
-   if (state->icon_x_end < (int)widget_padding)
-      state->icon_x_end = widget_padding;
-
-   state->text_x_end = state->icon_x_end +
-         (float)(state->icon_size + widget_padding);
-}
 
 static void gfx_widget_load_content_animation_layout(
       void *data,
@@ -636,8 +520,8 @@ static void gfx_widget_load_content_animation_layout(
    dispgfx_widget_t *p_dispwidget                   = (dispgfx_widget_t*)data;
    gfx_widget_load_content_animation_state_t *state = &p_w_load_content_animation_st;
 
-   unsigned last_video_width                        = VIDEO_SCALE_W(p_dispwidget->last_video_dims);
-   unsigned last_video_height                       = VIDEO_SCALE_H(p_dispwidget->last_video_dims);
+   unsigned last_video_width                        = p_dispwidget->last_video_width;
+   unsigned last_video_height                       = p_dispwidget->last_video_height;
    unsigned widget_padding                          = p_dispwidget->simple_widget_padding;
 
    gfx_widget_font_data_t *font_regular             = &p_dispwidget->gfx_widget_fonts.regular;
@@ -651,7 +535,7 @@ static void gfx_widget_load_content_animation_layout(
    /* > Note: cannot determine state->icon_x_end
     *   until text strings are set */
 
-   /* Background layout */
+   /* Background layout */ 
    state->bg_width  = last_video_width;
    state->bg_height = state->icon_size + (widget_padding * 2);
    state->bg_x      = 0.0f;
@@ -678,16 +562,12 @@ static void gfx_widget_load_content_animation_layout(
          (float)font_regular->line_centre_offset;
    /* > Note: cannot determine state->text_x_end
     *   until text strings are set */
-
-   /* Recalculate end positions if layout changes after start */
-   if (state->status > GFX_WIDGET_LOAD_CONTENT_BEGIN)
-      gfx_widget_load_content_animation_calculate(p_dispwidget, state);
 }
 
 /* Widget iterate() */
 
 static void gfx_widget_load_content_animation_iterate(void *user_data,
-      unsigned dims, bool fullscreen,
+      unsigned width, unsigned height, bool fullscreen,
       const char *dir_assets, char *font_path,
       bool is_threaded)
 {
@@ -696,25 +576,46 @@ static void gfx_widget_load_content_animation_iterate(void *user_data,
    if (state->status == GFX_WIDGET_LOAD_CONTENT_BEGIN)
    {
       dispgfx_widget_t *p_dispwidget       = (dispgfx_widget_t*)user_data;
+      unsigned last_video_width            = p_dispwidget->last_video_width;
+      unsigned widget_padding              = p_dispwidget->simple_widget_padding;
+      gfx_widget_font_data_t *font_regular = &p_dispwidget->gfx_widget_fonts.regular;
+      gfx_widget_font_data_t *font_bold    = &p_dispwidget->gfx_widget_fonts.bold;
+
       uintptr_t alpha_tag                  = (uintptr_t)&state->alpha;
 
+      int content_name_width;
+      int system_name_width;
+      int text_width;
       gfx_animation_ctx_entry_t animation_entry;
 
       /* Load icon texture */
       gfx_widget_load_content_animation_load_icon();
 
-      /* Calculate positions */
-      gfx_widget_load_content_animation_calculate(p_dispwidget, state);
+      /* Get overall text width */
+      content_name_width = font_driver_get_message_width(
+            font_bold->font, state->content_name,
+            (unsigned)strlen(state->content_name), 1.0f);
+      system_name_width = font_driver_get_message_width(
+            font_regular->font, state->system_name,
+            (unsigned)strlen(state->system_name), 1.0f);
 
-      /* Pre-set color alpha values for the bg_alpha == 1.0
-       * case (FADE_IN, SLIDE, WAIT states). The _frame() function
-       * will only recalculate these when bg_alpha < 1.0 (FADE_OUT). */
-      state->bg_shadow_top_color[3]     = state->bg_shadow_alpha;
-      state->bg_shadow_top_color[7]     = state->bg_shadow_alpha;
-      state->bg_shadow_bottom_color[11] = state->bg_shadow_alpha;
-      state->bg_shadow_bottom_color[15] = state->bg_shadow_alpha;
-      gfx_display_set_alpha(state->bg_color, state->bg_alpha);
-      gfx_display_set_alpha(state->bg_underlay_color, state->bg_underlay_alpha);
+      state->content_name_width = (content_name_width > 0) ?
+            (unsigned)content_name_width : 0;
+      state->system_name_width  = (system_name_width > 0) ?
+            (unsigned)system_name_width : 0;
+
+      text_width = (state->content_name_width > state->system_name_width) ?
+            (int)state->content_name_width : (int)state->system_name_width;
+
+      /* Now we have the text width, can determine
+       * final icon/text x draw positions */
+      state->icon_x_end = ((int)last_video_width - text_width -
+            (int)state->icon_size - (3 * (int)widget_padding)) >> 1;
+      if (state->icon_x_end < (int)widget_padding)
+         state->icon_x_end = widget_padding;
+
+      state->text_x_end = state->icon_x_end +
+            (float)(state->icon_size + widget_padding);
 
       /* Trigger fade in animation */
       state->alpha                 = 0.0f;
@@ -727,7 +628,7 @@ static void gfx_widget_load_content_animation_iterate(void *user_data,
       animation_entry.cb           = gfx_widget_load_content_animation_fade_in_cb;
       animation_entry.userdata     = state;
 
-      gfx_animation_push_widget(&animation_entry);
+      gfx_animation_push(&animation_entry);
       state->status = GFX_WIDGET_LOAD_CONTENT_FADE_IN;
    }
 }
@@ -749,8 +650,8 @@ static void gfx_widget_load_content_animation_frame(void *data, void *user_data)
       video_frame_info_t *video_info       = (video_frame_info_t*)data;
       dispgfx_widget_t *p_dispwidget       = (dispgfx_widget_t*)user_data;
 
-      unsigned video_width                 = VIDEO_SCALE_W(video_info->dims);
-      unsigned video_height                = VIDEO_SCALE_H(video_info->dims);
+      unsigned video_width                 = video_info->width;
+      unsigned video_height                = video_info->height;
       void *userdata                       = video_info->userdata;
 
       gfx_widget_font_data_t *font_regular = &p_dispwidget->gfx_widget_fonts.regular;
@@ -759,37 +660,9 @@ static void gfx_widget_load_content_animation_frame(void *data, void *user_data)
       gfx_display_t            *p_disp     = state->p_disp;
       gfx_display_ctx_driver_t *dispctx    = p_disp->dispctx;
 
-      /* Frame-local copies of the tintable colours.  This function runs
-       * on the video thread, while gfx_widgets_iterate() and the
-       * gfx_animation_update() callbacks own
-       * p_w_load_content_animation_st on the main thread.  Tinting in
-       * place made the video thread a second writer to that struct. */
-      float bg_color[16];
-      float bg_underlay_color[16];
-      float bg_shadow_top_color[16];
-      float bg_shadow_bottom_color[16];
-      float icon_color[16];
-      float margin_shadow_left_color[16];
-      float margin_shadow_right_color[16];
-      unsigned content_name_color          = state->content_name_color;
-      unsigned system_name_color           = state->system_name_color;
-
-      memcpy(bg_color, state->bg_color, sizeof(bg_color));
-      memcpy(bg_underlay_color, state->bg_underlay_color,
-            sizeof(bg_underlay_color));
-      memcpy(bg_shadow_top_color, state->bg_shadow_top_color,
-            sizeof(bg_shadow_top_color));
-      memcpy(bg_shadow_bottom_color, state->bg_shadow_bottom_color,
-            sizeof(bg_shadow_bottom_color));
-      memcpy(icon_color, state->icon_color, sizeof(icon_color));
-      memcpy(margin_shadow_left_color, state->margin_shadow_left_color,
-            sizeof(margin_shadow_left_color));
-      memcpy(margin_shadow_right_color, state->margin_shadow_right_color,
-            sizeof(margin_shadow_right_color));
-
 #ifdef HAVE_MENU
       /* Draw nothing if menu is currently active */
-      if (menu_state_get_ptr()->flags & MENU_ST_FLAG_ALIVE)
+      if (menu_state_get_ptr()->alive)
          return;
 #endif
 
@@ -808,11 +681,7 @@ static void gfx_widget_load_content_animation_frame(void *data, void *user_data)
             bg_alpha   = 1.0f;
             icon_alpha = 1.0f;
             /* Use 'slide_offset' as the alpha value
-             * > Saves having to trigger two animations
-             * NOTE: This couples text opacity to the slide position
-             * (EASING_IN_OUT_QUAD curve). If a different fade-in curve
-             * for text is ever needed, a separate animation must be
-             * added with its own float target. */
+             * > Saves having to trigger two animations */
             text_alpha = state->slide_offset;
             icon_x     = state->icon_x_start + (state->slide_offset *
                   (state->icon_x_end - state->icon_x_start));
@@ -846,95 +715,102 @@ static void gfx_widget_load_content_animation_frame(void *data, void *user_data)
       /* Draw background */
       if (bg_alpha > 0.0f)
       {
-         /* > Set opacity
-          * Only recompute alpha values when bg_alpha < 1.0
-          * (FADE_OUT state). During FADE_IN, SLIDE, WAIT and BEGIN,
-          * bg_alpha is 1.0 and the default color values already
-          * have the correct opacity from layout/init. */
-         if (bg_alpha < 1.0f)
-         {
-            float shadow_a = bg_alpha * state->bg_shadow_alpha;
-            bg_shadow_top_color[3]     = shadow_a;
-            bg_shadow_top_color[7]     = shadow_a;
-            bg_shadow_bottom_color[11] = shadow_a;
-            bg_shadow_bottom_color[15] = shadow_a;
+         /* > Set opacity */
+         state->bg_shadow_top_color[3]     = bg_alpha * state->bg_shadow_alpha;
+         state->bg_shadow_top_color[7]     = bg_alpha * state->bg_shadow_alpha;
+         state->bg_shadow_bottom_color[11] = bg_alpha * state->bg_shadow_alpha;
+         state->bg_shadow_bottom_color[15] = bg_alpha * state->bg_shadow_alpha;
 
-            gfx_display_set_alpha(bg_color, bg_alpha * state->bg_alpha);
-            gfx_display_set_alpha(bg_underlay_color,
-                  bg_alpha * state->bg_underlay_alpha);
-         }
+         gfx_display_set_alpha(state->bg_color, bg_alpha * state->bg_alpha);
+         gfx_display_set_alpha(state->bg_underlay_color,
+               bg_alpha * state->bg_underlay_alpha);
 
          /* > Background underlay */
          gfx_display_draw_quad(
                p_disp,
                userdata,
-               VIDEO_SCALE_PACK(video_width, video_height),
+               video_width,
+               video_height,
                0,
                0,
-               VIDEO_SCALE_PACK(video_width, video_height),
-               VIDEO_SCALE_PACK(video_width, video_height),
-               bg_underlay_color,
+               video_width,
+               video_height,
+               video_width,
+               video_height,
+               state->bg_underlay_color,
                NULL);
 
          /* > Background shadow */
          gfx_display_draw_quad(
                p_disp,
                userdata,
-               VIDEO_SCALE_PACK(video_width, video_height),
+               video_width,
+               video_height,
                state->bg_x,
                state->bg_shadow_top_y,
-               VIDEO_SCALE_PACK(state->bg_width, state->bg_shadow_height),
-               VIDEO_SCALE_PACK(video_width, video_height),
-               bg_shadow_top_color,
+               state->bg_width,
+               state->bg_shadow_height,
+               video_width,
+               video_height,
+               state->bg_shadow_top_color,
                NULL);
 
          gfx_display_draw_quad(
                p_disp,
                userdata,
-               VIDEO_SCALE_PACK(video_width, video_height),
+               video_width,
+               video_height,
                state->bg_x,
                state->bg_shadow_bottom_y,
-               VIDEO_SCALE_PACK(state->bg_width, state->bg_shadow_height),
-               VIDEO_SCALE_PACK(video_width, video_height),
-               bg_shadow_bottom_color,
+               state->bg_width,
+               state->bg_shadow_height,
+               video_width,
+               video_height,
+               state->bg_shadow_bottom_color,
                NULL);
 
          /* > Background */
          gfx_display_draw_quad(
                p_disp,
                userdata,
-               VIDEO_SCALE_PACK(video_width, video_height),
+               video_width,
+               video_height,
                state->bg_x,
                state->bg_y,
-               VIDEO_SCALE_PACK(state->bg_width, state->bg_height),
-               VIDEO_SCALE_PACK(video_width, video_height),
-               bg_color,
+               state->bg_width,
+               state->bg_height,
+               video_width,
+               video_height,
+               state->bg_color,
                NULL);
       }
 
       /* Draw icon */
       if (icon_alpha > 0.0f)
       {
-         gfx_display_set_alpha(icon_color, icon_alpha);
+         gfx_display_set_alpha(state->icon_color, icon_alpha);
 
          if (state->icon_texture)
          {
-            gfx_display_blend_begin(dispctx, userdata);
+            if (dispctx && dispctx->blend_begin)
+               dispctx->blend_begin(userdata);
 
             gfx_widgets_draw_icon(
                   userdata,
                   p_disp,
-                  VIDEO_SCALE_PACK(video_width, video_height),
-                  VIDEO_SCALE_PACK(state->icon_size, state->icon_size),
+                  video_width,
+                  video_height,
+                  state->icon_size,
+                  state->icon_size,
                   state->icon_texture,
                   icon_x,
                   state->icon_y,
-                  0.0f, /* rad */
-                  1.0f, /* cos(rad)   = cos(0)  = 1.0f */
-                  0.0f, /* sine(rad)  = sine(0) = 0.0f */
-                  icon_color);
+                  0.0f,
+                  1.0f,
+                  state->icon_color);
 
-            gfx_display_blend_end(dispctx, userdata);
+            if (dispctx && dispctx->blend_end)
+               dispctx->blend_end(userdata);
          }
          /* If there is no icon, draw a placeholder
           * (otherwise layout will look terrible...) */
@@ -942,107 +818,72 @@ static void gfx_widget_load_content_animation_frame(void *data, void *user_data)
             gfx_display_draw_quad(
                   p_disp,
                   userdata,
-                  VIDEO_SCALE_PACK(video_width, video_height),
+                  video_width,
+                  video_height,
                   icon_x,
                   state->icon_y,
-                  VIDEO_SCALE_PACK(state->icon_size, state->icon_size),
-                  VIDEO_SCALE_PACK(video_width, video_height),
-                  icon_color,
+                  state->icon_size,
+                  state->icon_size,
+                  video_width,
+                  video_height,
+                  state->icon_color,
 		  NULL);
       }
 
       /* Draw text */
-      /* Use a minimum threshold that maps to at least 1/255
-       * alpha. Values below this produce text_alpha_int == 0,
-       * meaning fully transparent text - skip the draw entirely. */
-      if (text_alpha > (1.0f / 255.0f))
+      if (text_alpha > 0.0f)
       {
          unsigned text_alpha_int = (unsigned)(text_alpha * 255.0f);
-         bool text_drawn         = false;
 
          /* > Set opacity */
-         content_name_color = COLOR_TEXT_ALPHA(content_name_color,
+         state->content_name_color = COLOR_TEXT_ALPHA(state->content_name_color,
                text_alpha_int);
-         system_name_color  = COLOR_TEXT_ALPHA(system_name_color,
+         state->system_name_color  = COLOR_TEXT_ALPHA(state->system_name_color,
                text_alpha_int);
 
-         /* > Content name, with the read percentage after it while
-          *   the content is still streaming in */
-         if (state->content_name_len > 0)
-         {
-            if (state->progress >= 0)
-            {
-               char with_progress[540];
-               size_t _len = strlcpy(with_progress, state->content_name,
-                     sizeof(with_progress));
-               snprintf(with_progress + _len,
-                     sizeof(with_progress) - _len, "  %d%%",
-                     (int)state->progress);
-               gfx_widgets_draw_text(
-                     font_bold,
-                     with_progress,
-                     text_x,
-                     state->content_name_y,
-                     VIDEO_SCALE_PACK(video_width, video_height),
-                     content_name_color,
-                     TEXT_ALIGN_LEFT,
-                     true);
-            }
-            else
-               gfx_widgets_draw_text(
-                     font_bold,
-                     state->content_name,
-                     text_x,
-                     state->content_name_y,
-                     VIDEO_SCALE_PACK(video_width, video_height),
-                     content_name_color,
-                     TEXT_ALIGN_LEFT,
-                     true);
-            text_drawn = true;
-         }
+         /* > Content name */
+         gfx_widgets_draw_text(
+               font_bold,
+               state->content_name,
+               text_x,
+               state->content_name_y,
+               video_width,
+               video_height,
+               state->content_name_color,
+               TEXT_ALIGN_LEFT,
+               true);
 
          /* > System name */
-         if (state->system_name_len > 0)
+         gfx_widgets_draw_text(
+               font_regular,
+               state->system_name,
+               text_x,
+               state->system_name_y,
+               video_width,
+               video_height,
+               state->system_name_color,
+               TEXT_ALIGN_LEFT,
+               true);
+
+         /* If the message queue is active, must flush the
+          * text here to avoid overlaps */
+         if (msg_queue_size > 0)
          {
-            gfx_widgets_draw_text(
-                  font_regular,
-                  state->system_name,
-                  text_x,
-                  state->system_name_y,
-                  VIDEO_SCALE_PACK(video_width, video_height),
-                  system_name_color,
-                  TEXT_ALIGN_LEFT,
-                  true);
-            text_drawn = true;
+            gfx_widgets_flush_text(video_width, video_height, font_regular);
+            gfx_widgets_flush_text(video_width, video_height, font_bold);
          }
-
-         /* Only flush text if we actually drew something */
-         if (text_drawn)
+         /* Must also flush text if it overlaps the edge of
+          * the screen (otherwise it will bleed through the
+          * 'margin' shadows) */
+         else
          {
-            /* If the message queue is active, must flush the
-             * text here to avoid overlaps */
-            if (msg_queue_size > 0)
-            {
-               gfx_widgets_flush_text(VIDEO_SCALE_PACK(video_width,
-                     video_height), font_regular);
-               gfx_widgets_flush_text(VIDEO_SCALE_PACK(video_width,
-                     video_height), font_bold);
-            }
-            /* Must also flush text if it overlaps the edge of
-             * the screen (otherwise it will bleed through the
-             * 'margin' shadows) */
-            else
-            {
-               if (state->system_name_width > video_width -
-                     (unsigned)text_x - state->margin_shadow_width)
-                  gfx_widgets_flush_text(VIDEO_SCALE_PACK(video_width,
-                        video_height), font_regular);
+            if (state->system_name_width > video_width -
+                  (unsigned)text_x - state->margin_shadow_width)
+               gfx_widgets_flush_text(video_width, video_height, font_regular);
 
-               if (state->content_name_width > video_width -
-                     (unsigned)text_x - state->margin_shadow_width)
-                  gfx_widgets_flush_text(VIDEO_SCALE_PACK(video_width,
-                        video_height), font_bold);
-            }
+            if (state->content_name_width > video_width -
+                  (unsigned)text_x - state->margin_shadow_width)
+               gfx_widgets_flush_text(video_width, video_height, font_bold);
          }
       }
 
@@ -1053,33 +894,39 @@ static void gfx_widget_load_content_animation_frame(void *data, void *user_data)
       if (bg_alpha > 0.0f)
       {
          /* > Set opacity */
-         margin_shadow_left_color[3]   = bg_alpha;
-         margin_shadow_left_color[11]  = bg_alpha;
-         margin_shadow_right_color[7]  = bg_alpha;
-         margin_shadow_right_color[15] = bg_alpha;
+         state->margin_shadow_left_color[3]   = bg_alpha;
+         state->margin_shadow_left_color[11]  = bg_alpha;
+         state->margin_shadow_right_color[7]  = bg_alpha;
+         state->margin_shadow_right_color[15] = bg_alpha;
 
          /* > Left */
          gfx_display_draw_quad(
                p_disp,
                userdata,
-               VIDEO_SCALE_PACK(video_width, video_height),
+               video_width,
+               video_height,
                state->margin_shadow_left_x,
                state->bg_y,
-               VIDEO_SCALE_PACK(state->margin_shadow_width, state->bg_height),
-               VIDEO_SCALE_PACK(video_width, video_height),
-               margin_shadow_left_color,
+               state->margin_shadow_width,
+               state->bg_height,
+               video_width,
+               video_height,
+               state->margin_shadow_left_color,
 	       NULL);
 
          /* > Right */
          gfx_display_draw_quad(
                p_disp,
                userdata,
-               VIDEO_SCALE_PACK(video_width, video_height),
+               video_width,
+               video_height,
                state->margin_shadow_right_x,
                state->bg_y,
-               VIDEO_SCALE_PACK(state->margin_shadow_width, state->bg_height),
-               VIDEO_SCALE_PACK(video_width, video_height),
-               margin_shadow_right_color,
+               state->margin_shadow_width,
+               state->bg_height,
+               video_width,
+               video_height,
+               state->margin_shadow_right_color,
 	       NULL);
       }
    }
@@ -1089,7 +936,7 @@ static void gfx_widget_load_content_animation_frame(void *data, void *user_data)
 
 static void gfx_widget_load_content_animation_context_reset(
       bool is_threaded,
-      unsigned dims, bool fullscreen,
+      unsigned width, unsigned height, bool fullscreen,
       const char *dir_assets, char *font_path,
       char* menu_png_path,
       char* widgets_png_path)
@@ -1097,7 +944,7 @@ static void gfx_widget_load_content_animation_context_reset(
    gfx_widget_load_content_animation_state_t *state = &p_w_load_content_animation_st;
 
    /* Cache icon directory */
-   if (!menu_png_path || !*menu_png_path)
+   if (string_is_empty(menu_png_path))
       state->icon_directory[0] = '\0';
    else
       strlcpy(state->icon_directory, menu_png_path,
@@ -1133,7 +980,7 @@ static bool gfx_widget_load_content_animation_init(
       gfx_animation_t *p_anim,
       bool video_is_threaded, bool fullscreen)
 {
-   gfx_widget_load_content_animation_state_t *state =
+   gfx_widget_load_content_animation_state_t *state = 
       &p_w_load_content_animation_st;
 
    state->p_disp = p_disp;
@@ -1142,13 +989,6 @@ static bool gfx_widget_load_content_animation_init(
 }
 /* Widget definition */
 
-static bool gfx_widget_load_content_animation_visible(void)
-{
-   gfx_widget_load_content_animation_state_t *state =
-      &p_w_load_content_animation_st;
-   return state->status != GFX_WIDGET_LOAD_CONTENT_IDLE;
-}
-
 const gfx_widget_t gfx_widget_load_content_animation = {
    gfx_widget_load_content_animation_init,
    gfx_widget_load_content_animation_free,
@@ -1156,6 +996,5 @@ const gfx_widget_t gfx_widget_load_content_animation = {
    gfx_widget_load_content_animation_context_destroy,
    gfx_widget_load_content_animation_layout,
    gfx_widget_load_content_animation_iterate,
-   gfx_widget_load_content_animation_frame,
-   gfx_widget_load_content_animation_visible
+   gfx_widget_load_content_animation_frame
 };

@@ -6,8 +6,7 @@
  * @description These functions have been superseeded by direct GPU register writes, or external GPU libraries.
  * @deprecated
  */
-#ifndef _CTR_GPU_OLD_H
-#define _CTR_GPU_OLD_H
+#pragma once
 
 #include <3ds/gpu/gpu.h>
 
@@ -238,5 +237,3 @@ void GPU_DrawElements(GPU_Primitive_t primitive, u32* indexArray, u32 n) DEPRECA
 void GPU_FinishDrawing() DEPRECATED;
 
 void GPU_Finalize(void) DEPRECATED;
-
-#endif

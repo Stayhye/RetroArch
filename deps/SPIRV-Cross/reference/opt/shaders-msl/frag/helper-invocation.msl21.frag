@@ -16,16 +16,17 @@ struct main0_in
 fragment main0_out main0(main0_in in [[stage_in]], texture2d<float> uSampler [[texture(0)]], sampler uSamplerSmplr [[sampler(0)]])
 {
     main0_out out = {};
-    float4 _52;
-    if (!simd_is_helper_thread())
+    bool gl_HelperInvocation = simd_is_helper_thread();
+    float4 _51;
+    if (!gl_HelperInvocation)
     {
-        _52 = uSampler.sample(uSamplerSmplr, in.vUV, level(0.0));
+        _51 = uSampler.sample(uSamplerSmplr, in.vUV, level(0.0));
     }
     else
     {
-        _52 = float4(1.0);
+        _51 = float4(1.0);
     }
-    out.FragColor = _52;
+    out.FragColor = _51;
     return out;
 }
 

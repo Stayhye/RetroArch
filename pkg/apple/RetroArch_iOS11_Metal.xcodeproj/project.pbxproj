@@ -7,11 +7,6 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
-		0714E7182983A7F400E6B45B /* libMoltenVK.dylib in Frameworks */ = {isa = PBXBuildFile; fileRef = 0714E7172983A7F400E6B45B /* libMoltenVK.dylib */; };
-		0714E7192983A7FB00E6B45B /* libMoltenVK.dylib in Embed Libraries */ = {isa = PBXBuildFile; fileRef = 0714E7172983A7F400E6B45B /* libMoltenVK.dylib */; settings = {ATTRIBUTES = (CodeSignOnCopy, ); }; };
-		072DA119299B307500619B75 /* CoreHaptics.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 072DA118299B307500619B75 /* CoreHaptics.framework */; };
-		073EEE0A296A1A9A00224668 /* libMoltenVK.dylib in Frameworks */ = {isa = PBXBuildFile; fileRef = 073EEE09296A1A9A00224668 /* libMoltenVK.dylib */; };
-		073EEE0B296A1B1A00224668 /* libMoltenVK.dylib in Embed Libraries */ = {isa = PBXBuildFile; fileRef = 073EEE09296A1A9A00224668 /* libMoltenVK.dylib */; settings = {ATTRIBUTES = (CodeSignOnCopy, ); }; };
 		9204BE0D1D319EF300BD49DB /* griffin_objc.m in Sources */ = {isa = PBXBuildFile; fileRef = 50521A431AA23BF500185CC9 /* griffin_objc.m */; };
 		9204BE101D319EF300BD49DB /* griffin.c in Sources */ = {isa = PBXBuildFile; fileRef = 501232C9192E5FC40063A359 /* griffin.c */; };
 		9204BE121D319EF300BD49DB /* libz.dylib in Frameworks */ = {isa = PBXBuildFile; fileRef = 5040F04F1AE47ED4006F6972 /* libz.dylib */; };
@@ -37,6 +32,8 @@
 		9210C2F724B3A32D00E6FE7C /* griffin_cpp.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 9210C2F424B3A32D00E6FE7C /* griffin_cpp.cpp */; };
 		9210C2F824B3A32D00E6FE7C /* griffin_glslang.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 9210C2F524B3A32D00E6FE7C /* griffin_glslang.cpp */; };
 		9210C2F924B3A32D00E6FE7C /* griffin_glslang.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 9210C2F524B3A32D00E6FE7C /* griffin_glslang.cpp */; };
+		9210C2FC24B4CB4900E6FE7C /* menu_pipeline.metal in Sources */ = {isa = PBXBuildFile; fileRef = 9210C2FA24B4CB4900E6FE7C /* menu_pipeline.metal */; };
+		9210C2FD24B4CB4900E6FE7C /* menu_pipeline.metal in Sources */ = {isa = PBXBuildFile; fileRef = 9210C2FA24B4CB4900E6FE7C /* menu_pipeline.metal */; };
 		9210C2FE24B4CB4900E6FE7C /* Shaders.metal in Sources */ = {isa = PBXBuildFile; fileRef = 9210C2FB24B4CB4900E6FE7C /* Shaders.metal */; };
 		9210C2FF24B4CB4900E6FE7C /* Shaders.metal in Sources */ = {isa = PBXBuildFile; fileRef = 9210C2FB24B4CB4900E6FE7C /* Shaders.metal */; };
 		9222F1FF2314BA7C0097C0FD /* assets.zip in Resources */ = {isa = PBXBuildFile; fileRef = 9222F1FE2314BA7C0097C0FD /* assets.zip */; };
@@ -87,37 +84,7 @@
 		92E5DCD4231A5786006491BF /* modules in Resources */ = {isa = PBXBuildFile; fileRef = 92E5DCD3231A5786006491BF /* modules */; };
 /* End PBXBuildFile section */
 
-/* Begin PBXCopyFilesBuildPhase section */
-		0714E71A2983A7FB00E6B45B /* Embed Libraries */ = {
-			isa = PBXCopyFilesBuildPhase;
-			buildActionMask = 2147483647;
-			dstPath = "";
-			dstSubfolderSpec = 10;
-			files = (
-				0714E7192983A7FB00E6B45B /* libMoltenVK.dylib in Embed Libraries */,
-			);
-			name = "Embed Libraries";
-			runOnlyForDeploymentPostprocessing = 0;
-		};
-		073EEE0C296A1B1A00224668 /* Embed Libraries */ = {
-			isa = PBXCopyFilesBuildPhase;
-			buildActionMask = 2147483647;
-			dstPath = "";
-			dstSubfolderSpec = 10;
-			files = (
-				073EEE0B296A1B1A00224668 /* libMoltenVK.dylib in Embed Libraries */,
-			);
-			name = "Embed Libraries";
-			runOnlyForDeploymentPostprocessing = 0;
-		};
-/* End PBXCopyFilesBuildPhase section */
-
 /* Begin PBXFileReference section */
-		0714E7172983A7F400E6B45B /* libMoltenVK.dylib */ = {isa = PBXFileReference; lastKnownFileType = "compiled.mach-o.dylib"; name = libMoltenVK.dylib; path = tvOS/modules/libMoltenVK.dylib; sourceTree = "<group>"; };
-		072DA118299B307500619B75 /* CoreHaptics.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = CoreHaptics.framework; path = System/Library/Frameworks/CoreHaptics.framework; sourceTree = SDKROOT; };
-		073EEE04296A189800224668 /* libMoltenVK.dylib */ = {isa = PBXFileReference; lastKnownFileType = "compiled.mach-o.dylib"; name = libMoltenVK.dylib; path = Frameworks/MoltenVK/dylib/iOS/libMoltenVK.dylib; sourceTree = "<group>"; };
-		073EEE07296A1A8400224668 /* iOS */ = {isa = PBXFileReference; lastKnownFileType = folder; path = iOS; sourceTree = "<group>"; };
-		073EEE09296A1A9A00224668 /* libMoltenVK.dylib */ = {isa = PBXFileReference; lastKnownFileType = "compiled.mach-o.dylib"; name = libMoltenVK.dylib; path = iOS/modules/libMoltenVK.dylib; sourceTree = "<group>"; };
 		501232C9192E5FC40063A359 /* griffin.c */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.c; name = griffin.c; path = ../../griffin/griffin.c; sourceTree = SOURCE_ROOT; };
 		501881EB184BAD6D006F665D /* AVFoundation.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = AVFoundation.framework; path = System/Library/Frameworks/AVFoundation.framework; sourceTree = SDKROOT; };
 		501881ED184BB54C006F665D /* CoreMedia.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = CoreMedia.framework; path = System/Library/Frameworks/CoreMedia.framework; sourceTree = SDKROOT; };
@@ -134,7 +101,8 @@
 		9210C2F124B3A19100E6FE7C /* Metal.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = Metal.framework; path = System/Library/Frameworks/Metal.framework; sourceTree = SDKROOT; };
 		9210C2F424B3A32D00E6FE7C /* griffin_cpp.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; name = griffin_cpp.cpp; path = ../../griffin/griffin_cpp.cpp; sourceTree = "<group>"; };
 		9210C2F524B3A32D00E6FE7C /* griffin_glslang.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; name = griffin_glslang.cpp; path = ../../griffin/griffin_glslang.cpp; sourceTree = "<group>"; };
-		9210C2FB24B4CB4900E6FE7C /* Shaders.metal */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.metal; name = Shaders.metal; path = ../../gfx/drivers/metal_shaders/Shaders.metal; sourceTree = "<group>"; };
+		9210C2FA24B4CB4900E6FE7C /* menu_pipeline.metal */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.metal; name = menu_pipeline.metal; path = ../../gfx/common/metal/menu_pipeline.metal; sourceTree = "<group>"; };
+		9210C2FB24B4CB4900E6FE7C /* Shaders.metal */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.metal; name = Shaders.metal; path = ../../gfx/common/metal/Shaders.metal; sourceTree = "<group>"; };
 		9222F1FE2314BA7C0097C0FD /* assets.zip */ = {isa = PBXFileReference; lastKnownFileType = archive.zip; path = assets.zip; sourceTree = "<group>"; };
 		9222F2082315DAD50097C0FD /* Launch Screen.storyboard */ = {isa = PBXFileReference; lastKnownFileType = file.storyboard; path = "Launch Screen.storyboard"; sourceTree = "<group>"; };
 		9222F20A2315DD3D0097C0FD /* retroarch_logo.png */ = {isa = PBXFileReference; lastKnownFileType = image.png; path = retroarch_logo.png; sourceTree = "<group>"; };
@@ -162,6 +130,8 @@
 		92B9EB6A24E0518700E6CFB2 /* fopen_utf8.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = fopen_utf8.h; sourceTree = "<group>"; };
 		92B9EB6B24E0518700E6CFB2 /* intrinsics.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = intrinsics.h; sourceTree = "<group>"; };
 		92B9EB6C24E0518700E6CFB2 /* posix_string.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = posix_string.h; sourceTree = "<group>"; };
+		92B9EB6E24E0518700E6CFB2 /* zlib.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = zlib.h; sourceTree = "<group>"; };
+		92B9EB6F24E0518700E6CFB2 /* zconf.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = zconf.h; sourceTree = "<group>"; };
 		92B9EB7024E0518700E6CFB2 /* getopt.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = getopt.h; sourceTree = "<group>"; };
 		92B9EB7124E0518700E6CFB2 /* fnmatch.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = fnmatch.h; sourceTree = "<group>"; };
 		92B9EB7224E0518700E6CFB2 /* msvc.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = msvc.h; sourceTree = "<group>"; };
@@ -176,7 +146,7 @@
 		92B9EB7F24E0518700E6CFB2 /* net_http.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = net_http.h; sourceTree = "<group>"; };
 		92B9EB8024E0518700E6CFB2 /* net_http_parse.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = net_http_parse.h; sourceTree = "<group>"; };
 		92B9EB8124E0518700E6CFB2 /* retro_timers.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = retro_timers.h; sourceTree = "<group>"; };
-		92B9EB8324E0518700E6CFB2 /* rm3u.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = rm3u.h; sourceTree = "<group>"; };
+		92B9EB8324E0518700E6CFB2 /* m3u_file.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = m3u_file.h; sourceTree = "<group>"; };
 		92B9EB8424E0518700E6CFB2 /* rjson.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = rjson.h; sourceTree = "<group>"; };
 		92B9EB8524E0518700E6CFB2 /* rxml.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = rxml.h; sourceTree = "<group>"; };
 		92B9EB8624E0518700E6CFB2 /* cdfs.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = cdfs.h; sourceTree = "<group>"; };
@@ -321,6 +291,7 @@
 		92B9ECBF24E054B500E6CFB2 /* core_backup.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; name = core_backup.h; path = ../../core_backup.h; sourceTree = "<group>"; };
 		92B9ECC024E054B500E6CFB2 /* disk_control_interface.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; name = disk_control_interface.h; path = ../../disk_control_interface.h; sourceTree = "<group>"; };
 		92B9ECC124E054B600E6CFB2 /* msg_hash.c */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.c; name = msg_hash.c; path = ../../msg_hash.c; sourceTree = "<group>"; };
+		92B9ECC224E054B600E6CFB2 /* nvda_controller.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; name = nvda_controller.h; path = ../../nvda_controller.h; sourceTree = "<group>"; };
 		92B9ECC324E054B600E6CFB2 /* defaults.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; name = defaults.h; path = ../../defaults.h; sourceTree = "<group>"; };
 		92B9ECC424E054B600E6CFB2 /* database_info.c */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.c; name = database_info.c; path = ../../database_info.c; sourceTree = "<group>"; };
 		92B9ECC524E054B600E6CFB2 /* runtime_file.c */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.c; name = runtime_file.c; path = ../../runtime_file.c; sourceTree = "<group>"; };
@@ -381,14 +352,12 @@
 			isa = PBXFrameworksBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
-				073EEE0A296A1A9A00224668 /* libMoltenVK.dylib in Frameworks */,
 				9210C2F224B3A19100E6FE7C /* MetalKit.framework in Frameworks */,
 				9210C2F324B3A19100E6FE7C /* Metal.framework in Frameworks */,
 				92CC05C721FEDD0B00FF79F0 /* MobileCoreServices.framework in Frameworks */,
 				92CC05C521FEDC9F00FF79F0 /* CFNetwork.framework in Frameworks */,
 				9204BE121D319EF300BD49DB /* libz.dylib in Frameworks */,
 				9204BE131D319EF300BD49DB /* QuartzCore.framework in Frameworks */,
-				072DA119299B307500619B75 /* CoreHaptics.framework in Frameworks */,
 				9204BE141D319EF300BD49DB /* GameController.framework in Frameworks */,
 				9204BE151D319EF300BD49DB /* CoreText.framework in Frameworks */,
 				9204BE161D319EF300BD49DB /* CoreLocation.framework in Frameworks */,
@@ -409,7 +378,6 @@
 			isa = PBXFrameworksBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
-				0714E7182983A7F400E6B45B /* libMoltenVK.dylib in Frameworks */,
 				926C77F121FD26E800103EDE /* GameController.framework in Frameworks */,
 				926C77EF21FD263800103EDE /* AudioToolbox.framework in Frameworks */,
 			);
@@ -574,6 +542,8 @@
 		92B9EB6D24E0518700E6CFB2 /* zlib */ = {
 			isa = PBXGroup;
 			children = (
+				92B9EB6E24E0518700E6CFB2 /* zlib.h */,
+				92B9EB6F24E0518700E6CFB2 /* zconf.h */,
 			);
 			path = zlib;
 			sourceTree = "<group>";
@@ -610,7 +580,7 @@
 		92B9EB8224E0518700E6CFB2 /* formats */ = {
 			isa = PBXGroup;
 			children = (
-				92B9EB8324E0518700E6CFB2 /* rm3u.h */,
+				92B9EB8324E0518700E6CFB2 /* m3u_file.h */,
 				92B9EB8424E0518700E6CFB2 /* rjson.h */,
 				92B9EB8524E0518700E6CFB2 /* rxml.h */,
 				92B9EB8624E0518700E6CFB2 /* cdfs.h */,
@@ -899,6 +869,7 @@
 				92B9ECBE24E054B500E6CFB2 /* manual_content_scan.h */,
 				92B9ECC124E054B600E6CFB2 /* msg_hash.c */,
 				92B9ECAE24E054B400E6CFB2 /* msg_hash.h */,
+				92B9ECC224E054B600E6CFB2 /* nvda_controller.h */,
 				92B9ECAA24E054B400E6CFB2 /* paths.h */,
 				92B9ECA524E054B300E6CFB2 /* performance_counters.h */,
 				92B9EC9F24E053BD00E6CFB2 /* playlist.c */,
@@ -1006,6 +977,7 @@
 				92B9EAE024E04F8800E6CFB2 /* Sources */,
 				9222F2082315DAD50097C0FD /* Launch Screen.storyboard */,
 				9222F1FE2314BA7C0097C0FD /* assets.zip */,
+				9210C2FA24B4CB4900E6FE7C /* menu_pipeline.metal */,
 				9210C2FB24B4CB4900E6FE7C /* Shaders.metal */,
 				83D632D719ECFCC4009E3161 /* iOS */,
 				926C77D821FD1E6500103EDE /* tvOS */,
@@ -1030,11 +1002,6 @@
 		96AFAE2816C1D4EA009DE44C /* Frameworks */ = {
 			isa = PBXGroup;
 			children = (
-				072DA118299B307500619B75 /* CoreHaptics.framework */,
-				073EEE09296A1A9A00224668 /* libMoltenVK.dylib */,
-				0714E7172983A7F400E6B45B /* libMoltenVK.dylib */,
-				073EEE07296A1A8400224668 /* iOS */,
-				073EEE04296A189800224668 /* libMoltenVK.dylib */,
 				9210C2F124B3A19100E6FE7C /* Metal.framework */,
 				9210C2F024B3A19100E6FE7C /* MetalKit.framework */,
 				92CC05C621FEDD0B00FF79F0 /* MobileCoreServices.framework */,
@@ -1100,7 +1067,6 @@
 				9204BE111D319EF300BD49DB /* Frameworks */,
 				9204BE271D319EF300BD49DB /* ShellScript */,
 				9204BE211D319EF300BD49DB /* Resources */,
-				073EEE0C296A1B1A00224668 /* Embed Libraries */,
 			);
 			buildRules = (
 			);
@@ -1119,7 +1085,6 @@
 				926C77D421FD1E6500103EDE /* Frameworks */,
 				92CC057521FE2D4900FF79F0 /* ShellScript */,
 				926C77D521FD1E6500103EDE /* Resources */,
-				0714E71A2983A7FB00E6B45B /* Embed Libraries */,
 			);
 			buildRules = (
 			);
@@ -1250,6 +1215,7 @@
 				92CC05B421FE3C1700FF79F0 /* GCDWebServerURLEncodedFormRequest.m in Sources */,
 				92CC05B021FE3C1700FF79F0 /* GCDWebServerDataResponse.m in Sources */,
 				92CC05C221FE3C6D00FF79F0 /* WebServer.m in Sources */,
+				9210C2FC24B4CB4900E6FE7C /* menu_pipeline.metal in Sources */,
 				9210C2FE24B4CB4900E6FE7C /* Shaders.metal in Sources */,
 				92CC05BA21FE3C1700FF79F0 /* GCDWebServerFileRequest.m in Sources */,
 				92CC05AE21FE3C1700FF79F0 /* GCDWebServerFileResponse.m in Sources */,
@@ -1278,6 +1244,7 @@
 				92CC05B521FE3C1700FF79F0 /* GCDWebServerURLEncodedFormRequest.m in Sources */,
 				92CC05B121FE3C1700FF79F0 /* GCDWebServerDataResponse.m in Sources */,
 				92CC05C321FE3C6D00FF79F0 /* WebServer.m in Sources */,
+				9210C2FD24B4CB4900E6FE7C /* menu_pipeline.metal in Sources */,
 				9210C2FF24B4CB4900E6FE7C /* Shaders.metal in Sources */,
 				92CC05BB21FE3C1700FF79F0 /* GCDWebServerFileRequest.m in Sources */,
 				92CC05AF21FE3C1700FF79F0 /* GCDWebServerFileResponse.m in Sources */,
@@ -1311,7 +1278,7 @@
 				CODE_SIGN_IDENTITY = "iPhone Developer";
 				"CODE_SIGN_IDENTITY[sdk=iphoneos*]" = "iPhone Developer";
 				CODE_SIGN_RESOURCE_RULES_PATH = "$(SDKROOT)/ResourceRules.plist";
-				CURRENT_PROJECT_VERSION = 1.22.2;
+				CURRENT_PROJECT_VERSION = 1.10.3;
 				DEPS_DIR = "$(SRCBASE)/deps";
 				DEVELOPMENT_TEAM = UK699V5ZS8;
 				ENABLE_BITCODE = NO;
@@ -1320,6 +1287,7 @@
 				HEADER_SEARCH_PATHS = (
 					../../,
 					"../../libretro-common/include",
+					"../../libretro-common/include/compat/zlib",
 					../../deps/stb,
 					../../deps/rcheevos/include,
 					../../deps,
@@ -1329,17 +1297,12 @@
 					"$(DEPS_DIR)/glslang/glslang/glslang/OSDependent/Unix",
 					"$(DEPS_DIR)/glslang/glslang/SPIRV",
 					"$(DEPS_DIR)/glslang/glslang/glslang/MachineIndependent",
-					../../gfx/include,
 				);
 				INFOPLIST_FILE = "$(SRCROOT)/iOS/Info.plist";
 				IPHONEOS_DEPLOYMENT_TARGET = 11.0;
 				LD_NO_PIE = YES;
-				LD_RUNPATH_SEARCH_PATHS = "$(LD_RUNPATH_SEARCH_PATHS_$(IS_MACCATALYST)) @executable_path/Frameworks";
-				LIBRARY_SEARCH_PATHS = (
-					"@executable_path/Frameworks",
-					"$(PROJECT_DIR)/iOS/modules",
-				);
-				MARKETING_VERSION = 1.22.2;
+				LIBRARY_SEARCH_PATHS = "";
+				MARKETING_VERSION = 1.10.3;
 				MTL_FAST_MATH = YES;
 				ONLY_ACTIVE_ARCH = NO;
 				OTHER_CFLAGS = (
@@ -1347,13 +1310,11 @@
 					"-DHAVE_STB_FONT",
 					"-DHAVE_HID",
 					"-DHAVE_NETWORKING",
-					"-DHAVE_IFINFO",
 					"-DHAVE_NETPLAYDISCOVERY",
-					"-DHAVE_BSV_MOVIE",
 					"-DHAVE_RUNAHEAD",
 					"-DHAVE_TRANSLATE",
 					"-DHAVE_GRIFFIN",
-					"-DHAVE_RVORBIS",
+					"-DHAVE_STB_VORBIS",
 					"-DHAVE_UPDATE_ASSETS",
 					"-DHAVE_ONLINE_UPDATER",
 					"-DHAVE_LANGEXTRA",
@@ -1378,9 +1339,9 @@
 					"-DHAVE_COREAUDIO",
 					"-DHAVE_DYNAMIC",
 					"-DHAVE_OVERLAY",
+					"-DHAVE_VIDEO_LAYOUT",
+					"-DHAVE_ZLIB",
 					"-DHAVE_RPNG",
-					"-DHAVE_RWEBP",
-					"-DHAVE_RDDS",
 					"-DHAVE_RJPEG",
 					"-DHAVE_RBMP",
 					"-DHAVE_RTGA",
@@ -1396,12 +1357,14 @@
 					"-D_LZMA_UINT32_IS_ULONG",
 					"-DHAVE_MFI",
 					"-DHAVE_KEYMAPPER",
+					"-DHAVE_COCOA_METAL",
 					"-DHAVE_METAL",
 					"-DHAVE_SLANG",
 					"-DHAVE_SPIRV_CROSS",
 					"-DHAVE_GLSLANG",
 					"-DWANT_GLSLANG",
 					"-DGLSLANG_OSINCLUDE_UNIX",
+					"-DENABLE_HLSL",
 					"-DHAVE_BUILTINGLSLANG",
 					"-DHAVE_CHEATS",
 					"-DHAVE_CORE_INFO_CACHE",
@@ -1410,9 +1373,6 @@
 					"-DHAVE_SCREENSHOTS",
 					"-DHAVE_REWIND",
 					"-DHAVE_PATCH",
-					"-DHAVE_UPDATE_CORE_INFO",
-					"-DHAVE_VULKAN",
-					"-DHAVE_7ZIP",
 				);
 				PRODUCT_BUNDLE_IDENTIFIER = com.libretro.dist.ios.RetroArch;
 				PRODUCT_NAME = RetroArch;
@@ -1434,7 +1394,7 @@
 				CODE_SIGN_IDENTITY = "iPhone Developer";
 				"CODE_SIGN_IDENTITY[sdk=iphoneos*]" = "iPhone Developer";
 				CODE_SIGN_RESOURCE_RULES_PATH = "$(SDKROOT)/ResourceRules.plist";
-				CURRENT_PROJECT_VERSION = 1.22.2;
+				CURRENT_PROJECT_VERSION = 1.10.3;
 				DEPS_DIR = "$(SRCBASE)/deps";
 				DEVELOPMENT_TEAM = UK699V5ZS8;
 				ENABLE_BITCODE = NO;
@@ -1443,6 +1403,7 @@
 				HEADER_SEARCH_PATHS = (
 					../../,
 					"../../libretro-common/include",
+					"../../libretro-common/include/compat/zlib",
 					../../deps/stb,
 					../../deps/rcheevos/include,
 					../../deps,
@@ -1452,17 +1413,12 @@
 					"$(DEPS_DIR)/glslang/glslang/glslang/OSDependent/Unix",
 					"$(DEPS_DIR)/glslang/glslang/SPIRV",
 					"$(DEPS_DIR)/glslang/glslang/glslang/MachineIndependent",
-					../../gfx/include,
 				);
 				INFOPLIST_FILE = "$(SRCROOT)/iOS/Info.plist";
 				IPHONEOS_DEPLOYMENT_TARGET = 11.0;
 				LD_NO_PIE = YES;
-				LD_RUNPATH_SEARCH_PATHS = "$(LD_RUNPATH_SEARCH_PATHS_$(IS_MACCATALYST)) @executable_path/Frameworks";
-				LIBRARY_SEARCH_PATHS = (
-					"@executable_path/Frameworks",
-					"$(PROJECT_DIR)/iOS/modules",
-				);
-				MARKETING_VERSION = 1.22.2;
+				LIBRARY_SEARCH_PATHS = "";
+				MARKETING_VERSION = 1.10.3;
 				MTL_FAST_MATH = YES;
 				OTHER_CFLAGS = (
 					"-DNS_BLOCK_ASSERTIONS=1",
@@ -1471,13 +1427,11 @@
 					"-DHAVE_STB_FONT",
 					"-DHAVE_HID",
 					"-DHAVE_NETWORKING",
-					"-DHAVE_IFINFO",
 					"-DHAVE_NETPLAYDISCOVERY",
-					"-DHAVE_BSV_MOVIE",
 					"-DHAVE_RUNAHEAD",
 					"-DHAVE_TRANSLATE",
 					"-DHAVE_GRIFFIN",
-					"-DHAVE_RVORBIS",
+					"-DHAVE_STB_VORBIS",
 					"-DHAVE_UPDATE_ASSETS",
 					"-DHAVE_ONLINE_UPDATER",
 					"-DHAVE_LANGEXTRA",
@@ -1504,9 +1458,9 @@
 					"-std=gnu99",
 					"-DHAVE_COREAUDIO",
 					"-DHAVE_OVERLAY",
+					"-DHAVE_VIDEO_LAYOUT",
+					"-DHAVE_ZLIB",
 					"-DHAVE_RPNG",
-					"-DHAVE_RWEBP",
-					"-DHAVE_RDDS",
 					"-DHAVE_RJPEG",
 					"-DHAVE_RBMP",
 					"-DHAVE_RTGA",
@@ -1519,9 +1473,6 @@
 					"-DHAVE_SCREENSHOTS",
 					"-DHAVE_REWIND",
 					"-DHAVE_PATCH",
-					"-DHAVE_UPDATE_CORE_INFO",
-					"-DHAVE_VULKAN",
-					"-DHAVE_7ZIP",
 				);
 				"OTHER_CFLAGS[arch=*]" = (
 					"-DNS_BLOCK_ASSERTIONS=1",
@@ -1530,13 +1481,11 @@
 					"-DHAVE_STB_FONT",
 					"-DHAVE_HID",
 					"-DHAVE_NETWORKING",
-					"-DHAVE_IFINFO",
 					"-DHAVE_NETPLAYDISCOVERY",
-					"-DHAVE_BSV_MOVIE",
 					"-DHAVE_RUNAHEAD",
 					"-DHAVE_TRANSLATE",
 					"-DHAVE_GRIFFIN",
-					"-DHAVE_RVORBIS",
+					"-DHAVE_STB_VORBIS",
 					"-DHAVE_UPDATE_ASSETS",
 					"-DHAVE_ONLINE_UPDATER",
 					"-DHAVE_LANGEXTRA",
@@ -1562,9 +1511,9 @@
 					"-DHAVE_DYNAMIC",
 					"-DRARCH_INTERNAL",
 					"-DHAVE_OVERLAY",
+					"-DHAVE_VIDEO_LAYOUT",
+					"-DHAVE_ZLIB",
 					"-DHAVE_RPNG",
-					"-DHAVE_RWEBP",
-					"-DHAVE_RDDS",
 					"-DHAVE_RJPEG",
 					"-DHAVE_RBMP",
 					"-DHAVE_RTGA",
@@ -1573,6 +1522,7 @@
 					"-DHAVE_THREADS",
 					"-DHAVE_FILTERS_BUILTIN",
 					"-DHAVE_7ZIP",
+					"-D_7ZIP_ST",
 					"-DHAVE_MATERIALUI",
 					"-DHAVE_XMB",
 					"-DHAVE_OZONE",
@@ -1580,12 +1530,14 @@
 					"-D_LZMA_UINT32_IS_ULONG",
 					"-DHAVE_MFI",
 					"-DHAVE_KEYMAPPER",
+					"-DHAVE_COCOA_METAL",
 					"-DHAVE_METAL",
 					"-DHAVE_SLANG",
 					"-DHAVE_SPIRV_CROSS",
 					"-DHAVE_GLSLANG",
 					"-DWANT_GLSLANG",
 					"-DGLSLANG_OSINCLUDE_UNIX",
+					"-DENABLE_HLSL",
 					"-DHAVE_BUILTINGLSLANG",
 					"-DHAVE_CHEATS",
 					"-DHAVE_CORE_INFO_CACHE",
@@ -1594,8 +1546,6 @@
 					"-DHAVE_PATCH",
 					"-DHAVE_RWAV",
 					"-DHAVE_BTSTACK",
-					"-DHAVE_UPDATE_CORE_INFO",
-					"-DHAVE_VULKAN",
 				);
 				PRODUCT_BUNDLE_IDENTIFIER = com.libretro.dist.ios.RetroArch;
 				PRODUCT_NAME = RetroArch;
@@ -1638,7 +1588,7 @@
 				CLANG_WARN_UNREACHABLE_CODE = YES;
 				CODE_SIGN_IDENTITY = "Apple Development";
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 1.22.2;
+				CURRENT_PROJECT_VERSION = 1.10.3;
 				DEBUG_INFORMATION_FORMAT = dwarf;
 				DEPS_DIR = "$(SRCBASE)/deps";
 				DEVELOPMENT_TEAM = UK699V5ZS8;
@@ -1654,6 +1604,7 @@
 				HEADER_SEARCH_PATHS = (
 					../../,
 					"../../libretro-common/include",
+					"../../libretro-common/include/compat/zlib",
 					../../deps/stb,
 					../../deps/rcheevos/include,
 					../../deps,
@@ -1663,15 +1614,10 @@
 					"$(DEPS_DIR)/glslang/glslang/glslang/OSDependent/Unix",
 					"$(DEPS_DIR)/glslang/glslang/SPIRV",
 					"$(DEPS_DIR)/glslang/glslang/glslang/MachineIndependent",
-					../../gfx/include,
 				);
 				INFOPLIST_FILE = "$(SRCROOT)/tvOS/Info.plist";
 				LD_RUNPATH_SEARCH_PATHS = "$(inherited) @executable_path/Frameworks";
-				LIBRARY_SEARCH_PATHS = (
-					"$(inherited)",
-					"$(PROJECT_DIR)/tvOS/modules",
-				);
-				MARKETING_VERSION = 1.22.2;
+				MARKETING_VERSION = 1.10.3;
 				MTL_ENABLE_DEBUG_INFO = INCLUDE_SOURCE;
 				MTL_FAST_MATH = YES;
 				ONLY_ACTIVE_ARCH = YES;
@@ -1680,13 +1626,11 @@
 					"-DHAVE_STB_FONT",
 					"-DHAVE_HID",
 					"-DHAVE_NETWORKING",
-					"-DHAVE_IFINFO",
 					"-DHAVE_NETPLAYDISCOVERY",
-					"-DHAVE_BSV_MOVIE",
 					"-DHAVE_RUNAHEAD",
 					"-DHAVE_TRANSLATE",
 					"-DHAVE_GRIFFIN",
-					"-DHAVE_RVORBIS",
+					"-DHAVE_STB_VORBIS",
 					"-DHAVE_UPDATE_ASSETS",
 					"-DHAVE_ONLINE_UPDATER",
 					"-DHAVE_LANGEXTRA",
@@ -1710,9 +1654,9 @@
 					"-DRARCH_MOBILE",
 					"-DHAVE_COREAUDIO",
 					"-DHAVE_DYNAMIC",
+					"-DHAVE_VIDEO_LAYOUT",
+					"-DHAVE_ZLIB",
 					"-DHAVE_RPNG",
-					"-DHAVE_RWEBP",
-					"-DHAVE_RDDS",
 					"-DHAVE_RJPEG",
 					"-DHAVE_RBMP",
 					"-DHAVE_RTGA",
@@ -1727,15 +1671,15 @@
 					"-D_LZMA_UINT32_IS_ULONG",
 					"-DHAVE_MFI",
 					"-DHAVE_KEYMAPPER",
+					"-DHAVE_COCOA_METAL",
 					"-DHAVE_METAL",
 					"-DHAVE_SLANG",
 					"-DHAVE_SPIRV_CROSS",
 					"-DHAVE_GLSLANG",
 					"-DWANT_GLSLANG",
 					"-DGLSLANG_OSINCLUDE_UNIX",
+					"-DENABLE_HLSL",
 					"-DHAVE_BUILTINGLSLANG",
-					"-DHAVE_UPDATE_CORE_INFO",
-					"-DHAVE_VULKAN",
 				);
 				PRODUCT_BUNDLE_IDENTIFIER = com.libretro.dist.tvos.RetroArch;
 				PRODUCT_NAME = "$(TARGET_NAME)";
@@ -1778,7 +1722,7 @@
 				CLANG_WARN_UNREACHABLE_CODE = YES;
 				CODE_SIGN_IDENTITY = "Apple Development";
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 1.22.2;
+				CURRENT_PROJECT_VERSION = 1.10.3;
 				DEBUG_INFORMATION_FORMAT = "dwarf-with-dsym";
 				DEPS_DIR = "$(SRCBASE)/deps";
 				DEVELOPMENT_TEAM = UK699V5ZS8;
@@ -1794,6 +1738,7 @@
 				HEADER_SEARCH_PATHS = (
 					../../,
 					"../../libretro-common/include",
+					"../../libretro-common/include/compat/zlib",
 					../../deps/stb,
 					../../deps/rcheevos/include,
 					../../deps,
@@ -1803,15 +1748,10 @@
 					"$(DEPS_DIR)/glslang/glslang/glslang/OSDependent/Unix",
 					"$(DEPS_DIR)/glslang/glslang/SPIRV",
 					"$(DEPS_DIR)/glslang/glslang/glslang/MachineIndependent",
-					../../gfx/include,
 				);
 				INFOPLIST_FILE = "$(SRCROOT)/tvOS/Info.plist";
 				LD_RUNPATH_SEARCH_PATHS = "$(inherited) @executable_path/Frameworks";
-				LIBRARY_SEARCH_PATHS = (
-					"$(inherited)",
-					"$(PROJECT_DIR)/tvOS/modules",
-				);
-				MARKETING_VERSION = 1.22.2;
+				MARKETING_VERSION = 1.10.3;
 				MTL_ENABLE_DEBUG_INFO = NO;
 				MTL_FAST_MATH = YES;
 				OTHER_CFLAGS = (
@@ -1821,13 +1761,11 @@
 					"-DHAVE_STB_FONT",
 					"-DHAVE_HID",
 					"-DHAVE_NETWORKING",
-					"-DHAVE_IFINFO",
 					"-DHAVE_NETPLAYDISCOVERY",
-					"-DHAVE_BSV_MOVIE",
 					"-DHAVE_RUNAHEAD",
 					"-DHAVE_TRANSLATE",
 					"-DHAVE_GRIFFIN",
-					"-DHAVE_RVORBIS",
+					"-DHAVE_STB_VORBIS",
 					"-DHAVE_UPDATE_ASSETS",
 					"-DHAVE_ONLINE_UPDATER",
 					"-DHAVE_LANGEXTRA",
@@ -1851,9 +1789,9 @@
 					"-DRARCH_MOBILE",
 					"-DHAVE_COREAUDIO",
 					"-DHAVE_DYNAMIC",
+					"-DHAVE_VIDEO_LAYOUT",
+					"-DHAVE_ZLIB",
 					"-DHAVE_RPNG",
-					"-DHAVE_RWEBP",
-					"-DHAVE_RDDS",
 					"-DHAVE_RJPEG",
 					"-DHAVE_RBMP",
 					"-DHAVE_RTGA",
@@ -1863,18 +1801,21 @@
 					"-DHAVE_THREADS",
 					"-DHAVE_FILTERS_BUILTIN",
 					"-DHAVE_7ZIP",
+					"-D_7ZIP_ST",
 					"-DHAVE_XMB",
 					"-DHAVE_OZONE",
 					"-DHAVE_SHADERPIPELINE",
 					"-D_LZMA_UINT32_IS_ULONG",
 					"-DHAVE_MFI",
 					"-DHAVE_KEYMAPPER",
+					"-DHAVE_COCOA_METAL",
 					"-DHAVE_METAL",
 					"-DHAVE_SLANG",
 					"-DHAVE_SPIRV_CROSS",
 					"-DHAVE_GLSLANG",
 					"-DWANT_GLSLANG",
 					"-DGLSLANG_OSINCLUDE_UNIX",
+					"-DENABLE_HLSL",
 					"-DHAVE_BUILTINGLSLANG",
 					"-DHAVE_CHEATS",
 					"-DHAVE_CORE_INFO_CACHE",
@@ -1883,8 +1824,6 @@
 					"-DHAVE_PATCH",
 					"-DHAVE_RWAV",
 					"-DHAVE_BTSTACK",
-					"-DHAVE_UPDATE_CORE_INFO",
-					"-DHAVE_VULKAN",
 				);
 				PRODUCT_BUNDLE_IDENTIFIER = com.libretro.dist.tvos.RetroArch;
 				PRODUCT_NAME = "$(TARGET_NAME)";
@@ -1928,13 +1867,11 @@
 					"-DHAVE_STB_FONT",
 					"-DHAVE_HID",
 					"-DHAVE_NETWORKING",
-					"-DHAVE_IFINFO",
 					"-DHAVE_NETPLAYDISCOVERY",
-					"-DHAVE_BSV_MOVIE",
 					"-DHAVE_RUNAHEAD",
 					"-DHAVE_TRANSLATE",
 					"-DHAVE_GRIFFIN",
-					"-DHAVE_RVORBIS",
+					"-DHAVE_STB_VORBIS",
 					"-DHAVE_UPDATE_ASSETS",
 					"-DHAVE_ONLINE_UPDATER",
 					"-DHAVE_LANGEXTRA",
@@ -1961,9 +1898,9 @@
 					"-std=gnu99",
 					"-DHAVE_COREAUDIO",
 					"-DHAVE_OVERLAY",
+					"-DHAVE_VIDEO_LAYOUT",
+					"-DHAVE_ZLIB",
 					"-DHAVE_RPNG",
-					"-DHAVE_RWEBP",
-					"-DHAVE_RDDS",
 					"-DHAVE_RJPEG",
 					"-DHAVE_RBMP",
 					"-DHAVE_RTGA",
@@ -2004,13 +1941,11 @@
 					"-DHAVE_STB_FONT",
 					"-DHAVE_HID",
 					"-DHAVE_NETWORKING",
-					"-DHAVE_IFINFO",
 					"-DHAVE_NETPLAYDISCOVERY",
-					"-DHAVE_BSV_MOVIE",
 					"-DHAVE_RUNAHEAD",
 					"-DHAVE_TRANSLATE",
 					"-DHAVE_GRIFFIN",
-					"-DHAVE_RVORBIS",
+					"-DHAVE_STB_VORBIS",
 					"-DHAVE_UPDATE_ASSETS",
 					"-DHAVE_ONLINE_UPDATER",
 					"-DHAVE_LANGEXTRA",
@@ -2037,9 +1972,9 @@
 					"-std=gnu99",
 					"-DHAVE_COREAUDIO",
 					"-DHAVE_OVERLAY",
+					"-DHAVE_VIDEO_LAYOUT",
+					"-DHAVE_ZLIB",
 					"-DHAVE_RPNG",
-					"-DHAVE_RWEBP",
-					"-DHAVE_RDDS",
 					"-DHAVE_RJPEG",
 					"-DHAVE_RBMP",
 					"-DHAVE_RTGA",

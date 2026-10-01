@@ -5,7 +5,6 @@
 #include <boolean.h>
 #include <retro_inline.h>
 #include <retro_common_api.h>
-#include <retro_miscellaneous.h>
 
 #ifdef HAVE_CONFIG_H
 #include "config.h"
@@ -20,7 +19,7 @@
 
 RETRO_BEGIN_DECLS
 
-enum poll_type
+enum
 {
    /* Polling is performed before
     * call to retro_run. */
@@ -39,7 +38,6 @@ enum rarch_core_type
    CORE_TYPE_PLAIN = 0,
    CORE_TYPE_DUMMY,
    CORE_TYPE_FFMPEG,
-   CORE_TYPE_WEBM,
    CORE_TYPE_MPV,
    CORE_TYPE_IMAGEVIEWER,
    CORE_TYPE_NETRETROPAD,
@@ -53,6 +51,8 @@ enum rarch_ctl_state
    /* Deinitializes RetroArch. */
    RARCH_CTL_MAIN_DEINIT,
 
+   RARCH_CTL_IS_INITED,
+
    RARCH_CTL_IS_DUMMY_CORE,
    RARCH_CTL_IS_CORE_LOADED,
 
@@ -61,10 +61,14 @@ enum rarch_ctl_state
    RARCH_CTL_IS_SECOND_CORE_LOADED,
 #endif
 
+   RARCH_CTL_IS_BPS_PREF,
    RARCH_CTL_UNSET_BPS_PREF,
+
+   RARCH_CTL_IS_UPS_PREF,
    RARCH_CTL_UNSET_UPS_PREF,
+
+   RARCH_CTL_IS_IPS_PREF,
    RARCH_CTL_UNSET_IPS_PREF,
-   RARCH_CTL_UNSET_XDELTA_PREF,
 
 #ifdef HAVE_CONFIGFILE
    /* Block config read */
@@ -72,13 +76,38 @@ enum rarch_ctl_state
    RARCH_CTL_UNSET_BLOCK_CONFIG_READ,
 #endif
 
+   /* Username */
+   RARCH_CTL_HAS_SET_USERNAME,
+
+   RARCH_CTL_HAS_SET_SUBSYSTEMS,
+
+   RARCH_CTL_IS_IDLE,
+   RARCH_CTL_SET_IDLE,
+
    RARCH_CTL_SET_WINDOWED_SCALE,
 
 #ifdef HAVE_CONFIGFILE
+   RARCH_CTL_IS_OVERRIDES_ACTIVE,
+
+   RARCH_CTL_IS_REMAPS_CORE_ACTIVE,
    RARCH_CTL_SET_REMAPS_CORE_ACTIVE,
+
+   RARCH_CTL_IS_REMAPS_CONTENT_DIR_ACTIVE,
    RARCH_CTL_SET_REMAPS_CONTENT_DIR_ACTIVE,
+
+   RARCH_CTL_IS_REMAPS_GAME_ACTIVE,
    RARCH_CTL_SET_REMAPS_GAME_ACTIVE,
 #endif
+
+   RARCH_CTL_IS_MISSING_BIOS,
+   RARCH_CTL_SET_MISSING_BIOS,
+   RARCH_CTL_UNSET_MISSING_BIOS,
+
+   RARCH_CTL_IS_GAME_OPTIONS_ACTIVE,
+   RARCH_CTL_IS_FOLDER_OPTIONS_ACTIVE,
+
+   RARCH_CTL_IS_PAUSED,
+   RARCH_CTL_SET_PAUSED,
 
    RARCH_CTL_SET_SHUTDOWN,
 
@@ -92,10 +121,13 @@ enum rarch_ctl_state
    RARCH_CTL_IS_PERFCNT_ENABLE,
 
    /* Core options */
+   RARCH_CTL_HAS_CORE_OPTIONS,
+   RARCH_CTL_GET_CORE_OPTION_SIZE,
    RARCH_CTL_CORE_OPTIONS_LIST_GET,
    RARCH_CTL_CORE_OPTION_PREV,
    RARCH_CTL_CORE_OPTION_NEXT,
    RARCH_CTL_CORE_OPTION_UPDATE_DISPLAY,
+   RARCH_CTL_CORE_IS_RUNNING,
 
    /* BSV Movie */
    RARCH_CTL_BSV_MOVIE_IS_INITED
@@ -120,16 +152,14 @@ enum rarch_override_setting
    RARCH_OVERRIDE_SETTING_NETPLAY_MODE,
    RARCH_OVERRIDE_SETTING_NETPLAY_IP_ADDRESS,
    RARCH_OVERRIDE_SETTING_NETPLAY_IP_PORT,
+   RARCH_OVERRIDE_SETTING_NETPLAY_STATELESS_MODE,
    RARCH_OVERRIDE_SETTING_NETPLAY_CHECK_FRAMES,
 #endif
    RARCH_OVERRIDE_SETTING_UPS_PREF,
    RARCH_OVERRIDE_SETTING_BPS_PREF,
    RARCH_OVERRIDE_SETTING_IPS_PREF,
-   RARCH_OVERRIDE_SETTING_XDELTA_PREF,
    RARCH_OVERRIDE_SETTING_LIBRETRO_DEVICE,
    RARCH_OVERRIDE_SETTING_LOG_TO_FILE,
-   RARCH_OVERRIDE_SETTING_DATABASE_SCAN,
-   RARCH_OVERRIDE_SETTING_OVERLAY_PRESET,
    RARCH_OVERRIDE_SETTING_LAST
 };
 
@@ -137,21 +167,6 @@ enum runloop_action
 {
    RUNLOOP_ACTION_NONE = 0,
    RUNLOOP_ACTION_AUTOSAVE
-};
-
-enum rarch_main_wrap_flags
-{
-   RARCH_MAIN_WRAP_FLAG_VERBOSE    = (1 << 0),
-   RARCH_MAIN_WRAP_FLAG_NO_CONTENT = (1 << 1),
-   RARCH_MAIN_WRAP_FLAG_TOUCHED    = (1 << 2)
-};
-
-enum content_state_flags
-{
-   CONTENT_ST_FLAG_IS_INITED                  = (1 << 0),
-   CONTENT_ST_FLAG_CORE_DOES_NOT_NEED_CONTENT = (1 << 1),
-   CONTENT_ST_FLAG_PENDING_SUBSYSTEM_INIT     = (1 << 2),
-   CONTENT_ST_FLAG_DEFERRED_LOAD_PENDING      = (1 << 4)
 };
 
 typedef struct rarch_memory_descriptor
@@ -184,8 +199,8 @@ typedef struct rarch_system_info
       unsigned size;
    } ports;
    unsigned rotation;
-   unsigned core_requested_rotation;
-   char valid_extensions[256];
+   unsigned performance_level;
+   char valid_extensions[255];
    bool load_no_content;
    bool supports_vfs;
 } rarch_system_info_t;
@@ -201,6 +216,16 @@ typedef struct retro_ctx_cheat_info
    unsigned index;
    bool enabled;
 } retro_ctx_cheat_info_t;
+
+typedef struct retro_ctx_api_info
+{
+   unsigned version;
+} retro_ctx_api_info_t;
+
+typedef struct retro_ctx_region_info
+{
+  unsigned region;
+} retro_ctx_region_info_t;
 
 typedef struct retro_ctx_controller_info
 {
@@ -229,6 +254,16 @@ typedef struct retro_ctx_serialize_info
    size_t size;
 } retro_ctx_serialize_info_t;
 
+typedef struct retro_ctx_size_info
+{
+   size_t size;
+} retro_ctx_size_info_t;
+
+typedef struct retro_ctx_environ_info
+{
+   retro_environment_t env;
+} retro_ctx_environ_info_t;
+
 typedef struct retro_callbacks
 {
    retro_video_refresh_t frame_cb;
@@ -247,29 +282,23 @@ struct rarch_main_wrap
    const char *config_path;
    const char *libretro_path;
    int argc;
-   uint8_t flags;
+   bool verbose;
+   bool no_content;
+   bool touched;
 };
 
-/* All run-time- / command line flag-related globals go here. */
-enum global_flags
+typedef struct rarch_resolution
 {
-   GLOB_FLG_ERR_ON_INIT          = (1 << 0),
-   GLOB_FLG_LAUNCHED_FROM_CLI    = (1 << 1),
-   GLOB_FLG_CLI_LOAD_MENU_ON_ERR = (1 << 2),
-   /* Set on entry to retroarch_main_init (right after its setjmp
-    * is established) and cleared on every exit. retroarch_fail
-    * checks this flag before longjmp'ing - the error_sjlj_context
-    * jmp_buf is only valid while retroarch_main_init is on the
-    * stack; calling retroarch_fail from any other context (e.g.
-    * a reinit-time drivers_init invoked via command_event_reinit)
-    * with the flag clear means the longjmp would land in stale
-    * stack memory. */
-   GLOB_FLG_INIT_IN_PROGRESS     = (1 << 3)
-};
+   unsigned idx;
+   unsigned id;
+} rarch_resolution_t;
+
+/* All run-time- / command line flag-related globals go here. */
 
 typedef struct global
 {
-   jmp_buf error_sjlj_context; /* 4-byte alignment, put it right before long */
+   jmp_buf error_sjlj_context;              /* 4-byte alignment,
+                                               put it right before long */
 
    /* Settings and/or global state that is specific to
     * a console-style implementation. */
@@ -279,10 +308,11 @@ typedef struct global
       {
          struct
          {
-            struct
-            {
-               unsigned id; /* current_resolution_id */
-            } current;
+            uint32_t *list;
+            unsigned count;
+            rarch_resolution_t current;
+            rarch_resolution_t initial;
+            bool check;
          } resolutions;
          unsigned      gamma_correction;
          unsigned int  flicker_filter_index;
@@ -296,8 +326,10 @@ typedef struct global
 
    } console;
 
-   char error_string[NAME_MAX_LENGTH];
-   uint8_t flags;
+   char error_string[255];
+   bool launched_from_cli;
+   bool cli_load_menu_on_error;
+   bool error_on_init;
 } global_t;
 
 typedef struct content_file_override
@@ -341,24 +373,17 @@ typedef struct content_state
    int pending_subsystem_rom_num;
    int pending_subsystem_id;
    unsigned pending_subsystem_rom_id;
-   uint8_t flags;
-
-   /* Bytes prefetched ahead of the load by the content prefetch
-    * task, keyed by exact content path.  Consumed (ownership taken)
-    * by the load's read step when the path matches; leftovers are
-    * freed with the content state.  A small fixed table: a load is
-    * one content file, or a handful for subsystems. */
-   struct
-   {
-      char    *path;
-      uint8_t *data;
-      size_t   size;
-   } prefetch[8];
-   size_t prefetch_count;
+   uint32_t rom_crc;
 
    char companion_ui_crc32[32];
-   char pending_subsystem_ident[NAME_MAX_LENGTH];
+   char pending_subsystem_ident[255];
+   char pending_rom_crc_path[PATH_MAX_LENGTH];
    char companion_ui_db_name[PATH_MAX_LENGTH];
+
+   bool is_inited;
+   bool core_does_not_need_content;
+   bool pending_subsystem_init;
+   bool pending_rom_crc;
 } content_state_t;
 
 RETRO_END_DECLS

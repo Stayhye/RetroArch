@@ -22,10 +22,9 @@
 #endif
 
 #include "d3dcompiler_common.h"
-#include "dxgi_common.h"
 #include "../../verbosity.h"
 
-#if defined(HAVE_DYLIB) && !defined(__WINRT__)
+#if defined(HAVE_DYNAMIC) && !defined(__WINRT__)
 #include <dynamic/dylib.h>
 
 /* TODO/FIXME - static globals */
@@ -115,33 +114,30 @@ HRESULT WINAPI
 }
 #endif
 
-bool d3d_compile(const char* src, size_t len,
+bool d3d_compile(const char* src, size_t size,
       LPCSTR src_name, LPCSTR entrypoint, LPCSTR target, D3DBlob* out)
 {
-   D3DBlob err = NULL;
+   D3DBlob error_msg;
 #ifdef DEBUG
-   UINT compileflags = D3DCOMPILE_DEBUG | D3DCOMPILE_SKIP_OPTIMIZATION;
+   UINT compileflags    = D3DCOMPILE_DEBUG | D3DCOMPILE_SKIP_OPTIMIZATION;
 #else
-   UINT compileflags = 0;
+   UINT compileflags    = 0;
 #endif
 
-   if (!len)
-      len = strlen(src);
+   if (!size)
+      size = strlen(src);
 
    if (FAILED(D3DCompile(
-             src, len, src_name, NULL, NULL,
-             entrypoint, target, compileflags, 0, out, &err)))
+             src, size, src_name, NULL, NULL,
+             entrypoint, target, compileflags, 0, out, &error_msg)))
    {
-      if (err)
+      if (error_msg)
       {
-         const char* msg = (const char*)err->lpVtbl->GetBufferPointer(err);
-         if (msg)
-         {
-            RARCH_ERR("D3DCompile failed: %s.\n", msg);
-            /* Place a breakpoint here, if you want,
-               to see shader compilation issues */
-         }
-         Release(err);
+         const char* msg = (const char*)D3DGetBufferPointer(error_msg);
+         RARCH_ERR("D3DCompile failed :\n%s\n", msg);
+         /* Place a breakpoint here, if you want, 
+            to see shader compilation issues */
+         Release(error_msg);
       }
       return false;
    }
@@ -152,23 +148,22 @@ bool d3d_compile(const char* src, size_t len,
 bool d3d_compile_from_file(LPCWSTR filename,
       LPCSTR entrypoint, LPCSTR target, D3DBlob* out)
 {
-   D3DBlob err = NULL;
+   D3DBlob error_msg;
 #ifdef DEBUG
-   UINT compileflags = D3DCOMPILE_DEBUG | D3DCOMPILE_SKIP_OPTIMIZATION;
+   UINT compileflags    = D3DCOMPILE_DEBUG | D3DCOMPILE_SKIP_OPTIMIZATION;
 #else
-   UINT compileflags = 0;
+   UINT compileflags    = 0;
 #endif
 
    if (FAILED(D3DCompileFromFile(
              filename, NULL, NULL, entrypoint,
-             target, compileflags, 0, out, &err)))
+             target, compileflags, 0, out, &error_msg)))
    {
-      if (err)
+      if (error_msg)
       {
-         const char* msg = (const char*)err->lpVtbl->GetBufferPointer(err);
-         if (msg)
-            RARCH_ERR("D3DCompile failed: %s.\n", msg);
-         Release(err);
+         RARCH_ERR("D3DCompile failed :\n%s\n",
+               (const char*)D3DGetBufferPointer(error_msg));
+         Release(error_msg);
       }
       return false;
    }

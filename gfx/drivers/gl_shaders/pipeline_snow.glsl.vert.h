@@ -1,6 +1,5 @@
 #include "shaders_common.h"
 
-#if defined(HAVE_OPENGLES)
 /* Need to duplicate these to work around broken stuff on Android.
  * Must enforce alpha = 1.0 or 32-bit games can potentially go black. */
 static const char *stock_vertex_xmb_snow = GLSL(
@@ -15,4 +14,3 @@ static const char *stock_vertex_xmb_snow = GLSL(
       tex_coord = TexCoord;
    }
 );
-#endif

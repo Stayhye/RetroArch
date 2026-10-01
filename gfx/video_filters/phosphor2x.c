@@ -44,8 +44,8 @@ struct softfilter_thread_data
 
 struct filter_data
 {
-   struct softfilter_thread_data *workers;
    unsigned threads;
+   struct softfilter_thread_data *workers;
    unsigned in_fmt;
    float phosphor_bleed;
    float scale_add;
@@ -117,9 +117,8 @@ static void blit_linear_line_xrgb8888(uint32_t * out,
 
    /* Blend edge pixels against black. */
    out[0] = blend_pixels_xrgb8888(out[0], 0);
-   /* The splat leaves the last pixel, past the last source pixel,
-    * unwritten; it is black, as it has always come out. */
-   out[(width << 1) - 1] = 0;
+   out[(width << 1) - 1] =
+      blend_pixels_xrgb8888(out[(width << 1) - 1], 0);
 }
 
 static void blit_linear_line_rgb565(uint16_t * out,
@@ -138,9 +137,8 @@ static void blit_linear_line_rgb565(uint16_t * out,
 
    /* Blend edge pixels against black. */
    out[0] = blend_pixels_rgb565(out[0], 0);
-   /* The splat leaves the last pixel, past the last source pixel,
-    * unwritten; it is black, as it has always come out. */
-   out[(width << 1) - 1] = 0;
+   out[(width << 1) - 1] =
+      blend_pixels_rgb565(out[(width << 1) - 1], 0);
 }
 
 static void bleed_phosphors_xrgb8888(void *data,
@@ -169,7 +167,7 @@ static void bleed_phosphors_xrgb8888(void *data,
 
    /* Blue phosphor */
    set_blue_xrgb8888(scanline[0], 0);
-   for (x = 1; x + 1 < width; x += 2)
+   for (x = 1; x < width; x += 2)
    {
       unsigned b = blue_xrgb8888(scanline[x]);
       unsigned b_set = clamp8(b * filt->phosphor_bleed *
@@ -204,7 +202,7 @@ static void bleed_phosphors_rgb565(void *data,
 
    /* Blue phosphor */
    set_blue_rgb565(scanline[0], 0);
-   for (x = 1; x + 1 < width; x += 2)
+   for (x = 1; x < width; x += 2)
    {
       unsigned b = blue_rgb565(scanline[x]);
       unsigned b_set = clamp6(b * filt->phosphor_bleed *
@@ -236,31 +234,44 @@ static void *phosphor2x_generic_create(const struct softfilter_config *config,
 {
    unsigned i;
    struct filter_data *filt = (struct filter_data*)calloc(1, sizeof(*filt));
+
+   (void)simd;
+   (void)out_fmt;
+   (void)max_width;
+   (void)max_height;
+   (void)config;
+   (void)userdata;
+
    if (!filt)
       return NULL;
-   if (!(filt->workers = (struct softfilter_thread_data*)
-      calloc(threads, sizeof(struct softfilter_thread_data))))
+   filt->workers = (struct softfilter_thread_data*)
+      calloc(threads, sizeof(struct softfilter_thread_data));
+   filt->threads = 1;
+   filt->in_fmt  = in_fmt;
+   if (!filt->workers)
    {
       free(filt);
       return NULL;
    }
-   /* Apparently the code is not thread-safe,
-    * so force single threaded operation... */
-   filt->threads        = threads;
-   filt->in_fmt         = in_fmt;
 
    filt->phosphor_bleed = 0.78;
-   filt->scale_add      = 1.0;
-   filt->scale_times    = 0.8;
-   filt->scanrange_low  = 0.5;
+   filt->scale_add = 1.0;
+   filt->scale_times = 0.8;
+   filt->scanrange_low = 0.5;
    filt->scanrange_high = 0.65;
 
+#if 0
+   /* Initialize lookup tables: */
+   phosphorBloom = (scaleTimes .*
+         linspace(0, 1, 255) .^ (1/2.2)) + scaleAdd;
+   /* Not exactly sure of order of operations here ... */
+#endif
    for (i = 0; i < 256; i++)
    {
       filt->phosphor_bloom_8888[i] =
          filt->scale_times * powf((float)i / 255.0f, 1.0f/2.2f) +
          filt->scale_add;
-      filt->scan_range_8888[i]     =
+      filt->scan_range_8888[i] =
          filt->scanrange_low + i *
          (filt->scanrange_high - filt->scanrange_low) / 255.0f;
    }
@@ -269,7 +280,7 @@ static void *phosphor2x_generic_create(const struct softfilter_config *config,
       filt->phosphor_bloom_565[i] =
          filt->scale_times * powf((float)i / 31.0f, 1.0f/2.2f)
          + filt->scale_add;
-      filt->scan_range_565[i]     =
+      filt->scan_range_565[i] =
          filt->scanrange_low + i *
          (filt->scanrange_high - filt->scanrange_low) / 31.0f;
    }
@@ -281,7 +292,8 @@ static void phosphor2x_generic_output(void *data,
       unsigned *out_width, unsigned *out_height,
       unsigned width, unsigned height)
 {
-   *out_width  = width * PHOSPHOR2X_SCALE;
+   (void)data;
+   *out_width = width * PHOSPHOR2X_SCALE;
    *out_height = height * PHOSPHOR2X_SCALE;
 }
 
@@ -303,6 +315,11 @@ static void phosphor2x_generic_xrgb8888(void *data,
 {
    unsigned y;
    struct filter_data *filt = (struct filter_data*)data;
+
+   (void)first;
+   (void)last;
+
+   memset(dst, 0, height * dst_stride);
 
    for (y = 0; y < height; y++)
    {
@@ -347,6 +364,11 @@ static void phosphor2x_generic_rgb565(void *data,
    unsigned y;
    struct filter_data *filt = (struct filter_data*)data;
 
+   (void)first;
+   (void)last;
+
+   memset(dst, 0, height * dst_stride);
+
    for (y = 0; y < height; y++)
    {
       unsigned x;
@@ -388,6 +410,7 @@ static void phosphor2x_work_cb_xrgb8888(void *data, void *thread_data)
    uint32_t *output                   = (uint32_t*)thr->out_data;
    unsigned width                     = thr->width;
    unsigned height                    = thr->height;
+
    phosphor2x_generic_xrgb8888(data, width, height,
          thr->first, thr->last, input,
          (unsigned)(thr->in_pitch / SOFTFILTER_BPP_XRGB8888),
@@ -399,10 +422,11 @@ static void phosphor2x_work_cb_rgb565(void *data, void *thread_data)
 {
    struct softfilter_thread_data *thr =
       (struct softfilter_thread_data*)thread_data;
-   uint16_t *input                    =  (uint16_t*)thr->in_data;
-   uint16_t *output                   = (uint16_t*)thr->out_data;
-   unsigned width                     = thr->width;
-   unsigned height                    = thr->height;
+   uint16_t *input =  (uint16_t*)thr->in_data;
+   uint16_t *output = (uint16_t*)thr->out_data;
+   unsigned width = thr->width;
+   unsigned height = thr->height;
+
    phosphor2x_generic_rgb565(data, width, height,
          thr->first, thr->last, input,
          (unsigned)(thr->in_pitch / SOFTFILTER_BPP_RGB565),
@@ -422,24 +446,28 @@ static void phosphor2x_generic_packets(void *data,
       struct softfilter_thread_data *thr =
          (struct softfilter_thread_data*)&filt->workers[i];
 
-      unsigned y_start       = (height * i) / filt->threads;
-      unsigned y_end         = (height * (i + 1)) / filt->threads;
-      thr->out_data          = (uint8_t*)output + y_start * PHOSPHOR2X_SCALE * output_stride;
-      thr->in_data           = (const uint8_t*)input + y_start * input_stride;
-      thr->out_pitch         = output_stride;
-      thr->in_pitch          = input_stride;
-      thr->width             = width;
-      thr->height            = y_end - y_start;
+      unsigned y_start = (height * i) / filt->threads;
+      unsigned y_end = (height * (i + 1)) / filt->threads;
+      thr->out_data = (uint8_t*)output + y_start * PHOSPHOR2X_SCALE * output_stride;
+      thr->in_data = (const uint8_t*)input + y_start * input_stride;
+      thr->out_pitch = output_stride;
+      thr->in_pitch = input_stride;
+      thr->width = width;
+      thr->height = y_end - y_start;
 
       /* Workers need to know if they can access pixels
        * outside their given buffer. */
-      thr->first             = y_start;
-      thr->last              = y_end == height;
+      thr->first = y_start;
+      thr->last = y_end == height;
 
       if (filt->in_fmt == SOFTFILTER_FMT_RGB565)
-         packets[i].work     = phosphor2x_work_cb_rgb565;
+         packets[i].work = phosphor2x_work_cb_rgb565;
+#if 0
+      else if (filt->in_fmt == SOFTFILTER_FMT_RGB4444)
+         packets[i].work = phosphor2x_work_cb_rgb4444;
+#endif
       if (filt->in_fmt == SOFTFILTER_FMT_XRGB8888)
-         packets[i].work     = phosphor2x_work_cb_xrgb8888;
+         packets[i].work = phosphor2x_work_cb_xrgb8888;
       packets[i].thread_data = thr;
    }
 }
@@ -462,6 +490,7 @@ static const struct softfilter_implementation phosphor2x_generic = {
 const struct softfilter_implementation *softfilter_get_implementation(
       softfilter_simd_mask_t simd)
 {
+   (void)simd;
    return &phosphor2x_generic;
 }
 

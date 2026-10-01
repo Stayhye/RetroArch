@@ -60,8 +60,8 @@ static void find_first_libretro_core(char *first_file,
 
    for (i = 0; i < list->size && !ret; i++)
    {
-      char salamander_name[NAME_MAX_LENGTH] = {0};
-      char fname[NAME_MAX_LENGTH]           = {0};
+      char fname[PATH_MAX_LENGTH]           = {0};
+      char salamander_name[PATH_MAX_LENGTH] = {0};
       const char *libretro_elem             = (const char*)list->elems[i].data;
 
       RARCH_LOG("Checking library: \"%s\".\n", libretro_elem);
@@ -106,14 +106,14 @@ static void find_and_set_first_file(char *s, size_t len,
    find_first_libretro_core(first_file, sizeof(first_file),
          g_defaults.dirs[DEFAULT_DIR_CORE], ext);
 
-   if (!first_file || !*first_file)
+   if (string_is_empty(first_file))
    {
       RARCH_ERR("Failed last fallback - RetroArch Salamander will exit.\n");
       return;
    }
 
    fill_pathname_join(s, g_defaults.dirs[DEFAULT_DIR_CORE], first_file, len);
-   RARCH_LOG("libretro_path now set to: \"%s\".\n", s);
+   RARCH_LOG("libretro_path now set to: %s.\n", s);
 }
 
 static void salamander_init(char *s, size_t len)
@@ -123,36 +123,39 @@ static void salamander_init(char *s, size_t len)
    const char *rarch_config_path = g_defaults.path_config;
    bool config_valid             = false;
    char config_path[PATH_MAX_LENGTH];
-   char config_dir[DIR_MAX_LENGTH];
+   char config_dir[PATH_MAX_LENGTH];
 
+   config_path[0] = '\0';
    config_dir[0]  = '\0';
 
    /* Get salamander config file path */
-   if (rarch_config_path && *rarch_config_path)
+   if (!string_is_empty(rarch_config_path))
       fill_pathname_resolve_relative(config_path,
             rarch_config_path,
             FILE_PATH_SALAMANDER_CONFIG,
             sizeof(config_path));
    else
-      strlcpy(config_path, FILE_PATH_SALAMANDER_CONFIG, sizeof(config_path));
+      strcpy_literal(config_path, FILE_PATH_SALAMANDER_CONFIG);
 
    /* Ensure that config directory exists */
    fill_pathname_parent_dir(config_dir, config_path, sizeof(config_dir));
-   if (   (config_dir && *config_dir)
-       && !path_is_directory(config_dir))
+   if (!string_is_empty(config_dir) &&
+       !path_is_directory(config_dir))
       path_mkdir(config_dir);
 
    /* Attempt to open config file */
-   if ((config = config_file_new_from_path_to_string(config_path)))
+   config = config_file_new_from_path_to_string(config_path);
+
+   if (config)
    {
       char libretro_path[PATH_MAX_LENGTH];
 
       libretro_path[0] = '\0';
 
       if (config_get_path(config, "libretro_path",
-            libretro_path, sizeof(libretro_path))
-          && (libretro_path && *libretro_path)
-          && !string_is_equal(libretro_path, "builtin"))
+            libretro_path, sizeof(libretro_path)) &&
+          !string_is_empty(libretro_path) &&
+          !string_is_equal(libretro_path, "builtin"))
       {
          strlcpy(s, libretro_path, len);
          config_valid = true;
@@ -164,33 +167,31 @@ static void salamander_init(char *s, size_t len)
 
    if (!config_valid)
    {
-      char core_ext[16];
+      char executable_name[PATH_MAX_LENGTH];
+
+      executable_name[0] = '\0';
+
       /* No config file - search filesystem for
        * first available core */
       frontend_driver_get_core_extension(
-            core_ext, sizeof(core_ext));
-      find_and_set_first_file(s, len, core_ext);
+            executable_name, sizeof(executable_name));
+      find_and_set_first_file(s, len, executable_name);
 
       /* Save result to new config file */
-      if (s && *s)
+      if (!string_is_empty(s))
       {
          config = config_file_new_alloc();
 
          if (config)
          {
             config_set_path(config, "libretro_path", s);
-            if (config_file_write(config, config_path, false))
-               RARCH_DBG("Salamander config file written to \"%s\".\n", config_path);
-            else
-               RARCH_ERR("Failed to write salamander config file to \"%s\" - "
-                     "the core will have to be located again next boot.\n",
-                     config_path);
+            config_file_write(config, config_path, false);
             config_file_free(config);
          }
       }
    }
    else
-      RARCH_LOG("Start \"%s\" found in \"%s\".\n", s,
+      RARCH_LOG("Start [%s] found in %s.\n", s,
             FILE_PATH_SALAMANDER_CONFIG);
 }
 
@@ -200,9 +201,6 @@ int salamander_main(int argc, char *argv[])
 int main(int argc, char *argv[])
 #endif
 {
-   /* File access for the config parser (see config_file.h). */
-   config_file_set_io_default(config_file_io_filestream());
-
    char libretro_path[PATH_MAX_LENGTH] = {0};
    void *args                          = NULL;
    struct rarch_main_wrap *wrap_args   = NULL;

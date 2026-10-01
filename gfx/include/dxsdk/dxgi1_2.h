@@ -1,6 +1,3 @@
-/* SAL compatibility shim for legacy MSVC toolchains */
-#include "dxsdk_sal_compat.h"
-
 
 /* this ALWAYS GENERATED file contains the definitions for the interfaces */
 

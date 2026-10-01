@@ -163,10 +163,13 @@ static bool try_init_iosuhax(void)
    int result = IOSUHAX_Open(NULL);
    if (result < 0)
       result = MCPHookOpen();
-   if (result >= 0)
-	   return true;
-#endif /* HAVE_IOSUHAX */
+
+   if (result < 0)
+      return false;
+   return true;
+#else /* don't HAVE_IOSUHAX */
    return false;
+#endif
 }
 
 static void try_shutdown_iosuhax(void)
@@ -179,7 +182,7 @@ static void try_shutdown_iosuhax(void)
       MCPHookClose();
    else
       IOSUHAX_Close();
-#endif /* HAVE_IOSUHAX */
+#endif //HAVE_IOSUHAX
 
    iosuhaxMount = false;
 }

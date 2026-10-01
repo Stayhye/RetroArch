@@ -24,16 +24,12 @@
 #include "../menu_driver.h"
 #include "../menu_cbs.h"
 #include "../menu_setting.h"
-#include "../../msg_hash_lbl_str.h"
 #include "../../input/input_remapping.h"
+
 #include "../../input/input_driver.h"
 
-#include "../../config.def.h"
 #include "../../configuration.h"
 #include "../../tasks/tasks_internal.h"
-#ifdef __MACH__
-#include <TargetConditionals.h>
-#endif
 
 #ifndef BIND_ACTION_SCAN
 #define BIND_ACTION_SCAN(cbs, name) (cbs)->action_scan = (name)
@@ -43,19 +39,16 @@
 void handle_dbscan_finished(retro_task_t *task,
       void *task_data, void *user_data, const char *err)
 {
-   struct menu_state *menu_st = menu_state_get_ptr();
-   if (menu_st->driver_ctx->environ_cb)
-      menu_st->driver_ctx->environ_cb(MENU_ENVIRON_RESET_HORIZONTAL_LIST,
-            NULL, menu_st->userdata);
+   menu_ctx_environment_t menu_environ;
+   menu_environ.type = MENU_ENVIRON_RESET_HORIZONTAL_LIST;
+   menu_environ.data = NULL;
+
+   menu_driver_ctl(RARCH_MENU_CTL_ENVIRONMENT, &menu_environ);
 }
 
-#ifdef HAVE_LIBRETRODB
 int action_scan_file(const char *path,
       const char *label, unsigned type, size_t idx)
 {
-#if TARGET_OS_IPHONE
-   char dir_path[DIR_MAX_LENGTH];
-#endif
    char fullpath[PATH_MAX_LENGTH];
    const char *menu_path          = NULL;
    settings_t *settings           = config_get_ptr();
@@ -63,14 +56,11 @@ int action_scan_file(const char *path,
    const char *directory_playlist = settings->paths.directory_playlist;
    const char *path_content_db    = settings->paths.path_content_database;
 
+   fullpath[0]                    = '\0';
+
    menu_entries_get_last_stack(&menu_path, NULL, NULL, NULL, NULL);
 
-#if TARGET_OS_IPHONE
-   fill_pathname_expand_special(dir_path, menu_path, sizeof(dir_path));
-   menu_path = dir_path;
-#endif
-
-   fill_pathname_join_special(fullpath, menu_path, path, sizeof(fullpath));
+   fill_pathname_join(fullpath, menu_path, path, sizeof(fullpath));
 
    task_push_dbscan(
          directory_playlist,
@@ -81,14 +71,10 @@ int action_scan_file(const char *path,
 
    return 0;
 }
-#endif
 
 int action_scan_directory(const char *path,
       const char *label, unsigned type, size_t idx)
 {
-#if TARGET_OS_IPHONE
-   char dir_path[DIR_MAX_LENGTH];
-#endif
    char fullpath[PATH_MAX_LENGTH];
    const char *menu_path          = NULL;
    settings_t *settings           = config_get_ptr();
@@ -96,15 +82,12 @@ int action_scan_directory(const char *path,
    const char *directory_playlist = settings->paths.directory_playlist;
    const char *path_content_db    = settings->paths.path_content_database;
 
+   fullpath[0]                    = '\0';
+
    menu_entries_get_last_stack(&menu_path, NULL, NULL, NULL, NULL);
 
-#if TARGET_OS_IPHONE
-   fill_pathname_expand_special(dir_path, menu_path, sizeof(dir_path));
-   menu_path = dir_path;
-#endif
-
    if (path)
-      fill_pathname_join_special(fullpath, menu_path, path, sizeof(fullpath));
+      fill_pathname_join(fullpath, menu_path, path, sizeof(fullpath));
    else
       strlcpy(fullpath, menu_path, sizeof(fullpath));
 
@@ -119,46 +102,54 @@ int action_scan_directory(const char *path,
 }
 #endif
 
-extern int action_cycle_thumbnail(unsigned mode);
 int action_switch_thumbnail(const char *path,
       const char *label, unsigned type, size_t idx)
 {
-   struct menu_state *menu_st = menu_state_get_ptr();
-   size_t selection           = menu_st->selection_ptr;
-   const char *menu_ident     = menu_driver_ident();
-   settings_t *settings       = config_get_ptr();
-   bool switch_enabled        = true;
+   const char *menu_ident  = menu_driver_ident();
+   settings_t *settings    = config_get_ptr();
+   bool switch_enabled     = true;
 #ifdef HAVE_RGUI
-   switch_enabled             = !string_is_equal(menu_ident, "rgui");
+   switch_enabled          = !string_is_equal(menu_ident, "rgui");
+#endif
+#ifdef HAVE_MATERIALUI
+   switch_enabled          = switch_enabled && !string_is_equal(menu_ident, "glui");
 #endif
 
    if (!settings)
       return -1;
 
-   /* RGUI has its own cycling for thumbnails in order to allow
-    * cycling all images in fullscreen mode.
+   /* RGUI is a special case where thumbnail 'switch' corresponds to
+    * toggling thumbnail view on/off.
+    * GLUI is a special case where thumbnail 'switch' corresponds to
+    * changing thumbnail view mode.
     * For other menu drivers, we cycle through available thumbnail
-    * types and skip if already visible. */
-   if (switch_enabled)
-   {
-      if (settings->uints.gfx_thumbnails)
-         action_cycle_thumbnail(MENU_ACTION_CYCLE_THUMBNAIL_PRIMARY);
-      else
-         action_cycle_thumbnail(MENU_ACTION_CYCLE_THUMBNAIL_SECONDARY);
+    * types. */
+   if (!switch_enabled)
+      return 0;
 
-      if (menu_st->driver_ctx)
-      {
-         if (menu_st->driver_ctx->update_thumbnail_path)
-         {
-            menu_st->driver_ctx->update_thumbnail_path(
-                  menu_st->userdata, (unsigned)selection, 'L');
-            menu_st->driver_ctx->update_thumbnail_path(
-                  menu_st->userdata, (unsigned)selection, 'R');
-         }
-         if (menu_st->driver_ctx->update_thumbnail_image)
-            menu_st->driver_ctx->update_thumbnail_image(menu_st->userdata);
-      }
+   if (settings->uints.gfx_thumbnails == 0)
+   {
+      configuration_set_uint(settings,
+            settings->uints.menu_left_thumbnails,
+            settings->uints.menu_left_thumbnails + 1);
+
+      if (settings->uints.menu_left_thumbnails > 3)
+         configuration_set_uint(settings,
+               settings->uints.menu_left_thumbnails, 1);
    }
+   else
+   {
+      configuration_set_uint(settings,
+            settings->uints.gfx_thumbnails,
+            settings->uints.gfx_thumbnails + 1);
+
+      if (settings->uints.gfx_thumbnails > 3)
+         configuration_set_uint(settings,
+               settings->uints.gfx_thumbnails, 1);
+   }
+
+   menu_driver_ctl(RARCH_MENU_CTL_UPDATE_THUMBNAIL_PATH, NULL);
+   menu_driver_ctl(RARCH_MENU_CTL_UPDATE_THUMBNAIL_IMAGE, NULL);
 
    return 0;
 }
@@ -168,76 +159,55 @@ static int action_scan_input_desc(const char *path,
 {
    const char *menu_label         = NULL;
    unsigned key                   = 0;
-   unsigned user_idx              = 0;
+   unsigned inp_desc_user         = 0;
    struct retro_keybind *target   = NULL;
 
    menu_entries_get_last_stack(NULL, &menu_label, NULL, NULL, NULL);
 
    if (string_is_equal(menu_label,
-            MENU_ENUM_LABEL_DEFERRED_REMAPPINGS_PORT_LIST_STR))
+            msg_hash_to_str(MENU_ENUM_LABEL_DEFERRED_REMAPPINGS_PORT_LIST)))
    {
       settings_t *settings = config_get_ptr();
-      int type_begin       = (type >= MENU_SETTINGS_INPUT_DESC_KBD_BEGIN)
-            ? MENU_SETTINGS_INPUT_DESC_KBD_BEGIN : MENU_SETTINGS_INPUT_DESC_BEGIN;
+      inp_desc_user        = atoi(label);
+      /* Skip 'Device Type', 'Analog to Digital Type' and 'Mapped Port' */
+      key                  = (unsigned)(idx - 3);
+      /* Select the reorderer bind */
+      key                  =
+            (key < RARCH_ANALOG_BIND_LIST_END) ? input_config_bind_order[key] : key;
 
-      user_idx = (type - type_begin) / RARCH_ANALOG_BIND_LIST_END;
-      key      = (type - type_begin) - RARCH_ANALOG_BIND_LIST_END * user_idx;
-
-      if (     type >= MENU_SETTINGS_INPUT_DESC_BEGIN
+      if (type >= MENU_SETTINGS_INPUT_DESC_BEGIN
             && type <= MENU_SETTINGS_INPUT_DESC_END)
-         settings->uints.input_remap_ids[user_idx][key] = RARCH_UNMAPPED;
+         settings->uints.input_remap_ids[inp_desc_user][key] = RARCH_UNMAPPED;
       else if (type >= MENU_SETTINGS_INPUT_DESC_KBD_BEGIN
             && type <= MENU_SETTINGS_INPUT_DESC_KBD_END)
-         settings->uints.input_keymapper_ids[user_idx][key] = RETROK_UNKNOWN;
+         settings->uints.input_keymapper_ids[inp_desc_user][key] = RETROK_UNKNOWN;
 
       return 0;
    }
    else if (string_is_equal(menu_label,
-            MENU_ENUM_LABEL_DEFERRED_USER_BINDS_LIST_STR))
+            msg_hash_to_str(MENU_ENUM_LABEL_DEFERRED_USER_BINDS_LIST)))
    {
-      size_t first_bind = 0;
-      char port_str     = atoi(&label[1]);
-      /* menu_entry_t carries the entry's path/label/value strings
-       * inline -- several KiB even at console path lengths -- so it
-       * is heap-held here rather than framed on the menu task stack. */
-      menu_entry_t *entry = (menu_entry_t*)malloc(sizeof(*entry));
+      unsigned char player_no_str = atoi(&label[1]);
 
-      if (!entry)
-         return -1;
-
-      user_idx = (unsigned)(port_str - 1);
-
-      /* Skip non-bind menu elements */
-      MENU_ENTRY_INITIALIZE((*entry));
-
-      while (first_bind < idx)
-      {
-         menu_entry_get(entry, 0, first_bind, NULL, false);
-
-         if (entry->setting_type == ST_BIND)
-            break;
-
-         first_bind++;
-      }
-
-      free(entry);
-
-      key = (unsigned)(idx - first_bind);
-
+      inp_desc_user      = (unsigned)(player_no_str - 1);
+      /* This hardcoded value may cause issues if any entries are added on
+         top of the input binds */
+      key                = (unsigned)(idx - 6);
       /* Select the reorderer bind */
-      key = (key < RARCH_ANALOG_BIND_LIST_END) ? input_config_bind_order[key] : key;
+      key                =
+            (key < RARCH_ANALOG_BIND_LIST_END) ? input_config_bind_order[key] : key;
    }
    else
       key = input_config_translate_str_to_bind_id(label);
 
-   target = &input_config_binds[user_idx][key];
+   target = &input_config_binds[inp_desc_user][key];
 
    if (target)
    {
       /* Clear mapping bit */
-      input_keyboard_mapping_bits(0, RETRO_KEYBIND_KEY(target));
+      input_keyboard_mapping_bits(0, target->key);
 
-      RETRO_KEYBIND_SET_KEY(target, RETROK_UNKNOWN);
+      target->key     = RETROK_UNKNOWN;
       target->joykey  = NO_BTN;
       target->joyaxis = AXIS_NONE;
       target->mbutton = NO_BTN;
@@ -245,105 +215,6 @@ static int action_scan_input_desc(const char *path,
 
    return 0;
 }
-
-static int action_scan_video_font_path(const char *path,
-      const char *label, unsigned type, size_t idx)
-{
-   settings_t *settings       = config_get_ptr();
-
-   strlcpy_lit(settings->paths.path_font, "null", sizeof(settings->paths.path_font));
-
-   /* Same route as the value-change handler: rebuild the OSD font in
-    * place, and reinitialise only where a driver keeps its own. */
-   if (!font_driver_reinit_osd(settings->paths.path_font,
-            settings->floats.video_font_size))
-      command_event(CMD_EVENT_REINIT, NULL);
-
-   return 0;
-}
-
-#ifdef HAVE_XMB
-static int action_scan_video_xmb_font(const char *path,
-      const char *label, unsigned type, size_t idx)
-{
-   settings_t *settings       = config_get_ptr();
-
-   /* The menu driver watches this path and rebuilds its fonts on
-    * the next frame. */
-   strlcpy_lit(settings->paths.path_menu_xmb_font, "null", sizeof(settings->paths.path_menu_xmb_font));
-
-   return 0;
-}
-#endif
-
-#ifdef HAVE_OZONE
-static int action_scan_video_ozone_font(const char *path,
-      const char *label, unsigned type, size_t idx)
-{
-   settings_t *settings       = config_get_ptr();
-
-   /* The menu driver watches this path and rebuilds its fonts on
-    * the next frame. */
-   strlcpy_lit(settings->paths.path_menu_ozone_font, "null", sizeof(settings->paths.path_menu_ozone_font));
-
-   return 0;
-}
-#endif
-
-#if defined(HAVE_CG) || defined(HAVE_GLSL) || defined(HAVE_SLANG) || defined(HAVE_HLSL)
-static int action_scan_video_shader_opacity_toggle(const char *path,
-      const char *label, unsigned type, size_t idx)
-{
-   settings_t *settings             = config_get_ptr();
-   const char *menu_ident           = menu_driver_ident();
-   static float framebuffer_opacity = -1;
-   static float wallpaper_opacity   = -1;
-#ifdef HAVE_XMB
-   static int xmb_alpha_factor      = -1;
-#endif
-
-   if (string_is_equal(menu_ident, "rgui"))
-      return 0;
-
-   /* Remember current settings */
-   if (framebuffer_opacity < 0)
-      framebuffer_opacity = settings->floats.menu_framebuffer_opacity;
-   if (wallpaper_opacity < 0)
-      wallpaper_opacity = settings->floats.menu_wallpaper_opacity;
-
-#ifdef HAVE_XMB
-   if (xmb_alpha_factor < 0)
-      xmb_alpha_factor = settings->uints.menu_xmb_alpha_factor;
-#endif
-
-   /* Switch between off and current */
-   if (settings->floats.menu_framebuffer_opacity == 0)
-      settings->floats.menu_framebuffer_opacity = framebuffer_opacity ? framebuffer_opacity : DEFAULT_MENU_FRAMEBUFFER_OPACITY;
-   else
-      settings->floats.menu_framebuffer_opacity = 0;
-
-   if (settings->floats.menu_wallpaper_opacity == 0)
-      settings->floats.menu_wallpaper_opacity = wallpaper_opacity ? wallpaper_opacity : DEFAULT_MENU_WALLPAPER_OPACITY;
-   else
-      settings->floats.menu_wallpaper_opacity = 0;
-
-#ifdef HAVE_XMB
-   if (settings->uints.menu_xmb_alpha_factor == 0)
-      settings->uints.menu_xmb_alpha_factor = xmb_alpha_factor ? xmb_alpha_factor : DEFAULT_XMB_ALPHA_FACTOR;
-   else
-      settings->uints.menu_xmb_alpha_factor = 0;
-#endif
-
-   return 0;
-}
-
-static int action_scan_shader_num_passes(
-      const char *path, const char *label,
-      unsigned type, size_t idx)
-{
-   return menu_shader_manager_clear_num_passes(menu_shader_get());
-}
-#endif
 
 static int menu_cbs_init_bind_scan_compare_type(menu_file_list_cbs_t *cbs,
       unsigned type)
@@ -368,7 +239,7 @@ static int menu_cbs_init_bind_scan_compare_type(menu_file_list_cbs_t *cbs,
          break;
    }
 
-   if (     type >= MENU_SETTINGS_INPUT_DESC_BEGIN
+   if (type >= MENU_SETTINGS_INPUT_DESC_BEGIN
          && type <= MENU_SETTINGS_INPUT_DESC_END)
    {
       BIND_ACTION_SCAN(cbs, action_scan_input_desc);
@@ -392,58 +263,10 @@ int menu_cbs_init_bind_scan(menu_file_list_cbs_t *cbs,
 
    if (cbs->setting)
    {
-      switch (cbs->setting->type)
+      if (cbs->setting->type == ST_BIND)
       {
-         case ST_BIND:
-            BIND_ACTION_SCAN(cbs, action_scan_input_desc);
-            return 0;
-         case ST_PATH:
-            if (string_is_equal(label, MENU_ENUM_LABEL_VIDEO_FONT_PATH_STR))
-            {
-               BIND_ACTION_SCAN(cbs, action_scan_video_font_path);
-               return 0;
-            }
-#ifdef HAVE_XMB
-            else if (string_is_equal(label, MENU_ENUM_LABEL_XMB_FONT_STR))
-            {
-               BIND_ACTION_SCAN(cbs, action_scan_video_xmb_font);
-               return 0;
-            }
-#endif
-#ifdef HAVE_OZONE
-            else if (string_is_equal(label, MENU_ENUM_LABEL_OZONE_FONT_STR))
-            {
-               BIND_ACTION_SCAN(cbs, action_scan_video_ozone_font);
-               return 0;
-            }
-#endif
-            break;
-         default:
-         case ST_NONE:
-            break;
-      }
-   }
-
-   if (cbs->enum_idx != MSG_UNKNOWN)
-   {
-      switch (cbs->enum_idx)
-      {
-         case MENU_ENUM_LABEL_VIDEO_SHADER_PRESET:
-         case MENU_ENUM_LABEL_VIDEO_SHADER_PRESET_PREPEND:
-         case MENU_ENUM_LABEL_VIDEO_SHADER_PRESET_APPEND:
-         case MENU_ENUM_LABEL_VIDEO_SHADER_NUM_PASSES:
-#if defined(HAVE_CG) || defined(HAVE_GLSL) || defined(HAVE_SLANG) || defined(HAVE_HLSL)
-            BIND_ACTION_SCAN(cbs, action_scan_shader_num_passes);
-#endif
-            break;
-         case MENU_ENUM_LABEL_VIDEO_SHADER_PARAMETERS:
-         case MENU_ENUM_LABEL_SHADER_PARAMETERS_ENTRY:
-#if defined(HAVE_CG) || defined(HAVE_GLSL) || defined(HAVE_SLANG) || defined(HAVE_HLSL)
-            BIND_ACTION_SCAN(cbs, action_scan_video_shader_opacity_toggle);
-#endif
-            break;
-         default:
-            break;
+         BIND_ACTION_SCAN(cbs, action_scan_input_desc);
+         return 0;
       }
    }
 

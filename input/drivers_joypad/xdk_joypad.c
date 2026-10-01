@@ -47,7 +47,7 @@ static void xdk_joypad_autodetect_add(unsigned autoconf_pad)
 {
    input_autoconfigure_connect(
          xdk_joypad_name(autoconf_pad),
-         NULL, NULL,
+         NULL,
          xdk_joypad.ident,
          autoconf_pad,
          0,
@@ -133,56 +133,48 @@ static int32_t xdk_joypad_button(unsigned port, uint16_t joykey)
 static int16_t xdk_joypad_axis_state(XINPUT_GAMEPAD *pad,
       unsigned port, uint32_t joyaxis)
 {
+   int val             = 0;
+   int axis            = -1;
+   bool is_neg         = false;
+   bool is_pos         = false;
+
    if (AXIS_NEG_GET(joyaxis) <= 3)
    {
-      int16_t val  = 0;
-      int16_t axis = AXIS_NEG_GET(joyaxis);
-      switch (axis)
-      {
-         case 0:
-            val = pad->sThumbLX;
-            break;
-         case 1:
-            val = pad->sThumbLY;
-            break;
-         case 2:
-            val = pad->sThumbRX;
-            break;
-         case 3:
-            val = pad->sThumbRY;
-            break;
-      }
-      if (val < 0)
-      {
-         /* Clamp to avoid warnings */
-         if (val == -32768)
-            return -32767;
-         return val;
-      }
+      axis             = AXIS_NEG_GET(joyaxis);
+      is_neg           = true;
    }
    else if (AXIS_POS_GET(joyaxis) <= 5)
    {
-      int16_t val  = 0;
-      int16_t axis = AXIS_POS_GET(joyaxis);
-      switch (axis)
-      {
-         case 0:
-            val = pad->sThumbLX;
-            break;
-         case 1:
-            val = pad->sThumbLY;
-            break;
-         case 2:
-            val = pad->sThumbRX;
-            break;
-         case 3:
-            val = pad->sThumbRY;
-            break;
-      }
-      if (val > 0)
-         return val;
+      axis             = AXIS_POS_GET(joyaxis);
+      is_pos           = true;
    }
-   return 0;
+   else
+      return 0;
+
+   switch (axis)
+   {
+      case 0:
+         val = pad->sThumbLX;
+         break;
+      case 1:
+         val = pad->sThumbLY;
+         break;
+      case 2:
+         val = pad->sThumbRX;
+         break;
+      case 3:
+         val = pad->sThumbRY;
+         break;
+   }
+
+   if (is_neg && val > 0)
+      return 0;
+   else if (is_pos && val < 0)
+      return 0;
+   /* Clamp to avoid warnings */
+   else if (val == -32768)
+      return -32767;
+   return val;
 }
 
 static int16_t xdk_joypad_axis(unsigned port, uint32_t joyaxis)
@@ -198,32 +190,34 @@ static int16_t xdk_joypad_state(
       const struct retro_keybind *binds,
       unsigned port)
 {
-   int16_t ret            = 0;
-   uint16_t port_idx      = joypad_info->joy_idx;
+   unsigned i;
+   int16_t ret         = 0;
+   XINPUT_GAMEPAD *pad = NULL;
+   uint16_t btn_word   = 0;
+   uint16_t port_idx   = joypad_info->joy_idx;
 
-   if (port_idx < DEFAULT_MAX_PADS)
+   if (port_idx >= DEFAULT_MAX_PADS)
+      return 0;
+
+   pad                 = &(g_xinput_states[port_idx].xstate.Gamepad);
+   btn_word            = pad->wButtons;
+
+   for (i = 0; i < RARCH_FIRST_CUSTOM_BIND; i++)
    {
-      int i;
-      XINPUT_GAMEPAD *pad = &(g_xinput_states[port_idx].xstate.Gamepad);
-      uint16_t btn_word   = pad->wButtons;
-
-      for (i = 0; i < RARCH_FIRST_CUSTOM_BIND; i++)
-      {
-         /* Auto-binds are per joypad, not per user. */
-         const uint64_t joykey  = (binds[i].joykey != NO_BTN)
-            ? binds[i].joykey  : joypad_info->auto_binds[i].joykey;
-         const uint32_t joyaxis = (binds[i].joyaxis != AXIS_NONE)
-            ? binds[i].joyaxis : joypad_info->auto_binds[i].joyaxis;
-         if (
-               (uint16_t)joykey != NO_BTN
-               && xdk_joypad_button_state(
-                  pad, btn_word, port_idx, (uint16_t)joykey))
-            ret |= ( 1 << i);
-         else if (joyaxis != AXIS_NONE &&
-               ((float)abs(xdk_joypad_axis_state(pad, port_idx, joyaxis))
-                / 0x8000) > joypad_info->axis_threshold)
-            ret |= (1 << i);
-      }
+      /* Auto-binds are per joypad, not per user. */
+      const uint64_t joykey  = (binds[i].joykey != NO_BTN)
+         ? binds[i].joykey  : joypad_info->auto_binds[i].joykey;
+      const uint32_t joyaxis = (binds[i].joyaxis != AXIS_NONE)
+         ? binds[i].joyaxis : joypad_info->auto_binds[i].joyaxis;
+      if (
+               (uint16_t)joykey != NO_BTN 
+            && xdk_joypad_button_state(
+               pad, btn_word, port_idx, (uint16_t)joykey))
+         ret |= ( 1 << i);
+      else if (joyaxis != AXIS_NONE &&
+            ((float)abs(xdk_joypad_axis_state(pad, port_idx, joyaxis)) 
+             / 0x8000) > joypad_info->axis_threshold)
+         ret |= (1 << i);
    }
 
    return ret;
@@ -246,8 +240,17 @@ static void xdk_joypad_poll(void)
 
    for (port = 0; port < DEFAULT_MAX_PADS; port++)
    {
-      /* Handle removed devices. */
+      bool device_removed    = false;
+      bool device_inserted   = false;
+
+      /* handle inserted devices. */
+      /* handle removed devices. */
       if (dwRemovals & (1 << port))
+         device_removed = true;
+      if (dwInsertions & (1 << port))
+         device_inserted = true;
+
+      if (device_removed)
       {
          /* if the controller was removed after
           * XGetDeviceChanges but before
@@ -260,8 +263,7 @@ static void xdk_joypad_poll(void)
          input_autoconfigure_disconnect(port, xdk_joypad.ident);
       }
 
-      /* Handle inserted devices. */
-      if (dwInsertions & (1 << port))
+      if (device_inserted)
       {
          XINPUT_POLLING_PARAMETERS m_pollingParameters;
 
@@ -302,7 +304,8 @@ static bool xdk_joypad_query_pad(unsigned pad)
 
 static void xdk_joypad_destroy(void)
 {
-   int i;
+   unsigned i;
+
    for (i = 0; i < DEFAULT_MAX_PADS; i++)
    {
       memset(&g_xinput_states[i], 0, sizeof(xinput_joypad_state));
@@ -321,10 +324,8 @@ input_device_driver_t xdk_joypad = {
    NULL,
    xdk_joypad_axis,
    xdk_joypad_poll,
-   NULL, /* set_rumble */
-   NULL, /* set_rumble_gain */
-   NULL, /* set_sensor_state */
-   NULL, /* get_sensor_input */
+   NULL,
+   NULL,
    xdk_joypad_name,
    "xdk",
 };

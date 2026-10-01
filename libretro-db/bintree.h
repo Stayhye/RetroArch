@@ -27,35 +27,18 @@
 
 RETRO_BEGIN_DECLS
 
+typedef struct bintree bintree_t;
+
 typedef int (*bintree_cmp_func)(const void *a, const void *b, void *ctx);
 typedef int (*bintree_iter_cb) (void *value, void *ctx);
 
-typedef struct bintree_node
-{
-   void *value;
-   struct bintree_node *parent;
-   struct bintree_node *left;
-   struct bintree_node *right;
-} bintree_node_t;
-
-typedef struct bintree
-{
-   struct bintree_node *root;
-   void *ctx;
-   bintree_cmp_func cmp;
-} bintree_t;
-
 bintree_t *bintree_new(bintree_cmp_func cmp, void *ctx);
 
-/* Returns 0 on success, -1 if an equal value is already present,
- * -2 if the tree could not be grown.  The tree stores @value by
- * pointer and never frees it; releasing the values is the caller's
- * job, and bintree_iterate() is the way to reach them all. */
-int bintree_insert(bintree_t *t, struct bintree_node *root, void *value);
+int bintree_insert(bintree_t *t, void *value);
 
-int bintree_iterate(struct bintree_node *n, bintree_iter_cb cb, void *ctx);
+int bintree_iterate(const bintree_t *t, bintree_iter_cb cb, void *ctx);
 
-void bintree_free(struct bintree_node *n);
+void bintree_free(bintree_t *t);
 
 RETRO_END_DECLS
 

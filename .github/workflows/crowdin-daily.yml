@@ -6,27 +6,18 @@ on:
   schedule:
     - cron: '0 0 * * *'  # every day at midnight
 
-permissions:
-  contents: read
-
 jobs:
   sync:
-    permissions:
-      contents: write  # for Git to git push
     runs-on: ubuntu-latest
-    timeout-minutes: 30
     steps:
       - name: Setup Java JDK
-        uses: actions/setup-java@v4
+        uses: actions/setup-java@v1
         with:
-          java-version: 18
-          distribution: zulu
+          java-version: 1.8
       - name: Setup Python
-        uses: actions/setup-python@v5
-        with:
-          python-version: '3.10'
+        uses: actions/setup-python@v2
       - name: Checkout
-        uses: actions/checkout@v5
+        uses: actions/checkout@v2
       - name: Crowdin Sync
         shell: bash
         env:
@@ -38,9 +29,5 @@ jobs:
           git config user.name github-actions
           git config user.email github-actions@github.com
           git add .
-          if git diff --cached --quiet; then
-            echo "No translation changes to commit."
-          else
-            git commit -m "Fetch translations from Crowdin"
-            git push
-          fi
+          git commit -m "Fetch translations from Crowdin"
+          git push

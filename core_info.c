@@ -15,6 +15,7 @@
  *  If not, see <http://www.gnu.org/licenses/>.
  */
 
+#include <retro_assert.h>
 #include <compat/strl.h>
 #include <string/stdstring.h>
 #include <file/config_file.h>
@@ -22,16 +23,11 @@
 #include <streams/file_stream.h>
 #include <streams/interface_stream.h>
 #include <formats/rjson.h>
-#include <formats/rjson_stream.h>
 #include <lists/dir_list.h>
 #include <file/archive_file.h>
 
 #ifdef HAVE_CONFIG_H
 #include "config.h"
-#endif
-
-#ifdef HAVE_THREADS
-#include <rthreads/rthreads.h>
 #endif
 
 #include "retroarch.h"
@@ -46,9 +42,6 @@
 
 #if defined(ANDROID)
 #include "play_feature_delivery/play_feature_delivery.h"
-#ifdef __MACH__
-#include <TargetConditionals.h>
-#endif
 #endif
 
 /*************************/
@@ -59,7 +52,7 @@
 #define CORE_INFO_CACHE_DEFAULT_CAPACITY 8
 
 /* TODO/FIXME: Apparently rzip compression is an issue on UWP */
-#if defined(HAVE_COMPRESSION) && !(defined(__WINRT__) || defined(WINAPI_FAMILY) && WINAPI_FAMILY == WINAPI_FAMILY_PHONE_APP)
+#if defined(HAVE_ZLIB) && !(defined(__WINRT__) || defined(WINAPI_FAMILY) && WINAPI_FAMILY == WINAPI_FAMILY_PHONE_APP)
 #define CORE_INFO_CACHE_COMPRESS
 #endif
 
@@ -79,8 +72,7 @@ typedef struct
    char **current_string_val;
    struct string_list **current_string_list_val;
    uint32_t *current_entry_uint_val;
-   uint8_t current_entry_flag_mask; /* which CORE_INFO_FLAG_* to set */
-   bool *current_entry_bool_val;    /* for firmware optional */
+   bool *current_entry_bool_val;
    unsigned array_depth;
    unsigned object_depth;
    bool to_core_file_id;
@@ -105,271 +97,184 @@ static core_info_state_t core_info_st = {
    NULL
 };
 
-#ifdef HAVE_THREADS
-/* Guards publication and teardown of core_info_st.curr_list.
- *
- * The list is built, replaced and freed on the main thread, but it
- * is *read* from task threads - the content scanner calls
- * core_info_database_supports_content_path() and
- * core_info_database_match_archive_member() from
- * task_database_iterate_crc_lookup(). Closing content runs
- * driver_uninit() -> core_info_deinit_list() on the main thread with
- * no regard for a scan that is still in flight, so without this lock
- * a worker walks a list that has just been freed.
- *
- * Created once, before the first list is ever published, and
- * deliberately never destroyed: core_info_st is a process-lifetime
- * singleton and the lock has to outlive any task thread that could
- * still be sitting inside a reader. */
-static slock_t *core_info_list_mutex = NULL;
-
-#define CORE_INFO_LIST_LOCK() \
-   do { \
-      if (core_info_list_mutex) \
-         slock_lock(core_info_list_mutex); \
-   } while (0)
-
-#define CORE_INFO_LIST_UNLOCK() \
-   do { \
-      if (core_info_list_mutex) \
-         slock_unlock(core_info_list_mutex); \
-   } while (0)
-#else
-#define CORE_INFO_LIST_LOCK()   do { } while (0)
-#define CORE_INFO_LIST_UNLOCK() do { } while (0)
-#endif
-
-/* Parameters of the last successful core info scan; used by
- * core_info_list_is_current() to let CMD_EVENT_CORE_INFO_INIT
- * skip redundant rescans when nothing relevant has changed. */
-static char *core_info_last_path_info   = NULL;
-static char *core_info_last_dir_cores   = NULL;
-static bool core_info_last_show_hidden  = false;
-static bool core_info_last_enable_cache = false;
-
 #ifdef HAVE_CORE_INFO_CACHE
 /* JSON Handlers START */
 
 static bool CCJSONObjectMemberHandler(void *context,
-      const char *pValue, size_t len)
+      const char *pValue, size_t length)
 {
    CCJSONContext *pCtx = (CCJSONContext *)context;
 
-   if (len)
+   if ((pCtx->object_depth == 2) &&
+       (pCtx->array_depth  == 1) &&
+       length)
    {
-      switch (pCtx->array_depth)
+      pCtx->current_string_val      = NULL;
+      pCtx->current_string_list_val = NULL;
+      pCtx->current_entry_uint_val  = NULL;
+      pCtx->current_entry_bool_val  = NULL;
+      pCtx->to_core_file_id         = false;
+      pCtx->to_firmware             = false;
+
+      switch (pValue[0])
       {
-         case 0:
-            if (pCtx->object_depth == 1)
+         case 'a':
+            if (string_is_equal(pValue,      "authors"))
             {
-               pCtx->current_string_val     = NULL;
-
-               if (len == sizeof("version") - 1
-                     && !memcmp(pValue, "version", sizeof("version") - 1))
-                  pCtx->current_string_val  = &pCtx->core_info_cache_list->version;
+               pCtx->current_string_val      = &pCtx->core_info->authors;
+               pCtx->current_string_list_val = &pCtx->core_info->authors_list;
             }
             break;
-         case 1:
-            if (pCtx->object_depth == 2)
+         case 'c':
+            if (string_is_equal(pValue,      "categories"))
             {
-               pCtx->current_string_val      = NULL;
-               pCtx->current_string_list_val = NULL;
-               pCtx->current_entry_uint_val  = NULL;
-               pCtx->current_entry_flag_mask = 0;
-               pCtx->current_entry_bool_val  = NULL;
-               pCtx->to_core_file_id         = false;
-               pCtx->to_firmware             = false;
-
-               switch (pValue[0])
-               {
-                  case 'a':
-                     if (len == sizeof("authors") - 1
-                           && !memcmp(pValue, "authors", sizeof("authors") - 1))
-                     {
-                        pCtx->current_string_val      = &pCtx->core_info->authors;
-                        pCtx->current_string_list_val = &pCtx->core_info->authors_list;
-                     }
-                     break;
-                  case 'c':
-                     if (len == sizeof("categories") - 1
-                           && !memcmp(pValue, "categories", sizeof("categories") - 1))
-                     {
-                        pCtx->current_string_val      = &pCtx->core_info->categories;
-                        pCtx->current_string_list_val = &pCtx->core_info->categories_list;
-                     }
-                     else if (len == sizeof("core_name") - 1
-                           && !memcmp(pValue, "core_name", sizeof("core_name") - 1))
-                        pCtx->current_string_val      = &pCtx->core_info->core_name;
-                     else if (len == sizeof("core_file_id") - 1
-                           && !memcmp(pValue, "core_file_id", sizeof("core_file_id") - 1))
-                        pCtx->to_core_file_id         = true;
-                     break;
-                  case 'd':
-                     if (len == sizeof("display_name") - 1
-                           && !memcmp(pValue, "display_name", sizeof("display_name") - 1))
-                        pCtx->current_string_val      = &pCtx->core_info->display_name;
-                     else if (len == sizeof("display_version") - 1
-                           && !memcmp(pValue, "display_version", sizeof("display_version") - 1))
-                        pCtx->current_string_val      = &pCtx->core_info->display_version;
-                     else if (len == sizeof("databases") - 1
-                           && !memcmp(pValue, "databases", sizeof("databases") - 1))
-                     {
-                        pCtx->current_string_val      = &pCtx->core_info->databases;
-                        pCtx->current_string_list_val = &pCtx->core_info->databases_list;
-                     }
-                     else if (len == sizeof("description") - 1
-                           && !memcmp(pValue, "description", sizeof("description") - 1))
-                        pCtx->current_string_val      = &pCtx->core_info->description;
-                     else if (len == sizeof("database_match_archive_member") - 1
-                           && !memcmp(pValue, "database_match_archive_member", sizeof("database_match_archive_member") - 1))
-                        pCtx->current_entry_flag_mask = CORE_INFO_FLAG_DATABASE_MATCH_ARCHIVE_MEMBER;
-                     break;
-                  case 'f':
-                     if (len == sizeof("firmware") - 1
-                           && !memcmp(pValue, "firmware", sizeof("firmware") - 1))
-                        pCtx->to_firmware             = true;
-                     break;
-                  case 'h':
-                     if (len == sizeof("has_info") - 1
-                           && !memcmp(pValue, "has_info", sizeof("has_info") - 1))
-                        pCtx->current_entry_flag_mask = CORE_INFO_FLAG_HAS_INFO;
-                     break;
-                  case 'l':
-                     if (len == sizeof("licenses") - 1
-                           && !memcmp(pValue, "licenses", sizeof("licenses") - 1))
-                     {
-                        pCtx->current_string_val      = &pCtx->core_info->licenses;
-                        pCtx->current_string_list_val = &pCtx->core_info->licenses_list;
-                     }
-                     break;
-                  case 'i':
-                     if (len == sizeof("is_experimental") - 1
-                           && !memcmp(pValue, "is_experimental", sizeof("is_experimental") - 1))
-                        pCtx->current_entry_flag_mask = CORE_INFO_FLAG_IS_EXPERIMENTAL;
-                     break;
-                  case 'n':
-                     if (len == sizeof("notes") - 1
-                           && !memcmp(pValue, "notes", sizeof("notes") - 1))
-                     {
-                        pCtx->current_string_val      = &pCtx->core_info->notes;
-                        pCtx->current_string_list_val = &pCtx->core_info->note_list;
-                     }
-                     break;
-                  case 'p':
-                     if (len == sizeof("permissions") - 1
-                           && !memcmp(pValue, "permissions", sizeof("permissions") - 1))
-                     {
-                        pCtx->current_string_val      = &pCtx->core_info->permissions;
-                        pCtx->current_string_list_val = &pCtx->core_info->permissions_list;
-                     }
-                     break;
-                  case 'r':
-                     if (len == sizeof("required_hw_api") - 1
-                           && !memcmp(pValue, "required_hw_api", sizeof("required_hw_api") - 1))
-                     {
-                        pCtx->current_string_val      = &pCtx->core_info->required_hw_api;
-                        pCtx->current_string_list_val = &pCtx->core_info->required_hw_api_list;
-                     }
-                     break;
-                  case 's':
-                     if (len == sizeof("system_manufacturer") - 1
-                           && !memcmp(pValue, "system_manufacturer", sizeof("system_manufacturer") - 1))
-                        pCtx->current_string_val      = &pCtx->core_info->system_manufacturer;
-                     else if (len == sizeof("systemname") - 1
-                           && !memcmp(pValue, "systemname", sizeof("systemname") - 1))
-                        pCtx->current_string_val      = &pCtx->core_info->systemname;
-                     else if (len == sizeof("system_id") - 1
-                           && !memcmp(pValue, "system_id", sizeof("system_id") - 1))
-                        pCtx->current_string_val      = &pCtx->core_info->system_id;
-                     else if (len == sizeof("supported_extensions") - 1
-                           && !memcmp(pValue, "supported_extensions", sizeof("supported_extensions") - 1))
-                     {
-                        pCtx->current_string_val      = &pCtx->core_info->supported_extensions;
-                        pCtx->current_string_list_val = &pCtx->core_info->supported_extensions_list;
-                     }
-                     else if (len == sizeof("supports_no_game") - 1
-                           && !memcmp(pValue, "supports_no_game", sizeof("supports_no_game") - 1))
-                        pCtx->current_entry_flag_mask = CORE_INFO_FLAG_SUPPORTS_NO_GAME;
-                     else if (len == sizeof("single_purpose") - 1
-                           && !memcmp(pValue, "single_purpose", sizeof("single_purpose") - 1))
-                        pCtx->current_entry_flag_mask = CORE_INFO_FLAG_SINGLE_PURPOSE;
-                     else if (len == sizeof("savestate_support_level") - 1
-                           && !memcmp(pValue, "savestate_support_level", sizeof("savestate_support_level") - 1))
-                        pCtx->current_entry_uint_val  = &pCtx->core_info->savestate_support_level;
-                     break;
-               }
+               pCtx->current_string_val      = &pCtx->core_info->categories;
+               pCtx->current_string_list_val = &pCtx->core_info->categories_list;
             }
-            else if (pCtx->object_depth == 3)
+            else if (string_is_equal(pValue, "core_name"))
+               pCtx->current_string_val      = &pCtx->core_info->core_name;
+            else if (string_is_equal(pValue, "core_file_id"))
+               pCtx->to_core_file_id         = true;
+            break;
+         case 'd':
+            if (string_is_equal(pValue,      "display_name"))
+               pCtx->current_string_val      = &pCtx->core_info->display_name;
+            else if (string_is_equal(pValue, "display_version"))
+               pCtx->current_string_val      = &pCtx->core_info->display_version;
+            else if (string_is_equal(pValue, "databases"))
             {
-               pCtx->current_string_val      = NULL;
-               pCtx->current_entry_uint_val  = NULL;
-
-               if (pCtx->to_core_file_id)
-               {
-                  if (len == sizeof("str") - 1
-                        && !memcmp(pValue, "str", sizeof("str") - 1))
-                     pCtx->current_string_val      = &pCtx->core_info->core_file_id.str;
-                  else if (len == sizeof("hash") - 1
-                        && !memcmp(pValue, "hash", sizeof("hash") - 1))
-                     pCtx->current_entry_uint_val  = &pCtx->core_info->core_file_id.hash;
-               }
+               pCtx->current_string_val      = &pCtx->core_info->databases;
+               pCtx->current_string_list_val = &pCtx->core_info->databases_list;
+            }
+            else if (string_is_equal(pValue, "description"))
+               pCtx->current_string_val      = &pCtx->core_info->description;
+            else if (string_is_equal(pValue, "database_match_archive_member"))
+               pCtx->current_entry_bool_val  = &pCtx->core_info->database_match_archive_member;
+            break;
+         case 'f':
+            if (string_is_equal(pValue,      "firmware"))
+               pCtx->to_firmware             = true;
+            break;
+         case 'h':
+            if (string_is_equal(pValue,      "has_info"))
+               pCtx->current_entry_bool_val  = &pCtx->core_info->has_info;
+            break;
+         case 'l':
+            if (string_is_equal(pValue,      "licenses"))
+            {
+               pCtx->current_string_val      = &pCtx->core_info->licenses;
+               pCtx->current_string_list_val = &pCtx->core_info->licenses_list;
+            }
+            else if (string_is_equal(pValue, "is_experimental"))
+               pCtx->current_entry_bool_val  = &pCtx->core_info->is_experimental;
+            break;
+         case 'n':
+            if (string_is_equal(pValue,      "notes"))
+            {
+               pCtx->current_string_val      = &pCtx->core_info->notes;
+               pCtx->current_string_list_val = &pCtx->core_info->note_list;
             }
             break;
-         case 2:
-            if (pCtx->object_depth == 3)
+         case 'p':
+            if (string_is_equal(pValue,      "permissions"))
             {
-               pCtx->current_string_val            = NULL;
-               pCtx->current_entry_bool_val        = NULL;
-
-               if (pCtx->to_firmware && (pCtx->core_info->firmware_count > 0))
-               {
-                  size_t firmware_idx              = pCtx->core_info->firmware_count - 1;
-
-                  if (len == sizeof("path") - 1
-                        && !memcmp(pValue, "path", sizeof("path") - 1))
-                     pCtx->current_string_val      = &pCtx->core_info->firmware[firmware_idx].path;
-                  else if (len == sizeof("desc") - 1
-                        && !memcmp(pValue, "desc", sizeof("desc") - 1))
-                     pCtx->current_string_val      = &pCtx->core_info->firmware[firmware_idx].desc;
-                  else if (len == sizeof("optional") - 1
-                        && !memcmp(pValue, "optional", sizeof("optional") - 1))
-                     pCtx->current_entry_bool_val  = &pCtx->core_info->firmware[firmware_idx].optional;
-               }
+               pCtx->current_string_val      = &pCtx->core_info->permissions;
+               pCtx->current_string_list_val = &pCtx->core_info->permissions_list;
             }
+            break;
+         case 'r':
+            if (string_is_equal(pValue,      "required_hw_api"))
+            {
+               pCtx->current_string_val      = &pCtx->core_info->required_hw_api;
+               pCtx->current_string_list_val = &pCtx->core_info->required_hw_api_list;
+            }
+            break;
+         case 's':
+            if (string_is_equal(pValue,      "system_manufacturer"))
+               pCtx->current_string_val      = &pCtx->core_info->system_manufacturer;
+            else if (string_is_equal(pValue, "systemname"))
+               pCtx->current_string_val      = &pCtx->core_info->systemname;
+            else if (string_is_equal(pValue, "system_id"))
+               pCtx->current_string_val      = &pCtx->core_info->system_id;
+            else if (string_is_equal(pValue, "supported_extensions"))
+            {
+               pCtx->current_string_val      = &pCtx->core_info->supported_extensions;
+               pCtx->current_string_list_val = &pCtx->core_info->supported_extensions_list;
+            }
+            else if (string_is_equal(pValue, "supports_no_game"))
+               pCtx->current_entry_bool_val  = &pCtx->core_info->supports_no_game;
+            else if (string_is_equal(pValue, "single_purpose"))
+               pCtx->current_entry_bool_val  = &pCtx->core_info->single_purpose;
+            else if (string_is_equal(pValue, "savestate_support_level"))
+               pCtx->current_entry_uint_val  = &pCtx->core_info->savestate_support_level;
             break;
       }
+   }
+   else if ((pCtx->object_depth == 3) &&
+            (pCtx->array_depth  == 1) &&
+            length)
+   {
+      pCtx->current_string_val      = NULL;
+      pCtx->current_entry_uint_val  = NULL;
 
+      if (pCtx->to_core_file_id)
+      {
+         if (string_is_equal(pValue,      "str"))
+            pCtx->current_string_val         = &pCtx->core_info->core_file_id.str;
+         else if (string_is_equal(pValue, "hash"))
+            pCtx->current_entry_uint_val     = &pCtx->core_info->core_file_id.hash;
+      }
+   }
+   else if ((pCtx->object_depth == 3) &&
+            (pCtx->array_depth  == 2) &&
+            length)
+   {
+      pCtx->current_string_val      = NULL;
+      pCtx->current_entry_bool_val  = NULL;
+
+      if (pCtx->to_firmware && (pCtx->core_info->firmware_count > 0))
+      {
+         size_t firmware_idx = pCtx->core_info->firmware_count - 1;
+
+         if (string_is_equal(pValue,      "path"))
+            pCtx->current_string_val         = &pCtx->core_info->firmware[firmware_idx].path;
+         else if (string_is_equal(pValue, "desc"))
+            pCtx->current_string_val         = &pCtx->core_info->firmware[firmware_idx].desc;
+         else if (string_is_equal(pValue, "optional"))
+            pCtx->current_entry_bool_val     = &pCtx->core_info->firmware[firmware_idx].optional;
+      }
+   }
+   else if ((pCtx->object_depth == 1) &&
+            (pCtx->array_depth  == 0) &&
+            length)
+   {
+      pCtx->current_string_val      = NULL;
+
+      if (string_is_equal(pValue,         "version"))
+         pCtx->current_string_val            = &pCtx->core_info_cache_list->version;
    }
 
    return true;
 }
 
 static bool CCJSONStringHandler(void *context,
-      const char *pValue, size_t len)
+      const char *pValue, size_t length)
 {
    CCJSONContext *pCtx = (CCJSONContext*)context;
 
-   if (     pCtx->current_string_val
-         && len
-         && (pValue && *pValue))
+   if (     pCtx->current_string_val 
+         && length 
+         && !string_is_empty(pValue))
    {
       if (*pCtx->current_string_val)
          free(*pCtx->current_string_val);
       *pCtx->current_string_val = strdup(pValue);
 
-      /* Gate the string_list split on strdup success: if strdup
-       * returned NULL (OOM), the assignment above stored NULL
-       * into *current_string_val, and string_split dereferences
-       * its first parameter unconditionally at
-       * libretro-common/lists/string_list.c:252 ('while (*p)' with
-       * p = str).  On OOM just leave current_string_list_val
-       * alone; downstream core_info readers already tolerate
-       * missing split lists. */
-      if (pCtx->current_string_list_val && *pCtx->current_string_val)
+      if (pCtx->current_string_list_val)
       {
          if (*pCtx->current_string_list_val)
             string_list_free(*pCtx->current_string_list_val);
-         *pCtx->current_string_list_val =
+         *pCtx->current_string_list_val = 
             string_split(*pCtx->current_string_val, "|");
       }
    }
@@ -381,34 +286,25 @@ static bool CCJSONStringHandler(void *context,
 }
 
 static bool CCJSONNumberHandler(void *context,
-      const char *pValue, size_t len)
+      const char *pValue, size_t length)
 {
-   CCJSONContext *pCtx              = (CCJSONContext*)context;
+   CCJSONContext *pCtx = (CCJSONContext*)context;
 
    if (pCtx->current_entry_uint_val)
       *pCtx->current_entry_uint_val = string_to_unsigned(pValue);
 
-   pCtx->current_entry_uint_val     = NULL;
+   pCtx->current_entry_uint_val = NULL;
 
    return true;
 }
 
 static bool CCJSONBoolHandler(void *context, bool value)
 {
-   CCJSONContext *pCtx              = (CCJSONContext *)context;
-
-   if (pCtx->current_entry_flag_mask && pCtx->core_info)
-   {
-      if (value)
-         pCtx->core_info->flags |= pCtx->current_entry_flag_mask;
-      else
-         pCtx->core_info->flags &= ~pCtx->current_entry_flag_mask;
-   }
+   CCJSONContext *pCtx = (CCJSONContext *)context;
 
    if (pCtx->current_entry_bool_val)
       *pCtx->current_entry_bool_val = value;
 
-   pCtx->current_entry_flag_mask    = 0;
    pCtx->current_entry_bool_val     = NULL;
 
    return true;
@@ -420,59 +316,55 @@ static bool CCJSONStartObjectHandler(void *context)
 
    pCtx->object_depth++;
 
-   switch (pCtx->array_depth)
+   if ((pCtx->object_depth == 1) && (pCtx->array_depth == 0))
    {
-      case 0:
-         if (pCtx->object_depth == 1)
-         {
-            if (pCtx->core_info_cache_list)
-               return false;
-            if (!(pCtx->core_info_cache_list = core_info_cache_list_new()))
-               return false;
-         }
-         break;
-      case 1:
-         if (pCtx->object_depth == 2)
-         {
-            if (pCtx->core_info)
-            {
-               core_info_free(pCtx->core_info);
-               free(pCtx->core_info);
-               pCtx->core_info = NULL;
-            }
+      if (pCtx->core_info_cache_list)
+         return false;
 
-            if (!(pCtx->core_info = (core_info_t*)calloc(1, sizeof(core_info_t))))
-               return false;
+      pCtx->core_info_cache_list = core_info_cache_list_new();
+      if (!pCtx->core_info_cache_list)
+         return false;
+   }
+   else if ((pCtx->object_depth == 2) && (pCtx->array_depth == 1))
+   {
+      if (pCtx->core_info)
+      {
+         core_info_free(pCtx->core_info);
+         free(pCtx->core_info);
+         pCtx->core_info = NULL;
+      }
 
-            /* Assume all cores have 'full' savestate support
-             * by default */
-            pCtx->core_info->savestate_support_level =
-               CORE_INFO_SAVESTATE_DETERMINISTIC;
-         }
-         break;
-      case 2:
-         if (pCtx->object_depth == 3 && pCtx->to_firmware)
-         {
-            size_t new_idx            = pCtx->core_info->firmware_count;
-            core_info_firmware_t *tmp = (core_info_firmware_t*)
+      pCtx->core_info = (core_info_t*)calloc(1, sizeof(core_info_t));
+      if (!pCtx->core_info)
+         return false;
+
+      /* Assume all cores have 'full' savestate support
+       * by default */
+      pCtx->core_info->savestate_support_level =
+            CORE_INFO_SAVESTATE_DETERMINISTIC;
+   }
+   else if ((pCtx->object_depth == 3) && (pCtx->array_depth == 2))
+   {
+      if (pCtx->to_firmware)
+      {
+         size_t new_idx            = pCtx->core_info->firmware_count;
+         core_info_firmware_t *tmp = (core_info_firmware_t*)
                realloc(pCtx->core_info->firmware,
-                     (pCtx->core_info->firmware_count + 1)
+                      (pCtx->core_info->firmware_count + 1) 
                      * sizeof(core_info_firmware_t));
 
-            if (!tmp)
-               return false;
+         if (!tmp)
+            return false;
 
-            tmp[new_idx].path              = NULL;
-            tmp[new_idx].desc              = NULL;
-            tmp[new_idx].missing           = false;
-            tmp[new_idx].optional          = false;
+         tmp[new_idx].path              = NULL;
+         tmp[new_idx].desc              = NULL;
+         tmp[new_idx].missing           = false;
+         tmp[new_idx].optional          = false;
 
-            pCtx->core_info->firmware      = tmp;
-            pCtx->core_info->firmware_count++;
-         }
-         break;
+         pCtx->core_info->firmware      = tmp;
+         pCtx->core_info->firmware_count++;
+      }
    }
-
 
    return true;
 }
@@ -481,27 +373,19 @@ static bool CCJSONEndObjectHandler(void *context)
 {
    CCJSONContext *pCtx = (CCJSONContext*)context;
 
-   if (pCtx->array_depth == 1)
+   if (     (pCtx->object_depth == 2) 
+         && (pCtx->array_depth  == 1)
+         && (pCtx->core_info))
    {
-      switch (pCtx->object_depth)
-      {
-         case 2:
-            if (pCtx->core_info)
-            {
-               core_info_cache_add(
-                     pCtx->core_info_cache_list, pCtx->core_info, true);
-               free(pCtx->core_info);
-               pCtx->core_info = NULL;
-            }
-            break;
-         case 3:
-            pCtx->to_core_file_id = false;
-            break;
-         default:
-            break;
-      }
+      core_info_cache_add(
+            pCtx->core_info_cache_list, pCtx->core_info, true);
+      free(pCtx->core_info);
+      pCtx->core_info = NULL;
    }
+   else if ((pCtx->object_depth == 3) && (pCtx->array_depth == 1))
+      pCtx->to_core_file_id = false;
 
+   retro_assert(pCtx->object_depth > 0);
    pCtx->object_depth--;
 
    return true;
@@ -521,6 +405,7 @@ static bool CCJSONEndArrayHandler(void *context)
    if ((pCtx->object_depth == 2) && (pCtx->array_depth == 2))
       pCtx->to_firmware = false;
 
+   retro_assert(pCtx->array_depth > 0);
    pCtx->array_depth--;
 
    return true;
@@ -582,12 +467,19 @@ static void core_info_copy(core_info_t *src, core_info_t *dst)
          dst->firmware_count = 0;
    }
 
-   dst->core_file_id.str              = src->core_file_id.str
+   dst->core_file_id.str              = src->core_file_id.str 
       ? strdup(src->core_file_id.str) : NULL;
    dst->core_file_id.hash             = src->core_file_id.hash;
 
    dst->savestate_support_level       = src->savestate_support_level;
-   dst->flags                         = src->flags;
+   dst->has_info                      = src->has_info;
+   dst->supports_no_game              = src->supports_no_game;
+   dst->single_purpose                = src->single_purpose;
+   dst->database_match_archive_member = src->database_match_archive_member;
+   dst->is_experimental               = src->is_experimental;
+   dst->is_locked                     = src->is_locked;
+   dst->is_standalone_exempt          = src->is_standalone_exempt;
+   dst->is_installed                  = src->is_installed;
 }
 
 /* Like core_info_copy, but transfers 'ownership'
@@ -677,7 +569,14 @@ static void core_info_transfer(core_info_t *src, core_info_t *dst)
    dst->core_file_id.hash             = src->core_file_id.hash;
 
    dst->savestate_support_level       = src->savestate_support_level;
-   dst->flags                         = src->flags;
+   dst->has_info                      = src->has_info;
+   dst->supports_no_game              = src->supports_no_game;
+   dst->single_purpose                = src->single_purpose;
+   dst->database_match_archive_member = src->database_match_archive_member;
+   dst->is_experimental               = src->is_experimental;
+   dst->is_locked                     = src->is_locked;
+   dst->is_standalone_exempt          = src->is_standalone_exempt;
+   dst->is_installed                  = src->is_installed;
 }
 
 static void core_info_cache_list_free(
@@ -688,20 +587,18 @@ static void core_info_cache_list_free(
    if (!core_info_cache_list)
       return;
 
-   if (core_info_cache_list->items)
+   for (i = 0; i < core_info_cache_list->length; i++)
    {
-      for (i = 0; i < core_info_cache_list->length; i++)
-      {
-         core_info_t* info = (core_info_t*)&core_info_cache_list->items[i];
-         core_info_free(info);
-      }
-      free(core_info_cache_list->items);
+      core_info_t* info = (core_info_t*)&core_info_cache_list->items[i];
+      core_info_free(info);
    }
-   core_info_cache_list->items = NULL;
+
+   free(core_info_cache_list->items);
 
    if (core_info_cache_list->version)
       free(core_info_cache_list->version);
-   core_info_cache_list->version = NULL;
+
+   free(core_info_cache_list);
 }
 
 static core_info_t *core_info_cache_find(
@@ -710,20 +607,23 @@ static core_info_t *core_info_cache_find(
    uint32_t hash;
    size_t i;
 
-   if (  !list
-       || (!core_file_id || !*core_file_id))
+   if (!list ||
+       string_is_empty(core_file_id))
       return NULL;
 
    hash = core_info_hash_string(core_file_id);
 
    for (i = 0; i < list->length; i++)
    {
-      core_info_t *info = &list->items[i];
+      core_info_t *info = (core_info_t*)&list->items[i];
 
-      if (  (info->core_file_id.hash == hash)
-          && string_is_equal(info->core_file_id.str, core_file_id))
+      if (!info)
+         continue;
+
+      if ((info->core_file_id.hash == hash) &&
+          string_is_equal(info->core_file_id.str, core_file_id))
       {
-         info->flags |= CORE_INFO_FLAG_IS_INSTALLED;
+         info->is_installed = true;
          return info;
       }
    }
@@ -740,7 +640,7 @@ static void core_info_cache_add(
    if (   !list
        || !info
        || (info->core_file_id.hash == 0)
-       || (!info->core_file_id.str || !*info->core_file_id.str))
+       || string_is_empty(info->core_file_id.str))
       return;
 
    if (list->length >= list->capacity)
@@ -752,8 +652,8 @@ static void core_info_cache_add(
       if (!items_tmp)
          return;
 
-      list->capacity         = list->capacity << 1;
-      list->items            = items_tmp;
+      list->capacity = list->capacity << 1;
+      list->items    = items_tmp;
 
       memset(&list->items[prev_capacity], 0,
             (list->capacity - prev_capacity) * sizeof(core_info_t));
@@ -772,25 +672,25 @@ static void core_info_cache_add(
 #ifdef HAVE_CORE_INFO_CACHE
 static core_info_cache_list_t *core_info_cache_list_new(void)
 {
-   core_info_cache_list_t *core_info_cache_list =
+   core_info_cache_list_t *core_info_cache_list = 
       (core_info_cache_list_t *)malloc(sizeof(*core_info_cache_list));
    if (!core_info_cache_list)
       return NULL;
 
-   core_info_cache_list->items    = (core_info_t *)
+   core_info_cache_list->length = 0;
+   core_info_cache_list->items  = (core_info_t *)
       calloc(CORE_INFO_CACHE_DEFAULT_CAPACITY,
             sizeof(core_info_t));
-   core_info_cache_list->length   = 0;
-   core_info_cache_list->capacity = CORE_INFO_CACHE_DEFAULT_CAPACITY;
-   core_info_cache_list->version  = NULL;
-   core_info_cache_list->refresh  = false;
 
    if (!core_info_cache_list->items)
    {
       core_info_cache_list_free(core_info_cache_list);
-      free(core_info_cache_list);
       return NULL;
    }
+
+   core_info_cache_list->capacity = CORE_INFO_CACHE_DEFAULT_CAPACITY;
+   core_info_cache_list->refresh  = false;
+   core_info_cache_list->version  = NULL;
 
    return core_info_cache_list;
 }
@@ -805,11 +705,13 @@ static core_info_cache_list_t *core_info_cache_read(const char *info_dir)
 
    /* Check whether a 'force refresh' file
     * is present */
-   if (!info_dir || !*info_dir)
+   file_path[0] = '\0';
+
+   if (string_is_empty(info_dir))
       strlcpy(file_path,
             FILE_PATH_CORE_INFO_CACHE_REFRESH, sizeof(file_path));
    else
-      fill_pathname_join_special(file_path,
+      fill_pathname_join(file_path,
             info_dir, FILE_PATH_CORE_INFO_CACHE_REFRESH,
             sizeof(file_path));
 
@@ -817,14 +719,15 @@ static core_info_cache_list_t *core_info_cache_read(const char *info_dir)
       return core_info_cache_list_new();
 
    /* Open info cache file */
-   if (info_dir && *info_dir)
-      fill_pathname_join_special(file_path, info_dir,
-            FILE_PATH_CORE_INFO_CACHE,
-            sizeof(file_path));
-   else
-      strlcpy(file_path, FILE_PATH_CORE_INFO_CACHE, sizeof(file_path));
+   file_path[0] = '\0';
 
-#if defined(HAVE_COMPRESSION)
+   if (string_is_empty(info_dir))
+      strlcpy(file_path, FILE_PATH_CORE_INFO_CACHE, sizeof(file_path));
+   else
+      fill_pathname_join(file_path, info_dir, FILE_PATH_CORE_INFO_CACHE,
+            sizeof(file_path));
+
+#if defined(HAVE_ZLIB)
    file = intfstream_open_rzip_file(file_path,
          RETRO_VFS_FILE_ACCESS_READ);
 #else
@@ -837,9 +740,10 @@ static core_info_cache_list_t *core_info_cache_read(const char *info_dir)
       return core_info_cache_list_new();
 
    /* Parse info cache file */
-   if (!(parser = rjson_open_intfstream(file)))
+   parser = rjson_open_stream(file);
+   if (!parser)
    {
-      RARCH_ERR("[Core info] Failed to create JSON parser.\n");
+      RARCH_ERR("[Core Info] Failed to create JSON parser\n");
       goto end;
    }
 
@@ -861,24 +765,19 @@ static core_info_cache_list_t *core_info_cache_read(const char *info_dir)
          NULL) /* Unused null handler */
          != RJSON_DONE)
    {
-      RARCH_WARN("[Core info] Error parsing chunk:\n---snip---\n%.*s\n---snip---\n",
+      RARCH_WARN("[Core Info] Error parsing chunk:\n---snip---\n%.*s\n---snip---\n",
             rjson_get_source_context_len(parser),
             rjson_get_source_context_buf(parser));
-      RARCH_WARN("[Core info] Error: Invalid JSON at line %d, column %d - %s.\n",
+      RARCH_WARN("[Core Info] Error: Invalid JSON at line %d, column %d - %s.\n",
             (int)rjson_get_source_line(parser),
             (int)rjson_get_source_column(parser),
-            (*rjson_get_error(parser)
-             ? rjson_get_error(parser)
+            (*rjson_get_error(parser) 
+             ? rjson_get_error(parser) 
              : "format error"));
 
-      /* Info cache is corrupt - discard it.
-       * core_info_cache_list_free() releases the contents but not the
-       * structure itself (see the caller in core_info_list_new, which
-       * pairs it with free()), so both are needed here. */
+      /* Info cache is corrupt - discard it */
       core_info_cache_list_free(context.core_info_cache_list);
-      free(context.core_info_cache_list);
-      context.core_info_cache_list = NULL;
-      core_info_cache_list         = core_info_cache_list_new();
+      core_info_cache_list = core_info_cache_list_new();
    }
    else
       core_info_cache_list = context.core_info_cache_list;
@@ -898,22 +797,16 @@ static core_info_cache_list_t *core_info_cache_read(const char *info_dir)
 
    /* If info cache file has the wrong version
     * number, discard it */
-   if (    (!core_info_cache_list->version || !*core_info_cache_list->version)
-       || !string_is_equal(core_info_cache_list->version,
+   if (string_is_empty(core_info_cache_list->version) ||
+       !string_is_equal(core_info_cache_list->version,
             CORE_INFO_CACHE_VERSION))
    {
-      RARCH_WARN("[Core info] Core info cache has invalid version"
-            " - forcing refresh (required v%s, found v%s).\n",
+      RARCH_WARN("[Core Info] Core info cache has invalid version"
+            " - forcing refresh (required v%s, found v%s)\n",
             CORE_INFO_CACHE_VERSION,
             core_info_cache_list->version);
 
-      /* Free the list actually in hand, not the parse context's.  On a
-       * corrupt cache the branch above has already replaced it with a
-       * fresh one and cleared the context pointer, so freeing the
-       * context here leaked that replacement - and would have been a
-       * double free had the parse built a list before failing. */
-      core_info_cache_list_free(core_info_cache_list);
-      free(core_info_cache_list);
+      core_info_cache_list_free(context.core_info_cache_list);
       core_info_cache_list = core_info_cache_list_new();
    }
 
@@ -930,58 +823,41 @@ static bool core_info_cache_write(core_info_cache_list_t *list, const char *info
    intfstream_t *file    = NULL;
    rjsonwriter_t *writer = NULL;
    bool success          = false;
-   bool wrote_ok         = false;
    char file_path[PATH_MAX_LENGTH];
-   char write_path[PATH_MAX_LENGTH];
    size_t i, j;
+
+   file_path[0] = '\0';
 
    if (!list)
       return false;
 
    /* Open info cache file */
-   if (info_dir && *info_dir)
-      fill_pathname_join_special(file_path, info_dir,
-            FILE_PATH_CORE_INFO_CACHE,
-            sizeof(file_path));
-   else
+   if (string_is_empty(info_dir))
       strlcpy(file_path, FILE_PATH_CORE_INFO_CACHE, sizeof(file_path));
-
-   /* Write to a temporary and move it into place.  Truncating the
-    * cache in situ means a crash, a power loss or a full disk part way
-    * through leaves a half-written file, and the next startup then
-    * fails to parse it and falls back to reading every .info file
-    * individually - the slow path this cache exists to avoid.  The
-    * temporary sits in the same directory so the move stays within one
-    * filesystem. */
-   {
-      size_t _len = strlcpy(write_path, file_path, sizeof(write_path));
-      if (_len + STRLEN_CONST(".tmp") >= sizeof(write_path))
-      {
-         RARCH_ERR("[Core info] Path too long to write safely: \"%s\".\n",
-               file_path);
-         return false;
-      }
-      strlcpy_lit(write_path + _len, ".tmp", sizeof(write_path) - _len);
-   }
+   else
+      fill_pathname_join(file_path, info_dir, FILE_PATH_CORE_INFO_CACHE,
+            sizeof(file_path));
 
 #if defined(CORE_INFO_CACHE_COMPRESS)
-   file = intfstream_open_rzip_file(write_path, RETRO_VFS_FILE_ACCESS_WRITE);
+   file = intfstream_open_rzip_file(file_path,
+         RETRO_VFS_FILE_ACCESS_WRITE);
 #else
-   file = intfstream_open_file(write_path,
+   file = intfstream_open_file(file_path,
          RETRO_VFS_FILE_ACCESS_WRITE,
          RETRO_VFS_FILE_ACCESS_HINT_NONE);
 #endif
 
    if (!file)
    {
-      RARCH_ERR("[Core info] Failed to write core info cache file: \"%s\".\n", write_path);
+      RARCH_ERR("[Core Info] Failed to write to core info cache file: %s\n", file_path);
       return false;
    }
 
    /* Write info cache */
-   if (!(writer = rjsonwriter_open_intfstream(file)))
+   writer = rjsonwriter_open_stream(file);
+   if (!writer)
    {
-      RARCH_ERR("[Core info] Failed to create JSON writer.\n");
+      RARCH_ERR("[Core Info] Failed to create JSON writer\n");
       goto end;
    }
 
@@ -992,309 +868,320 @@ static bool core_info_cache_write(core_info_cache_list_t *list, const char *info
    rjsonwriter_set_options(writer, RJSONWRITER_OPTION_SKIP_WHITESPACE);
 #endif
 
-   rjsonwriter_raw(writer, "{\n", 2);
+   rjsonwriter_add_start_object(writer);
+   rjsonwriter_add_newline(writer);
    rjsonwriter_add_spaces(writer, 2);
    rjsonwriter_add_string(writer, "version");
-   rjsonwriter_raw(writer, ": ", 2);
+   rjsonwriter_add_colon(writer);
+   rjsonwriter_add_space(writer);
    rjsonwriter_add_string(writer, CORE_INFO_CACHE_VERSION);
-   rjsonwriter_raw(writer, ",\n", 2);
+   rjsonwriter_add_comma(writer);
+   rjsonwriter_add_newline(writer);
    rjsonwriter_add_spaces(writer, 2);
    rjsonwriter_add_string(writer, "items");
-   rjsonwriter_raw(writer, ": [\n", 4);
+   rjsonwriter_add_colon(writer);
+   rjsonwriter_add_space(writer);
+   rjsonwriter_add_start_array(writer);
+   rjsonwriter_add_newline(writer);
 
+   for (i = 0; i < list->length; i++)
    {
-      bool first_written = true;
+      core_info_t* info = &list->items[i];
 
-      for (i = 0; i < list->length; i++)
+      if (!info || !info->is_installed)
+         continue;
+
+      if (i > 0)
       {
-         core_info_t* info = &list->items[i];
-
-         if (!(info->flags & CORE_INFO_FLAG_IS_INSTALLED))
-            continue;
-
-         if (!first_written)
-            rjsonwriter_raw(writer, ",\n", 2);
-         first_written = false;
+         rjsonwriter_add_comma(writer);
+         rjsonwriter_add_newline(writer);
+      }
 
       rjsonwriter_add_spaces(writer, 4);
-      rjsonwriter_raw(writer, "{\n", 2);
+      rjsonwriter_add_start_object(writer);
+      rjsonwriter_add_newline(writer);
 
       rjsonwriter_add_spaces(writer, 6);
       rjsonwriter_add_string(writer, "display_name");
-      rjsonwriter_raw(writer, ": ", 2);
+      rjsonwriter_add_colon(writer);
+      rjsonwriter_add_space(writer);
       rjsonwriter_add_string(writer, info->display_name);
-      rjsonwriter_raw(writer, ",\n", 2);
+      rjsonwriter_add_comma(writer);
+      rjsonwriter_add_newline(writer);
 
       rjsonwriter_add_spaces(writer, 6);
       rjsonwriter_add_string(writer, "display_version");
-      rjsonwriter_raw(writer, ": ", 2);
+      rjsonwriter_add_colon(writer);
+      rjsonwriter_add_space(writer);
       rjsonwriter_add_string(writer, info->display_version);
-      rjsonwriter_raw(writer, ",\n", 2);
+      rjsonwriter_add_comma(writer);
+      rjsonwriter_add_newline(writer);
 
       rjsonwriter_add_spaces(writer, 6);
       rjsonwriter_add_string(writer, "core_name");
-      rjsonwriter_raw(writer, ": ", 2);
+      rjsonwriter_add_colon(writer);
+      rjsonwriter_add_space(writer);
       rjsonwriter_add_string(writer, info->core_name);
-      rjsonwriter_raw(writer, ",\n", 2);
+      rjsonwriter_add_comma(writer);
+      rjsonwriter_add_newline(writer);
 
       rjsonwriter_add_spaces(writer, 6);
       rjsonwriter_add_string(writer, "system_manufacturer");
-      rjsonwriter_raw(writer, ": ", 2);
+      rjsonwriter_add_colon(writer);
+      rjsonwriter_add_space(writer);
       rjsonwriter_add_string(writer, info->system_manufacturer);
-      rjsonwriter_raw(writer, ",\n", 2);
+      rjsonwriter_add_comma(writer);
+      rjsonwriter_add_newline(writer);
 
       rjsonwriter_add_spaces(writer, 6);
       rjsonwriter_add_string(writer, "systemname");
-      rjsonwriter_raw(writer, ": ", 2);
+      rjsonwriter_add_colon(writer);
+      rjsonwriter_add_space(writer);
       rjsonwriter_add_string(writer, info->systemname);
-      rjsonwriter_raw(writer, ",\n", 2);
+      rjsonwriter_add_comma(writer);
+      rjsonwriter_add_newline(writer);
 
       rjsonwriter_add_spaces(writer, 6);
       rjsonwriter_add_string(writer, "system_id");
-      rjsonwriter_raw(writer, ": ", 2);
+      rjsonwriter_add_colon(writer);
+      rjsonwriter_add_space(writer);
       rjsonwriter_add_string(writer, info->system_id);
-      rjsonwriter_raw(writer, ",\n", 2);
+      rjsonwriter_add_comma(writer);
+      rjsonwriter_add_newline(writer);
 
       rjsonwriter_add_spaces(writer, 6);
       rjsonwriter_add_string(writer, "supported_extensions");
-      rjsonwriter_raw(writer, ": ", 2);
+      rjsonwriter_add_colon(writer);
+      rjsonwriter_add_space(writer);
       rjsonwriter_add_string(writer, info->supported_extensions);
-      rjsonwriter_raw(writer, ",\n", 2);
+      rjsonwriter_add_comma(writer);
+      rjsonwriter_add_newline(writer);
 
       rjsonwriter_add_spaces(writer, 6);
       rjsonwriter_add_string(writer, "authors");
-      rjsonwriter_raw(writer, ": ", 2);
+      rjsonwriter_add_colon(writer);
+      rjsonwriter_add_space(writer);
       rjsonwriter_add_string(writer, info->authors);
-      rjsonwriter_raw(writer, ",\n", 2);
+      rjsonwriter_add_comma(writer);
+      rjsonwriter_add_newline(writer);
 
       rjsonwriter_add_spaces(writer, 6);
       rjsonwriter_add_string(writer, "permissions");
-      rjsonwriter_raw(writer, ": ", 2);
+      rjsonwriter_add_colon(writer);
+      rjsonwriter_add_space(writer);
       rjsonwriter_add_string(writer, info->permissions);
-      rjsonwriter_raw(writer, ",\n", 2);
+      rjsonwriter_add_comma(writer);
+      rjsonwriter_add_newline(writer);
 
       rjsonwriter_add_spaces(writer, 6);
       rjsonwriter_add_string(writer, "licenses");
-      rjsonwriter_raw(writer, ": ", 2);
+      rjsonwriter_add_colon(writer);
+      rjsonwriter_add_space(writer);
       rjsonwriter_add_string(writer, info->licenses);
-      rjsonwriter_raw(writer, ",\n", 2);
+      rjsonwriter_add_comma(writer);
+      rjsonwriter_add_newline(writer);
 
       rjsonwriter_add_spaces(writer, 6);
       rjsonwriter_add_string(writer, "categories");
-      rjsonwriter_raw(writer, ": ", 2);
+      rjsonwriter_add_colon(writer);
+      rjsonwriter_add_space(writer);
       rjsonwriter_add_string(writer, info->categories);
-      rjsonwriter_raw(writer, ",\n", 2);
+      rjsonwriter_add_comma(writer);
+      rjsonwriter_add_newline(writer);
 
       rjsonwriter_add_spaces(writer, 6);
       rjsonwriter_add_string(writer, "databases");
-      rjsonwriter_raw(writer, ": ", 2);
+      rjsonwriter_add_colon(writer);
+      rjsonwriter_add_space(writer);
       rjsonwriter_add_string(writer, info->databases);
-      rjsonwriter_raw(writer, ",\n", 2);
+      rjsonwriter_add_comma(writer);
+      rjsonwriter_add_newline(writer);
 
       rjsonwriter_add_spaces(writer, 6);
       rjsonwriter_add_string(writer, "notes");
-      rjsonwriter_raw(writer, ": ", 2);
+      rjsonwriter_add_colon(writer);
+      rjsonwriter_add_space(writer);
       rjsonwriter_add_string(writer, info->notes);
-      rjsonwriter_raw(writer, ",\n", 2);
+      rjsonwriter_add_comma(writer);
+      rjsonwriter_add_newline(writer);
 
       rjsonwriter_add_spaces(writer, 6);
       rjsonwriter_add_string(writer, "required_hw_api");
-      rjsonwriter_raw(writer, ": ", 2);
+      rjsonwriter_add_colon(writer);
+      rjsonwriter_add_space(writer);
       rjsonwriter_add_string(writer, info->required_hw_api);
-      rjsonwriter_raw(writer, ",\n", 2);
+      rjsonwriter_add_comma(writer);
+      rjsonwriter_add_newline(writer);
 
       rjsonwriter_add_spaces(writer, 6);
       rjsonwriter_add_string(writer, "description");
-      rjsonwriter_raw(writer, ": ", 2);
+      rjsonwriter_add_colon(writer);
+      rjsonwriter_add_space(writer);
       rjsonwriter_add_string(writer, info->description);
-      rjsonwriter_raw(writer, ",\n", 2);
+      rjsonwriter_add_comma(writer);
+      rjsonwriter_add_newline(writer);
 
       if (info->firmware_count > 0)
       {
          rjsonwriter_add_spaces(writer, 6);
          rjsonwriter_add_string(writer, "firmware");
-         rjsonwriter_raw(writer, ":", 1);
-         rjsonwriter_raw(writer, " ", 1);
-         rjsonwriter_raw(writer, "[", 1);
-         rjsonwriter_raw(writer, "\n", 1);
+         rjsonwriter_add_colon(writer);
+         rjsonwriter_add_space(writer);
+         rjsonwriter_add_start_array(writer);
+         rjsonwriter_add_newline(writer);
 
          for (j = 0; j < info->firmware_count; j++)
          {
             rjsonwriter_add_spaces(writer, 8);
-            rjsonwriter_raw(writer, "{", 1);
-            rjsonwriter_raw(writer, "\n", 1);
+            rjsonwriter_add_start_object(writer);
+            rjsonwriter_add_newline(writer);
             rjsonwriter_add_spaces(writer, 10);
             rjsonwriter_add_string(writer, "path");
-            rjsonwriter_raw(writer, ":", 1);
-            rjsonwriter_raw(writer, " ", 1);
+            rjsonwriter_add_colon(writer);
+            rjsonwriter_add_space(writer);
             rjsonwriter_add_string(writer, info->firmware[j].path);
-            rjsonwriter_raw(writer, ",", 1);
-            rjsonwriter_raw(writer, "\n", 1);
+            rjsonwriter_add_comma(writer);
+            rjsonwriter_add_newline(writer);
             rjsonwriter_add_spaces(writer, 10);
             rjsonwriter_add_string(writer, "desc");
-            rjsonwriter_raw(writer, ":", 1);
-            rjsonwriter_raw(writer, " ", 1);
+            rjsonwriter_add_colon(writer);
+            rjsonwriter_add_space(writer);
             rjsonwriter_add_string(writer, info->firmware[j].desc);
-            rjsonwriter_raw(writer, ",", 1);
-            rjsonwriter_raw(writer, "\n", 1);
+            rjsonwriter_add_comma(writer);
+            rjsonwriter_add_newline(writer);
             rjsonwriter_add_spaces(writer, 10);
             rjsonwriter_add_string(writer, "optional");
-            rjsonwriter_raw(writer, ":", 1);
-            rjsonwriter_raw(writer, " ", 1);
-            {
-               bool value = info->firmware[j].optional;
-               rjsonwriter_raw(writer, (value ? "true" : "false"), (value ? 4 : 5));
-            }
-            rjsonwriter_raw(writer, "\n", 1);
+            rjsonwriter_add_colon(writer);
+            rjsonwriter_add_space(writer);
+            rjsonwriter_add_bool(writer, info->firmware[j].optional);
+            rjsonwriter_add_newline(writer);
             rjsonwriter_add_spaces(writer, 8);
-            rjsonwriter_raw(writer, "}", 1);
+            rjsonwriter_add_end_object(writer);
 
             if (j < info->firmware_count - 1)
-               rjsonwriter_raw(writer, ",", 1);
+               rjsonwriter_add_comma(writer);
 
-            rjsonwriter_raw(writer, "\n", 1);
+            rjsonwriter_add_newline(writer);
          }
 
          rjsonwriter_add_spaces(writer, 6);
-         rjsonwriter_raw(writer, "]", 1);
-         rjsonwriter_raw(writer, ",", 1);
-         rjsonwriter_raw(writer, "\n", 1);
+         rjsonwriter_add_end_array(writer);
+         rjsonwriter_add_comma(writer);
+         rjsonwriter_add_newline(writer);
       }
 
       rjsonwriter_add_spaces(writer, 6);
       rjsonwriter_add_string(writer, "core_file_id");
-      rjsonwriter_raw(writer, ":", 1);
-      rjsonwriter_raw(writer, "\n", 1);
+      rjsonwriter_add_colon(writer);
+      rjsonwriter_add_newline(writer);
       rjsonwriter_add_spaces(writer, 6);
-      rjsonwriter_raw(writer, "{\n", 2);
+      rjsonwriter_add_start_object(writer);
+      rjsonwriter_add_newline(writer);
       rjsonwriter_add_spaces(writer, 8);
       rjsonwriter_add_string(writer, "str");
-      rjsonwriter_raw(writer, ": ", 2);
+      rjsonwriter_add_colon(writer);
+      rjsonwriter_add_space(writer);
       rjsonwriter_add_string(writer, info->core_file_id.str);
-      rjsonwriter_raw(writer, ",\n", 2);
+      rjsonwriter_add_comma(writer);
+      rjsonwriter_add_newline(writer);
       rjsonwriter_add_spaces(writer, 8);
       rjsonwriter_add_string(writer, "hash");
-      rjsonwriter_raw(writer, ": ", 2);
-      rjsonwriter_rawf(writer, "%u", info->core_file_id.hash);
-      rjsonwriter_raw(writer, "\n", 1);
+      rjsonwriter_add_colon(writer);
+      rjsonwriter_add_space(writer);
+      rjsonwriter_add_unsigned(writer, info->core_file_id.hash);
+      rjsonwriter_add_newline(writer);
       rjsonwriter_add_spaces(writer, 6);
-      rjsonwriter_raw(writer, "}", 1);
-      rjsonwriter_raw(writer, ",\n", 2);
+      rjsonwriter_add_end_object(writer);
+      rjsonwriter_add_comma(writer);
+      rjsonwriter_add_newline(writer);
 
       rjsonwriter_add_spaces(writer, 6);
       rjsonwriter_add_string(writer, "firmware_count");
-      rjsonwriter_raw(writer, ": ", 2);
-      rjsonwriter_rawf(writer, "%u", info->firmware_count);
-      rjsonwriter_raw(writer, ",\n", 2);
+      rjsonwriter_add_colon(writer);
+      rjsonwriter_add_space(writer);
+      rjsonwriter_add_unsigned(writer, info->firmware_count);
+      rjsonwriter_add_comma(writer);
+      rjsonwriter_add_newline(writer);
 
       rjsonwriter_add_spaces(writer, 6);
       rjsonwriter_add_string(writer, "savestate_support_level");
-      rjsonwriter_raw(writer, ": ", 2);
-      rjsonwriter_rawf(writer, "%u", info->savestate_support_level);
-      rjsonwriter_raw(writer, ",\n", 2);
+      rjsonwriter_add_colon(writer);
+      rjsonwriter_add_space(writer);
+      rjsonwriter_add_unsigned(writer, info->savestate_support_level);
+      rjsonwriter_add_comma(writer);
+      rjsonwriter_add_newline(writer);
 
       rjsonwriter_add_spaces(writer, 6);
       rjsonwriter_add_string(writer, "has_info");
-      rjsonwriter_raw(writer, ": ", 2);
-      rjsonwriter_raw(writer,
-            (info->flags & CORE_INFO_FLAG_HAS_INFO) ? "true" : "false",
-            (info->flags & CORE_INFO_FLAG_HAS_INFO) ? 4 : 5);
-      rjsonwriter_raw(writer, ",\n", 2);
+      rjsonwriter_add_colon(writer);
+      rjsonwriter_add_space(writer);
+      rjsonwriter_add_bool(writer, info->has_info);
+      rjsonwriter_add_comma(writer);
+      rjsonwriter_add_newline(writer);
 
       rjsonwriter_add_spaces(writer, 6);
       rjsonwriter_add_string(writer, "supports_no_game");
-      rjsonwriter_raw(writer, ": ", 2);
-      rjsonwriter_raw(writer,
-            (info->flags & CORE_INFO_FLAG_SUPPORTS_NO_GAME) ? "true" : "false",
-            (info->flags & CORE_INFO_FLAG_SUPPORTS_NO_GAME) ? 4 : 5);
-      rjsonwriter_raw(writer, ",\n", 2);
+      rjsonwriter_add_colon(writer);
+      rjsonwriter_add_space(writer);
+      rjsonwriter_add_bool(writer, info->supports_no_game);
+      rjsonwriter_add_comma(writer);
+      rjsonwriter_add_newline(writer);
 
       rjsonwriter_add_spaces(writer, 6);
       rjsonwriter_add_string(writer, "single_purpose");
-      rjsonwriter_raw(writer, ": ", 2);
-      rjsonwriter_raw(writer,
-            (info->flags & CORE_INFO_FLAG_SINGLE_PURPOSE) ? "true" : "false",
-            (info->flags & CORE_INFO_FLAG_SINGLE_PURPOSE) ? 4 : 5);
-      rjsonwriter_raw(writer, ",\n", 2);
+      rjsonwriter_add_colon(writer);
+      rjsonwriter_add_space(writer);
+      rjsonwriter_add_bool(writer, info->single_purpose);
+      rjsonwriter_add_comma(writer);
+      rjsonwriter_add_newline(writer);
 
       rjsonwriter_add_spaces(writer, 6);
       rjsonwriter_add_string(writer, "database_match_archive_member");
-      rjsonwriter_raw(writer, ": ", 2);
-      rjsonwriter_raw(writer,
-            (info->flags & CORE_INFO_FLAG_DATABASE_MATCH_ARCHIVE_MEMBER) ? "true" : "false",
-            (info->flags & CORE_INFO_FLAG_DATABASE_MATCH_ARCHIVE_MEMBER) ? 4 : 5);
-      rjsonwriter_raw(writer, ",\n", 2);
+      rjsonwriter_add_colon(writer);
+      rjsonwriter_add_space(writer);
+      rjsonwriter_add_bool(writer, info->database_match_archive_member);
+      rjsonwriter_add_comma(writer);
+      rjsonwriter_add_newline(writer);
 
       rjsonwriter_add_spaces(writer, 6);
       rjsonwriter_add_string(writer, "is_experimental");
-      rjsonwriter_raw(writer, ": ", 2);
-      rjsonwriter_raw(writer,
-            (info->flags & CORE_INFO_FLAG_IS_EXPERIMENTAL) ? "true" : "false",
-            (info->flags & CORE_INFO_FLAG_IS_EXPERIMENTAL) ? 4 : 5);
-      rjsonwriter_raw(writer, "\n", 1);
+      rjsonwriter_add_colon(writer);
+      rjsonwriter_add_space(writer);
+      rjsonwriter_add_bool(writer, info->is_experimental);
+      rjsonwriter_add_newline(writer);
 
       rjsonwriter_add_spaces(writer, 4);
-      rjsonwriter_raw(writer, "}", 1);
-      }
+      rjsonwriter_add_end_object(writer);
    }
 
-   rjsonwriter_raw(writer, "\n", 1);
+   rjsonwriter_add_newline(writer);
    rjsonwriter_add_spaces(writer, 2);
-   rjsonwriter_raw(writer, "]\n}\n", 4);
+   rjsonwriter_add_end_array(writer);
+   rjsonwriter_add_newline(writer);
+   rjsonwriter_add_end_object(writer);
+   rjsonwriter_add_newline(writer);
+   rjsonwriter_free(writer);
 
-   /* rjsonwriter_free performs the final flush, so its result is what
-    * says whether the temporary is complete.  Without it a short write
-    * was reported as a successful cache write - and the 'force
-    * refresh' marker below was then deleted, so the next startup
-    * trusted a truncated cache instead of rebuilding it. */
-   if (!(wrote_ok = rjsonwriter_free(writer)))
-      RARCH_ERR("[Core info] Failed to write core info cache file: \"%s\".\n",
-            write_path);
-   writer = NULL;
-
-   if (!wrote_ok)
-      goto end;
-
-   /* Commit: only now does the new cache replace the old one. */
-   intfstream_close(file);
-   free(file);
-   file    = NULL;
-
-   if (filestream_rename(write_path, file_path) != 0)
-   {
-      filestream_delete(write_path);
-      RARCH_ERR("[Core info] Failed to write core info cache file: \"%s\".\n",
-            file_path);
-      list->refresh = false;
-      return false;
-   }
-
-   RARCH_LOG("[Core info] Wrote to cache file: \"%s\".\n", file_path);
+   RARCH_LOG("[Core Info] Wrote to cache file: %s\n", file_path);
    success = true;
 
    /* Remove 'force refresh' file, if required */
-   if (info_dir && *info_dir)
-      fill_pathname_join_special(file_path,
-            info_dir, FILE_PATH_CORE_INFO_CACHE_REFRESH,
-            sizeof(file_path));
-   else
+   file_path[0] = '\0';
+
+   if (string_is_empty(info_dir))
       strlcpy(file_path,
             FILE_PATH_CORE_INFO_CACHE_REFRESH, sizeof(file_path));
+   else
+      fill_pathname_join(file_path,
+            info_dir, FILE_PATH_CORE_INFO_CACHE_REFRESH,
+            sizeof(file_path));
 
    if (path_is_valid(file_path))
       filestream_delete(file_path);
 
 end:
-   if (file)
-   {
-      intfstream_close(file);
-      free(file);
-   }
-
-   /* A temporary left behind by any failure above is discarded; what
-    * is on disk stays exactly what it was. */
-   if (!success && *write_path)
-      filestream_delete(write_path);
+   intfstream_close(file);
+   free(file);
 
    list->refresh = false;
    return success;
@@ -1309,9 +1196,12 @@ static void core_info_check_uninstalled(core_info_cache_list_t *list)
 
    for (i = 0; i < list->length; i++)
    {
-      core_info_t *info = &list->items[i];
+      core_info_t *info = (core_info_t *)&list->items[i];
 
-      if (!(info->flags & CORE_INFO_FLAG_IS_INSTALLED))
+      if (!info)
+         continue;
+
+      if (!info->is_installed)
       {
          list->refresh = true;
          return;
@@ -1327,21 +1217,25 @@ bool core_info_cache_force_refresh(const char *path_info)
 {
    char file_path[PATH_MAX_LENGTH];
 
+   file_path[0] = '\0';
+
    /* Get 'force refresh' file path */
-   if (path_info && *path_info)
-      fill_pathname_join_special(file_path,
-            path_info, FILE_PATH_CORE_INFO_CACHE_REFRESH,
-            sizeof(file_path));
-   else
+   if (string_is_empty(path_info))
       strlcpy(file_path,
             FILE_PATH_CORE_INFO_CACHE_REFRESH, sizeof(file_path));
+   else
+      fill_pathname_join(file_path,
+            path_info, FILE_PATH_CORE_INFO_CACHE_REFRESH,
+            sizeof(file_path));
 
    /* Generate a new, empty 'force refresh' file,
     * if required */
    if (!path_is_valid(file_path))
    {
-      RFILE *refresh_file = filestream_open(file_path,
-            RETRO_VFS_FILE_ACCESS_WRITE, RETRO_VFS_FILE_ACCESS_HINT_NONE);
+      RFILE *refresh_file = filestream_open(
+            file_path,
+            RETRO_VFS_FILE_ACCESS_WRITE,
+            RETRO_VFS_FILE_ACCESS_HINT_NONE);
 
       if (!refresh_file)
          return false;
@@ -1363,6 +1257,16 @@ bool core_info_cache_force_refresh(const char *path_info)
 /***********************/
 /* Core Info Cache END */
 /***********************/
+
+enum compare_op
+{
+   COMPARE_OP_EQUAL = 0,
+   COMPARE_OP_NOT_EQUAL,
+   COMPARE_OP_LESS,
+   COMPARE_OP_LESS_EQUAL,
+   COMPARE_OP_GREATER,
+   COMPARE_OP_GREATER_EQUAL
+};
 
 typedef struct
 {
@@ -1440,20 +1344,22 @@ static void core_info_path_list_free(core_path_list_t *path_list)
 static core_path_list_t *core_info_path_list_new(const char *core_dir,
       const char *core_exts, bool show_hidden_files)
 {
-   size_t i, _len;
-   char exts[32];
-   core_path_list_t *path_list       = NULL;
+   core_path_list_t *path_list       = (core_path_list_t*)
+         calloc(1, sizeof(*path_list));
    struct string_list *core_ext_list = NULL;
    bool dir_list_ok                  = false;
-   if (!core_exts || !*core_exts)
-      return NULL;
-   if (!(path_list = (core_path_list_t*)calloc(1, sizeof(*path_list))))
-      return NULL;
-   if (!(core_ext_list = string_split(core_exts, "|")))
-   {
-      core_info_path_list_free(path_list);
-      return NULL;
-   }
+   char exts[32];
+   size_t i;
+
+   exts[0] = '\0';
+
+   if (string_is_empty(core_exts) ||
+       !path_list)
+      goto error;
+
+   core_ext_list = string_split(core_exts, "|");
+   if (!core_ext_list)
+      goto error;
 
    /* Allocate list containers */
    path_list->dir_list               = string_list_new();
@@ -1465,24 +1371,26 @@ static core_path_list_t *core_info_path_list_new(const char *core_dir,
          calloc(1, sizeof(*path_list->standalone_exempt_list));
 
    if (   !path_list->dir_list
-       || !path_list->core_list
+       || !path_list->core_list 
        || !path_list->lock_list
        || !path_list->standalone_exempt_list)
       goto error;
 
    /* Get list of file extensions to include
     * > core + lock */
-   _len = strlcpy(exts, core_exts, sizeof(exts));
+   strlcpy(exts, core_exts, sizeof(exts));
+   strlcat(exts, "|" FILE_PATH_LOCK_EXTENSION_NO_DOT,
+         sizeof(exts));
 #if defined(HAVE_DYNAMIC)
    /* > 'standalone exempt' */
-   strlcpy_lit(exts + _len, "|lck|lsae", sizeof(exts) - _len);
-#else
-   strlcpy_lit(exts + _len, "|lck",      sizeof(exts) - _len);
+   strlcat(exts, "|" FILE_PATH_STANDALONE_EXEMPT_EXTENSION_NO_DOT,
+         sizeof(exts));
 #endif
 
    /* Fetch core directory listing */
    dir_list_ok = dir_list_append(path_list->dir_list,
-         core_dir, exts, false, show_hidden_files, false, false);
+         core_dir, exts, false, show_hidden_files,
+               false, false);
 
 #if defined(__WINRT__) || defined(WINAPI_FAMILY) && WINAPI_FAMILY == WINAPI_FAMILY_PHONE_APP
    {
@@ -1516,9 +1424,9 @@ static core_path_list_t *core_info_path_list_new(const char *core_dir,
          malloc(path_list->dir_list->size *
                sizeof(*path_list->standalone_exempt_list->list));
 
-   if (   !path_list->core_list->list
-       || !path_list->lock_list->list
-       || !path_list->standalone_exempt_list->list)
+   if (!path_list->core_list->list ||
+       !path_list->lock_list->list ||
+       !path_list->standalone_exempt_list->list)
       goto error;
 
    /* Parse directory listing */
@@ -1528,7 +1436,7 @@ static core_path_list_t *core_info_path_list_new(const char *core_dir,
       const char *filename  = NULL;
       const char *file_ext  = NULL;
 
-      if (   (!file_path || !*file_path)
+      if (     string_is_empty(file_path)
           || !(filename = path_basename_nocompression(file_path))
           || !(file_ext = path_get_extension(filename)))
          continue;
@@ -1543,7 +1451,7 @@ static core_path_list_t *core_info_path_list_new(const char *core_dir,
                path_list->core_list->size].filename = filename;
          path_list->core_list->size++;
       }
-      else if (memcmp(file_ext, FILE_PATH_LOCK_EXTENSION_NO_DOT, sizeof(FILE_PATH_LOCK_EXTENSION_NO_DOT)) == 0)
+      else if (string_is_equal(file_ext, FILE_PATH_LOCK_EXTENSION_NO_DOT))
       {
          path_list->lock_list->list[
                path_list->lock_list->size].filename = filename;
@@ -1552,7 +1460,7 @@ static core_path_list_t *core_info_path_list_new(const char *core_dir,
          path_list->lock_list->size++;
       }
 #if defined(HAVE_DYNAMIC)
-      else if (memcmp(file_ext, FILE_PATH_STANDALONE_EXEMPT_EXTENSION_NO_DOT, sizeof(FILE_PATH_STANDALONE_EXEMPT_EXTENSION_NO_DOT) - 1) == 0)
+      else if (string_is_equal(file_ext, FILE_PATH_STANDALONE_EXEMPT_EXTENSION_NO_DOT))
       {
          path_list->standalone_exempt_list->list[
                path_list->standalone_exempt_list->size].filename = filename;
@@ -1578,13 +1486,15 @@ static bool core_info_path_is_locked(
 {
    size_t i;
    uint32_t hash;
-   char lock_filename[NAME_MAX_LENGTH];
+   char lock_filename[256];
+
+   lock_filename[0] = '\0';
 
    if (lock_list->size < 1)
       return false;
 
-   fill_pathname(lock_filename, core_file_name,
-         ".lck", sizeof(lock_filename));
+   snprintf(lock_filename, sizeof(lock_filename),
+         "%s" FILE_PATH_LOCK_EXTENSION, core_file_name);
 
    hash = core_info_hash_string(lock_filename);
 
@@ -1592,8 +1502,8 @@ static bool core_info_path_is_locked(
    {
       core_aux_file_path_t *lock_file = &lock_list->list[i];
 
-      if (  (lock_file->hash == hash)
-          && string_is_equal(lock_file->filename, lock_filename))
+      if ((lock_file->hash == hash) &&
+          string_is_equal(lock_file->filename, lock_filename))
          return true;
    }
 
@@ -1606,13 +1516,16 @@ static bool core_info_path_is_standalone_exempt(
 {
    size_t i;
    uint32_t hash;
-   char exempt_filename[NAME_MAX_LENGTH];
+   char exempt_filename[256];
+
+   exempt_filename[0] = '\0';
 
    if (exempt_list->size < 1)
       return false;
 
-   fill_pathname(exempt_filename, core_file_name,
-         ".lsae", sizeof(exempt_filename));
+   snprintf(exempt_filename, sizeof(exempt_filename),
+         "%s" FILE_PATH_STANDALONE_EXEMPT_EXTENSION,
+         core_file_name);
 
    hash = core_info_hash_string(exempt_filename);
 
@@ -1620,65 +1533,64 @@ static bool core_info_path_is_standalone_exempt(
    {
       core_aux_file_path_t *exempt_file = &exempt_list->list[i];
 
-      if (  (exempt_file->hash == hash)
-          && string_is_equal(exempt_file->filename, exempt_filename))
+      if ((exempt_file->hash == hash) &&
+          string_is_equal(exempt_file->filename, exempt_filename))
          return true;
    }
 
    return false;
 }
 
-static size_t core_info_get_file_id(const char *core_filename,
-      char *s, size_t len)
+static bool core_info_get_file_id(const char *core_filename,
+      char *core_file_id, size_t len)
 {
-   size_t _len;
    char *last_underscore = NULL;
-   if (!core_filename || !*core_filename)
-      return 0;
+
+   if (string_is_empty(core_filename))
+      return false;
+
    /* Core file 'id' is filename without extension
     * or platform-specific suffix */
+
    /* > Remove extension */
-   _len = fill_pathname(s, core_filename, "", len);
-#if TARGET_OS_IPHONE || TARGET_OS_OSX
-   /* iOS framework names, to quote Apple:
-    * "must contain only alphanumerics, dots, hyphens and must not end with a dot."
-    *
-    * Since core names include underscore, which is not allowed, but not dot,
-    * which is, we change underscore to dot. Here, we need to change it back.
-    */
-   string_replace_all_chars(s, '.', '_');
-#endif
+   strlcpy(core_file_id, core_filename, len);
+   path_remove_extension(core_file_id);
+
    /* > Remove suffix */
-   last_underscore = (char*)strrchr(s, '_');
-   if (   last_underscore
-       && memcmp(last_underscore, "_libretro", STRLEN_CONST("_libretro") + 1))
-   {
+   last_underscore = (char*)strrchr(core_file_id, '_');
+
+   if (!string_is_empty(last_underscore) &&
+       !string_is_equal(last_underscore, "_libretro"))
       *last_underscore = '\0';
-      _len = last_underscore - s;
-   }
-   return _len;
+
+   return !string_is_empty(core_file_id);
 }
 
-static core_info_t *core_info_find_internal(core_info_list_t *list,
+static core_info_t *core_info_find_internal(
+      core_info_list_t *list,
       const char *core_path)
 {
    char core_file_id[256];
+   uint32_t hash;
+   size_t i;
 
-   if (list && core_path && *core_path)
+   core_file_id[0] = '\0';
+
+   if (!list ||
+       string_is_empty(core_path) ||
+       !core_info_get_file_id(path_basename_nocompression(core_path),
+            core_file_id, sizeof(core_file_id)))
+      return NULL;
+
+   hash = core_info_hash_string(core_file_id);
+
+   for (i = 0; i < list->count; i++)
    {
-      if ((core_info_get_file_id(path_basename_nocompression(core_path),
-                  core_file_id, sizeof(core_file_id))) > 0)
-      {
-         size_t i;
-         uint32_t hash = core_info_hash_string(core_file_id);
-         for (i = 0; i < list->count; i++)
-         {
-            core_info_t *info = &list->list[i];
-            if ((info->core_file_id.hash == hash)
-                  && string_is_equal(info->core_file_id.str, core_file_id))
-               return info;
-         }
-      }
+      core_info_t *info = &list->list[i];
+
+      if ((info->core_file_id.hash == hash) &&
+          string_is_equal(info->core_file_id.str, core_file_id))
+         return info;
    }
 
    return NULL;
@@ -1688,8 +1600,6 @@ static void core_info_resolve_firmware(
       core_info_t *info, config_file_t *conf)
 {
    unsigned i;
-   size_t _len;
-   char prefix[24];
    unsigned firmware_count        = 0;
    core_info_firmware_t *firmware = NULL;
 
@@ -1702,28 +1612,40 @@ static void core_info_resolve_firmware(
    if (!firmware)
       return;
 
-   _len = strlcpy_lit(prefix, "firmware", sizeof(prefix));
-
    for (i = 0; i < firmware_count; i++)
    {
-      size_t _len2;
-      char key[64];
+      char path_key[64];
+      char desc_key[64];
+      char opt_key[64];
+      struct config_entry_list *entry = NULL;
       bool tmp_bool                   = false;
 
-      snprintf(prefix + _len, sizeof(prefix) - _len, "%u_", i);
-      _len2 = strlcpy(key, prefix, sizeof(key));
-      strlcpy_lit(key + _len2, "opt", sizeof(key) - _len2);
+      path_key[0] = '\0';
+      desc_key[0] = '\0';
+      opt_key[0]  = '\0';
 
-      if (config_get_bool(conf, key, &tmp_bool))
+      snprintf(path_key, sizeof(path_key), "firmware%u_path", i);
+      snprintf(desc_key, sizeof(desc_key), "firmware%u_desc", i);
+      snprintf(opt_key,  sizeof(opt_key),  "firmware%u_opt",  i);
+
+      entry = config_get_entry(conf, path_key);
+
+      if (entry && !string_is_empty(entry->value))
+      {
+         firmware[i].path = entry->value;
+         entry->value     = NULL;
+      }
+
+      entry = config_get_entry(conf, desc_key);
+
+      if (entry && !string_is_empty(entry->value))
+      {
+         firmware[i].desc = entry->value;
+         entry->value     = NULL;
+      }
+
+      if (config_get_bool(conf, opt_key , &tmp_bool))
          firmware[i].optional = tmp_bool;
-
-      strlcpy_lit(key + _len2, "path", sizeof(key) - _len2);
-
-      firmware[i].path = config_take_string(conf, key);
-
-      strlcpy_lit(key + _len2, "desc", sizeof(key) - _len2);
-
-      firmware[i].desc = config_take_string(conf, key);
    }
 
    info->firmware_count = firmware_count;
@@ -1731,145 +1653,191 @@ static void core_info_resolve_firmware(
 }
 
 static config_file_t *core_info_get_config_file(
-      const char *core_file_id, const char *info_dir)
+      const char *core_file_id,
+      const char *info_dir)
 {
-   if (info_dir && *info_dir)
+   char info_path[PATH_MAX_LENGTH];
+
+   if (string_is_empty(info_dir))
+      snprintf(info_path, sizeof(info_path),
+            "%s" ".info", core_file_id);
+   else
    {
-      char info_path[PATH_MAX_LENGTH];
-      fill_pathname_join_special(info_path, info_dir,
-            core_file_id, sizeof(info_path));
-      return config_file_new_from_path_to_string(info_path);
+      info_path[0] = '\0';
+      fill_pathname_join(info_path, info_dir, core_file_id,
+            sizeof(info_path));
+      strlcat(info_path, ".info", sizeof(info_path));
    }
-   return config_file_new_from_path_to_string(core_file_id);
+
+   return config_file_new_from_path_to_string(info_path);
 }
 
 static void core_info_parse_config_file(
       core_info_list_t *list, core_info_t *info,
       config_file_t *conf)
 {
+   struct config_entry_list *entry = NULL;
    bool tmp_bool                   = false;
 
-   info->display_name = config_take_string(conf, "display_name");
+   entry = config_get_entry(conf, "display_name");
 
-   info->display_version = config_take_string(conf, "display_version");
-
-   info->core_name = config_take_string(conf, "corename");
-
-   info->systemname = config_take_string(conf, "systemname");
-
-   info->system_id = config_take_string(conf, "systemid");
-
-   info->system_manufacturer = config_take_string(conf, "manufacturer");
-
-   info->supported_extensions = config_take_string(conf, "supported_extensions");
-
-   if (info->supported_extensions)
+   if (entry && !string_is_empty(entry->value))
    {
+      info->display_name = entry->value;
+      entry->value       = NULL;
+   }
+
+   entry = config_get_entry(conf, "display_version");
+
+   if (entry && !string_is_empty(entry->value))
+   {
+      info->display_version = entry->value;
+      entry->value          = NULL;
+   }
+
+   entry = config_get_entry(conf, "corename");
+
+   if (entry && !string_is_empty(entry->value))
+   {
+      info->core_name = entry->value;
+      entry->value    = NULL;
+   }
+
+   entry = config_get_entry(conf, "systemname");
+
+   if (entry && !string_is_empty(entry->value))
+   {
+      info->systemname = entry->value;
+      entry->value     = NULL;
+   }
+
+   entry = config_get_entry(conf, "systemid");
+
+   if (entry && !string_is_empty(entry->value))
+   {
+      info->system_id = entry->value;
+      entry->value    = NULL;
+   }
+
+   entry = config_get_entry(conf, "manufacturer");
+
+   if (entry && !string_is_empty(entry->value))
+   {
+      info->system_manufacturer = entry->value;
+      entry->value              = NULL;
+   }
+
+   entry = config_get_entry(conf, "supported_extensions");
+
+   if (entry && !string_is_empty(entry->value))
+   {
+      info->supported_extensions      = entry->value;
+      entry->value                    = NULL;
 
       info->supported_extensions_list =
             string_split(info->supported_extensions, "|");
    }
 
-   info->authors = config_take_string(conf, "authors");
+   entry = config_get_entry(conf, "authors");
 
-   if (info->authors)
+   if (entry && !string_is_empty(entry->value))
    {
+      info->authors      = entry->value;
+      entry->value       = NULL;
 
       info->authors_list =
             string_split(info->authors, "|");
    }
 
-   info->permissions = config_take_string(conf, "permissions");
+   entry = config_get_entry(conf, "permissions");
 
-   if (info->permissions)
+   if (entry && !string_is_empty(entry->value))
    {
+      info->permissions      = entry->value;
+      entry->value           = NULL;
 
       info->permissions_list =
             string_split(info->permissions, "|");
    }
 
-   info->licenses = config_take_string(conf, "license");
+   entry = config_get_entry(conf, "license");
 
-   if (info->licenses)
+   if (entry && !string_is_empty(entry->value))
    {
+      info->licenses      = entry->value;
+      entry->value        = NULL;
 
       info->licenses_list =
             string_split(info->licenses, "|");
    }
 
-   info->categories = config_take_string(conf, "categories");
+   entry = config_get_entry(conf, "categories");
 
-   if (info->categories)
+   if (entry && !string_is_empty(entry->value))
    {
+      info->categories      = entry->value;
+      entry->value          = NULL;
 
       info->categories_list =
             string_split(info->categories, "|");
    }
 
-   info->databases = config_take_string(conf, "database");
+   entry = config_get_entry(conf, "database");
 
-   if (info->databases)
+   if (entry && !string_is_empty(entry->value))
    {
+      info->databases      = entry->value;
+      entry->value         = NULL;
 
       info->databases_list =
             string_split(info->databases, "|");
    }
 
-   info->notes = config_take_string(conf, "notes");
+   entry = config_get_entry(conf, "notes");
 
-   if (info->notes)
+   if (entry && !string_is_empty(entry->value))
    {
+      info->notes     = entry->value;
+      entry->value    = NULL;
 
       info->note_list =
             string_split(info->notes, "|");
    }
 
-   info->required_hw_api = config_take_string(conf, "required_hw_api");
+   entry = config_get_entry(conf, "required_hw_api");
 
-   if (info->required_hw_api)
+   if (entry && !string_is_empty(entry->value))
    {
+      info->required_hw_api      = entry->value;
+      entry->value               = NULL;
 
       info->required_hw_api_list =
             string_split(info->required_hw_api, "|");
    }
 
-   info->description = config_take_string(conf, "description");
+   entry = config_get_entry(conf, "description");
+
+   if (entry && !string_is_empty(entry->value))
+   {
+      info->description = entry->value;
+      entry->value      = NULL;
+   }
 
    if (config_get_bool(conf, "supports_no_game",
             &tmp_bool))
-   {
-      if (tmp_bool)
-         info->flags |= CORE_INFO_FLAG_SUPPORTS_NO_GAME;
-      else
-         info->flags &= ~CORE_INFO_FLAG_SUPPORTS_NO_GAME;
-   }
+      info->supports_no_game = tmp_bool;
 
    if (config_get_bool(conf, "single_purpose",
             &tmp_bool))
-   {
-      if (tmp_bool)
-         info->flags |= CORE_INFO_FLAG_SINGLE_PURPOSE;
-      else
-         info->flags &= ~CORE_INFO_FLAG_SINGLE_PURPOSE;
-   }
+      info->single_purpose = tmp_bool;
 
    if (config_get_bool(conf, "database_match_archive_member",
             &tmp_bool))
-   {
-      if (tmp_bool)
-         info->flags |= CORE_INFO_FLAG_DATABASE_MATCH_ARCHIVE_MEMBER;
-      else
-         info->flags &= ~CORE_INFO_FLAG_DATABASE_MATCH_ARCHIVE_MEMBER;
-   }
+      info->database_match_archive_member = tmp_bool;
 
    if (config_get_bool(conf, "is_experimental",
             &tmp_bool))
-   {
-      if (tmp_bool)
-         info->flags |= CORE_INFO_FLAG_IS_EXPERIMENTAL;
-      else
-         info->flags &= ~CORE_INFO_FLAG_IS_EXPERIMENTAL;
-   }
+      info->is_experimental = tmp_bool;
 
 
    /* Savestate support level is slightly more complex,
@@ -1888,17 +1856,16 @@ static void core_info_parse_config_file(
       if (tmp_bool)
       {
          /* Check if savestate features are defined */
-         struct config_entry_list *entry = config_get_entry(
-               conf, "savestate_features");
+         entry = config_get_entry(conf, "savestate_features");
 
-         if (entry && (entry->value && *entry->value))
+         if (entry && !string_is_empty(entry->value))
          {
-            if (!strcmp(entry->value, "basic"))
+            if (string_is_equal(entry->value, "basic"))
                info->savestate_support_level =
-                  CORE_INFO_SAVESTATE_BASIC;
-            else if (!strcmp(entry->value, "serialized"))
+                     CORE_INFO_SAVESTATE_BASIC;
+            else if (string_is_equal(entry->value, "serialized"))
                info->savestate_support_level =
-                  CORE_INFO_SAVESTATE_SERIALIZED;
+                     CORE_INFO_SAVESTATE_SERIALIZED;
          }
       }
       else
@@ -1908,190 +1875,49 @@ static void core_info_parse_config_file(
 
    core_info_resolve_firmware(info, conf);
 
-   info->flags |= CORE_INFO_FLAG_HAS_INFO;
+   info->has_info = true;
    list->info_count++;
 }
 
-/*
- * Stack-resident open-addressing hash set for extension deduplication.
- *
- * Replaces the original O(N*M) linear-scan dedup with O(N) amortised
- * hashing, where N is the total number of extension tokens across all
- * cores. The hash table and token buffer live entirely on the stack,
- * so the collection phase requires zero heap allocations. The final
- * output string is built with a single, exactly-sized malloc — no
- * over-allocation and no realloc/shrink step.
- *
- * 1024 slots handles ~500 unique extensions at ~0.5 load factor.
- * The 8 KiB token buffer is more than sufficient (real-world unique
- * extension text totals ~1-2 KiB).
- */
-
-#define _HASH_BITS  10
-#define _HASH_SLOTS (1 << _HASH_BITS)
-#define _HASH_MASK  (_HASH_SLOTS - 1)
-#define _TOKEN_BUF  8192
-
-typedef struct
-{
-   uint16_t off;
-   uint8_t  len;
-   uint8_t  used;
-} core_info_ext_slot_t;
-
-/* The whole working set of the resolver in one piece: 4 KiB of slots
- * plus the 8 KiB token buffer.  As two locals this was a ~12 KiB
- * stack frame, which does not fit the 8 KiB thread stacks some
- * console targets give the task threads this runs on -- so it is one
- * allocation for the lifetime of the call instead.  The function runs
- * once per core-list refresh; a single malloc is noise there. */
-typedef struct
-{
-   core_info_ext_slot_t slots[_HASH_SLOTS];
-   char                 token_buf[_TOKEN_BUF];
-} core_info_ext_scratch_t;
-
-/*
- * Inline FNV-1a hash + insert into a stack-resident hash set slot.
- * ext/ext_len: the extension token to insert.
- * slots/token_buf/token_pos/unique_count/total_chars: hash set state.
- * HASH_MASK: bitmask for the slot array.
- */
-#define CORE_INFO_EXT_INSERT(ext, ext_len, slots, token_buf,            \
-      token_pos, token_buf_size, unique_count, total_chars, HASH_MASK)  \
-   do {                                                                 \
-      if ((ext_len) > 0 && (ext_len) <= 255)                            \
-      {                                                                 \
-         uint32_t _h = 0x811c9dc5u;                                     \
-         size_t _hi, _idx;                                              \
-         for (_hi = 0; _hi < (ext_len); _hi++)                          \
-         {                                                              \
-            _h ^= (uint8_t)(ext)[_hi];                                  \
-            _h *= 0x01000193u;                                          \
-         }                                                              \
-         _idx = _h & (HASH_MASK);                                       \
-         for (;;)                                                       \
-         {                                                              \
-            core_info_ext_slot_t *_s = &(slots)[_idx];                  \
-            if (!_s->used)                                              \
-            {                                                           \
-               if ((token_pos) + (ext_len) <= (token_buf_size))         \
-               {                                                        \
-                  memcpy((token_buf) + (token_pos), (ext), (ext_len));  \
-                  _s->off  = (uint16_t)(token_pos);                     \
-                  _s->len  = (uint8_t)(ext_len);                        \
-                  _s->used = 1;                                         \
-                  (token_pos)     += (ext_len);                         \
-                  (unique_count)++;                                     \
-                  (total_chars)   += (ext_len);                         \
-               }                                                        \
-               break;                                                   \
-            }                                                           \
-            if (_s->len == (ext_len)                                     \
-                  && memcmp((token_buf) + _s->off, (ext), (ext_len))    \
-                     == 0)                                               \
-               break;                                                   \
-            _idx = (_idx + 1) & (HASH_MASK);                            \
-         }                                                              \
-      }                                                                 \
-   } while (0)
-
-static size_t core_info_list_resolve_all_extensions(
+static void core_info_list_resolve_all_extensions(
       core_info_list_t *core_info_list)
 {
-   size_t i;
-   size_t pos;
-   size_t final_len;
-   size_t token_pos     = 0;
-   size_t unique_count  = 0;
-   size_t total_chars   = 0;
-   char  *result;
-   core_info_ext_scratch_t *scr = (core_info_ext_scratch_t*)
-      calloc(1, sizeof(*scr));
+   size_t i              = 0;
+   size_t all_ext_len    = 0;
+   char *all_ext         = NULL;
 
-   if (!scr)
-      return 0;
-
-   /*
-    * Phase 1 — parse every core's extension list, split on '|',
-    * and insert each token into the hash set. One heap allocation
-    * (the scratch itself); the token strings never leave it.
-    */
    for (i = 0; i < core_info_list->count; i++)
    {
-      const char *src = core_info_list->list[i].supported_extensions;
-      if (src && *src)
-      {
-         const char *end = src + strlen(src);
-         const char *p   = src;
-         while (p < end)
-         {
-            const char *tok_end = (const char*)memchr(p, '|', end - p);
-            size_t tok_len;
-            if (!tok_end)
-               tok_end = end;
-            tok_len = tok_end - p;
-            CORE_INFO_EXT_INSERT(p, tok_len, scr->slots,
-                  scr->token_buf, token_pos, _TOKEN_BUF,
-                  unique_count, total_chars, _HASH_MASK);
-            p = tok_end + 1;
-         }
-      }
+      if (core_info_list->list[i].supported_extensions)
+         all_ext_len +=
+            (strlen(core_info_list->list[i].supported_extensions) + 2);
    }
 
-#ifdef HAVE_7ZIP
-   CORE_INFO_EXT_INSERT("7z", STRLEN_CONST("7z"), scr->slots,
-         scr->token_buf, token_pos, _TOKEN_BUF, unique_count,
-         total_chars, _HASH_MASK);
-#endif
-#ifdef HAVE_COMPRESSION
-   CORE_INFO_EXT_INSERT("zip", STRLEN_CONST("zip"), scr->slots,
-         scr->token_buf, token_pos, _TOKEN_BUF, unique_count,
-         total_chars, _HASH_MASK);
-#endif
+   all_ext_len += STRLEN_CONST("7z|") + STRLEN_CONST("zip|");
 
-   if (unique_count == 0)
-   {
-      free(scr);
-      return 0;
-   }
+   all_ext      = (char*)calloc(1, all_ext_len);
 
-   /*
-    * Phase 2 — single exactly-sized allocation for the result.
-    *   total_chars     = sum of all unique extension lengths
-    *   unique_count-1  = number of '|' separators
-    *   +1              = NUL terminator
-    */
-   final_len = total_chars + (unique_count - 1);
-   result    = (char*)malloc(final_len + 1);
-   if (!result)
-   {
-      free(scr);
-      return 0;
-   }
+   if (!all_ext)
+      return;
 
-   pos = 0;
-   for (i = 0; i < _HASH_SLOTS; i++)
+   core_info_list->all_ext = all_ext;
+
+   for (i = 0; i < core_info_list->count; i++)
    {
-      core_info_ext_slot_t *s = &scr->slots[i];
-      if (!s->used)
+      if (!core_info_list->list[i].supported_extensions)
          continue;
-      if (pos > 0)
-         result[pos++] = '|';
-      memcpy(result + pos, scr->token_buf + s->off, s->len);
-      pos += s->len;
+
+      strlcat(core_info_list->all_ext,
+            core_info_list->list[i].supported_extensions, all_ext_len);
+      strlcat(core_info_list->all_ext, "|", all_ext_len);
    }
-   result[pos] = '\0';
-
-   free(scr);
-   core_info_list->all_ext = result;
-   return pos;
+#ifdef HAVE_7ZIP
+   strlcat(core_info_list->all_ext, "7z|", all_ext_len);
+#endif
+#ifdef HAVE_ZLIB
+   strlcat(core_info_list->all_ext, "zip|", all_ext_len);
+#endif
 }
-
-#undef _HASH_BITS
-#undef _HASH_SLOTS
-#undef _HASH_MASK
-#undef _TOKEN_BUF
 
 static void core_info_free(core_info_t* info)
 {
@@ -2138,21 +1964,19 @@ static void core_info_free(core_info_t* info)
 
 static void core_info_list_free(core_info_list_t *core_info_list)
 {
+   size_t i;
+
    if (!core_info_list)
       return;
 
-   if (core_info_list->list)
+   for (i = 0; i < core_info_list->count; i++)
    {
-      size_t i;
-      for (i = 0; i < core_info_list->count; i++)
-      {
-         core_info_t *info = &core_info_list->list[i];
-         core_info_free(info);
-      }
-      free(core_info_list->list);
+      core_info_t *info = (core_info_t*)&core_info_list->list[i];
+      core_info_free(info);
    }
 
    free(core_info_list->all_ext);
+   free(core_info_list->list);
    free(core_info_list);
 }
 
@@ -2171,25 +1995,24 @@ static core_info_list_t *core_info_list_new(const char *path,
    core_path_list_t *path_list                  = core_info_path_list_new(
          path, exts, dir_show_hidden_files);
    if (!path_list)
-      return NULL;
+      goto error;
 
-   if (!(core_info_list = (core_info_list_t*)malloc(sizeof(*core_info_list))))
-   {
-      core_info_path_list_free(path_list);
-      return NULL;
-   }
+   core_info_list = (core_info_list_t*)malloc(sizeof(*core_info_list));
+   if (!core_info_list)
+      goto error;
 
    core_info_list->list       = NULL;
    core_info_list->count      = 0;
    core_info_list->info_count = 0;
    core_info_list->all_ext    = NULL;
 
-   if (!(core_info = (core_info_t*)calloc(path_list->core_list->size,
-         sizeof(*core_info))))
+   core_info = (core_info_t*)calloc(path_list->core_list->size,
+         sizeof(*core_info));
+
+   if (!core_info)
    {
       core_info_list_free(core_info_list);
-      core_info_path_list_free(path_list);
-      return NULL;
+      goto error;
    }
 
    core_info_list->list  = core_info;
@@ -2197,25 +2020,27 @@ static core_info_list_t *core_info_list_new(const char *path,
 
 #ifdef HAVE_CORE_INFO_CACHE
    /* Read core info cache, if enabled */
-   if (enable_cache && !(core_info_cache_list = core_info_cache_read(info_dir)))
+   if (enable_cache)
    {
-      core_info_list_free(core_info_list);
-      core_info_path_list_free(path_list);
-      return NULL;
+      core_info_cache_list = core_info_cache_read(info_dir);
+      if (!core_info_cache_list)
+         goto error;
    }
 #endif
 
    for (i = 0; i < path_list->core_list->size; i++)
    {
-      char core_file_id[256];
-      config_file_t *conf         = NULL;
       core_info_t *info           = &core_info[i];
       core_file_path_t *core_file = &path_list->core_list->list[i];
       const char *base_path       = core_file->path;
       const char *core_filename   = core_file->filename;
-      size_t _len = core_info_get_file_id(core_filename, core_file_id,
-               sizeof(core_file_id));
-      if (_len == 0)
+      config_file_t *conf         = NULL;
+      char core_file_id[256];
+
+      core_file_id[0] = '\0';
+
+      if (!core_info_get_file_id(core_filename, core_file_id,
+               sizeof(core_file_id)))
          continue;
 
       /* If info cache is available, search for
@@ -2227,9 +2052,7 @@ static core_info_list_t *core_info_list_new(const char *path,
 
          if (info_cache)
          {
-            /* MEM-3: Transfer ownership instead of deep-copy
-             * since cache entries are freed at end of init */
-            core_info_transfer(info_cache, info);
+            core_info_copy(info_cache, info);
 
             /* Core path is 'dynamic', and cannot
              * be cached (i.e. core directory may
@@ -2240,29 +2063,23 @@ static core_info_list_t *core_info_list_new(const char *path,
 
             /* Core lock status is 'dynamic', and
              * cannot be cached */
-            if (core_info_path_is_locked(
-                  path_list->lock_list, core_filename))
-               info->flags |= CORE_INFO_FLAG_IS_LOCKED;
-            else
-               info->flags &= ~CORE_INFO_FLAG_IS_LOCKED;
+            info->is_locked = core_info_path_is_locked(
+                  path_list->lock_list, core_filename);
 
             /* Core 'standalone exempt' status is 'dynamic',
              * and cannot be cached
              * > It is also dependent upon whether the core
              *   supports contentless operation */
-            if ((info->flags & CORE_INFO_FLAG_SUPPORTS_NO_GAME) &&
+            info->is_standalone_exempt = info->supports_no_game &&
                   core_info_path_is_standalone_exempt(
                         path_list->standalone_exempt_list,
-                        core_filename))
-               info->flags |= CORE_INFO_FLAG_IS_STANDALONE_EXEMPT;
-            else
-               info->flags &= ~CORE_INFO_FLAG_IS_STANDALONE_EXEMPT;
+                        core_filename);
 
             /* 'info_count' is normally incremented inside
              * core_info_parse_config_file(). If core entry
              * is cached, must instead increment the value
              * here */
-            if (info->flags & CORE_INFO_FLAG_HAS_INFO)
+            if (info->has_info)
                core_info_list->info_count++;
 
             continue;
@@ -2270,43 +2087,36 @@ static core_info_list_t *core_info_list_new(const char *path,
       }
 
       /* Cache core path */
-      info->path              = strdup(base_path);
+      info->path = strdup(base_path);
 
       /* Get core lock status */
-      if (core_info_path_is_locked(
-            path_list->lock_list, core_filename))
-         info->flags |= CORE_INFO_FLAG_IS_LOCKED;
+      info->is_locked         = core_info_path_is_locked(
+            path_list->lock_list, core_filename);
 
       /* Cache core file 'id' */
       info->core_file_id.str  = strdup(core_file_id);
       info->core_file_id.hash = core_info_hash_string(core_file_id);
 
-      strlcpy(core_file_id + _len, FILE_PATH_CORE_INFO_EXTENSION, sizeof(core_file_id) - _len);
-
       /* Parse core info file */
-      if ((conf = core_info_get_config_file(core_file_id, info_dir)))
+      conf = core_info_get_config_file(core_file_id, info_dir);
+
+      if (conf)
       {
          core_info_parse_config_file(core_info_list, info, conf);
          config_file_free(conf);
       }
-
-      /* Start with 'full' savestate support when info is missing */
-      if (!conf)
-         info->savestate_support_level =
-               CORE_INFO_SAVESTATE_DETERMINISTIC;
 
       /* Get fallback display name, if required */
       if (!info->display_name)
          info->display_name = strdup(core_filename);
 
       /* Get core 'standalone exempt' status */
-      if ((info->flags & CORE_INFO_FLAG_SUPPORTS_NO_GAME) &&
+      info->is_standalone_exempt = info->supports_no_game &&
             core_info_path_is_standalone_exempt(
                   path_list->standalone_exempt_list,
-                  core_filename))
-         info->flags |= CORE_INFO_FLAG_IS_STANDALONE_EXEMPT;
+                  core_filename);
 
-      info->flags |= CORE_INFO_FLAG_IS_INSTALLED;
+      info->is_installed = true;
 
       /* If info cache is enabled and we reach this
        * point, current core is uncached
@@ -2337,12 +2147,14 @@ static core_info_list_t *core_info_list_new(const char *path,
                core_info_cache_list, info_dir);
 
       core_info_cache_list_free(core_info_cache_list);
-      free(core_info_cache_list);
-      core_info_cache_list = NULL;
    }
 
    core_info_path_list_free(path_list);
    return core_info_list;
+
+error:
+   core_info_path_list_free(path_list);
+   return NULL;
 }
 
 /* Shallow-copies internal state.
@@ -2352,17 +2164,18 @@ static core_info_list_t *core_info_list_new(const char *path,
 bool core_info_list_get_info(core_info_list_t *core_info_list,
       core_info_t *out_info, const char *core_path)
 {
-   if (out_info)
-   {
-      core_info_t *info = core_info_find_internal(
-            core_info_list, core_path);
+   core_info_t *info = core_info_find_internal(
+         core_info_list, core_path);
 
-      if (info)
-      {
-         memset(out_info, 0, sizeof(*out_info));
-         *out_info = *info;
-         return true;
-      }
+   if (!out_info)
+      return false;
+
+   memset(out_info, 0, sizeof(*out_info));
+
+   if (info)
+   {
+      *out_info = *info;
+      return true;
    }
 
    return false;
@@ -2387,17 +2200,13 @@ static bool core_info_does_support_any_file(const core_info_t *core,
 static bool core_info_does_support_file(
       const core_info_t *core, const char *path)
 {
-   const char *ext;
    if (!core || !core->supported_extensions_list)
       return false;
-   if (!path || !*path)
+   if (string_is_empty(path))
       return false;
-   ext = strrchr(path, '.');
-   if (!ext)
-      return string_list_find_elem(core->supported_extensions_list, "/");
-   if (!ext[1])
-      return false;
-   return string_list_find_elem(core->supported_extensions_list, ext + 1);
+
+   return string_list_find_elem_prefix(
+         core->supported_extensions_list, ".", path_get_extension(path));
 }
 
 /* qsort_r() is not in standard C, sadly. */
@@ -2412,24 +2221,22 @@ static int core_info_qsort_cmp(const void *a_, const void *b_)
    int support_b                 = core_info_does_support_file(b,
          p_coreinfo->tmp_path);
 #ifdef HAVE_COMPRESSION
-   if (!support_a)
-      support_a = core_info_does_support_any_file(a, p_coreinfo->tmp_list);
-   if (!support_b)
-      support_b = core_info_does_support_any_file(b, p_coreinfo->tmp_list);
+   support_a            = support_a ||
+      core_info_does_support_any_file(a, p_coreinfo->tmp_list);
+   support_b            = support_b ||
+      core_info_does_support_any_file(b, p_coreinfo->tmp_list);
 #endif
+
    if (support_a != support_b)
       return support_b - support_a;
-   if (!a->display_name)
-      return b->display_name ? -1 : 0;
-   if (!b->display_name)
-      return 1;
    return strcasecmp(a->display_name, b->display_name);
 }
 
 static bool core_info_list_update_missing_firmware_internal(
       core_info_list_t *core_info_list,
       const char *core_path,
-      const char *systemdir)
+      const char *systemdir,
+      bool *set_missing_bios)
 {
    size_t i;
    char path[PATH_MAX_LENGTH];
@@ -2438,18 +2245,24 @@ static bool core_info_list_update_missing_firmware_internal(
    if (!core_info_list)
       return false;
 
-   if (!(info = core_info_find_internal(
-         core_info_list, core_path)))
+   info                   = core_info_find_internal(
+         core_info_list, core_path);
+
+   if (!info)
       return false;
+
+   path[0]                = '\0';
 
    for (i = 0; i < info->firmware_count; i++)
    {
-      if (!info->firmware[i].path || !*info->firmware[i].path)
+      if (string_is_empty(info->firmware[i].path))
          continue;
 
       fill_pathname_join(path, systemdir,
             info->firmware[i].path, sizeof(path));
       info->firmware[i].missing = !path_is_valid(path);
+      if (info->firmware[i].missing && !info->firmware[i].optional)
+         *set_missing_bios = true;
    }
 
    return true;
@@ -2466,17 +2279,47 @@ void core_info_free_current_core(void)
 bool core_info_init_current_core(void)
 {
    core_info_state_t *p_coreinfo          = &core_info_st;
-   core_info_t *current                   = NULL;
-
-   /* BUG-4: Free any previous allocation to prevent leaks */
-   if (p_coreinfo->current)
-      core_info_free_current_core();
-
-   /* MEM-4: Use calloc — only set the one non-zero field */
-   current = (core_info_t*)calloc(1, sizeof(*current));
+   core_info_t *current                   = (core_info_t*)
+      malloc(sizeof(*current));
    if (!current)
       return false;
+   current->has_info                      = false;
+   current->supports_no_game              = false;
+   current->single_purpose                = false;
+   current->database_match_archive_member = false;
+   current->is_experimental               = false;
+   current->is_locked                     = false;
+   current->is_standalone_exempt          = false;
+   current->is_installed                  = false;
+   current->firmware_count                = 0;
    current->savestate_support_level       = CORE_INFO_SAVESTATE_DETERMINISTIC;
+   current->path                          = NULL;
+   current->display_name                  = NULL;
+   current->display_version               = NULL;
+   current->core_name                     = NULL;
+   current->system_manufacturer           = NULL;
+   current->systemname                    = NULL;
+   current->system_id                     = NULL;
+   current->supported_extensions          = NULL;
+   current->authors                       = NULL;
+   current->permissions                   = NULL;
+   current->licenses                      = NULL;
+   current->categories                    = NULL;
+   current->databases                     = NULL;
+   current->notes                         = NULL;
+   current->required_hw_api               = NULL;
+   current->description                   = NULL;
+   current->categories_list               = NULL;
+   current->databases_list                = NULL;
+   current->note_list                     = NULL;
+   current->supported_extensions_list     = NULL;
+   current->authors_list                  = NULL;
+   current->permissions_list              = NULL;
+   current->licenses_list                 = NULL;
+   current->required_hw_api_list          = NULL;
+   current->firmware                      = NULL;
+   current->core_file_id.str              = NULL;
+   current->core_file_id.hash             = 0;
 
    p_coreinfo->current                    = current;
    return true;
@@ -2494,26 +2337,9 @@ bool core_info_get_current_core(core_info_t **core)
 void core_info_deinit_list(void)
 {
    core_info_state_t *p_coreinfo          = &core_info_st;
-   core_info_list_t  *list                = NULL;
-
-   /* Invariant for callers: the current-core entry's pointer
-    * members borrow from this list, so every call here must be
-    * followed by core_info_free_current_core() (or a fresh
-    * core_info_load() once a new list exists) before the entry can
-    * be read again. */
-   /* Detach first, free afterwards. Once the NULL store has been
-    * published under the lock no reader can reach 'list' any more
-    * (they all re-read curr_list while holding the lock), so the
-    * free itself does not need to be inside the critical section -
-    * and keeping it out means a scan thread is never blocked for
-    * the length of a full list teardown. */
-   CORE_INFO_LIST_LOCK();
-   list                  = p_coreinfo->curr_list;
+   if (p_coreinfo->curr_list)
+      core_info_list_free(p_coreinfo->curr_list);
    p_coreinfo->curr_list = NULL;
-   CORE_INFO_LIST_UNLOCK();
-
-   if (list)
-      core_info_list_free(list);
 }
 
 bool core_info_init_list(
@@ -2522,60 +2348,15 @@ bool core_info_init_list(
       bool enable_cache, bool *cache_supported)
 {
    core_info_state_t *p_coreinfo          = &core_info_st;
-   core_info_list_t  *list                = NULL;
-
-#ifdef HAVE_THREADS
-   /* Main thread only, and always reached before the first list
-    * becomes visible to a task thread. */
-   if (!core_info_list_mutex)
-      core_info_list_mutex                = slock_new();
-#endif
-
-   /* Scan into a local first - the new list is private until it is
-    * published below, so the (slow) directory walk and .info parse
-    * stay outside the critical section. */
-   if (!(list                             = core_info_list_new(
+   if (!(p_coreinfo->curr_list            = core_info_list_new(
                dir_cores,
-               (path_info && *path_info)
-               ? path_info
+               !string_is_empty(path_info) 
+               ? path_info 
                : dir_cores,
                exts,
                dir_show_hidden_files,
                enable_cache,
                cache_supported)))
-      return false;
-
-   CORE_INFO_LIST_LOCK();
-   p_coreinfo->curr_list                  = list;
-   CORE_INFO_LIST_UNLOCK();
-
-   /* Remember the parameters of this scan so
-    * core_info_list_is_current() can identify redundant rescans. */
-   free(core_info_last_path_info);
-   free(core_info_last_dir_cores);
-   core_info_last_path_info    = strdup(path_info ? path_info : "");
-   core_info_last_dir_cores    = strdup(dir_cores ? dir_cores : "");
-   core_info_last_show_hidden  = dir_show_hidden_files;
-   core_info_last_enable_cache = enable_cache;
-
-   return true;
-}
-
-bool core_info_list_is_current(const char *path_info,
-      const char *dir_cores, bool dir_show_hidden_files,
-      bool enable_cache)
-{
-   core_info_state_t *p_coreinfo = &core_info_st;
-   if (!p_coreinfo->curr_list)
-      return false;
-   if (   (dir_show_hidden_files != core_info_last_show_hidden)
-       || (enable_cache          != core_info_last_enable_cache))
-      return false;
-   if (!string_is_equal(path_info ? path_info : "",
-            core_info_last_path_info ? core_info_last_path_info : ""))
-      return false;
-   if (!string_is_equal(dir_cores ? dir_cores : "",
-            core_info_last_dir_cores ? core_info_last_dir_cores : ""))
       return false;
    return true;
 }
@@ -2593,25 +2374,22 @@ bool core_info_get_list(core_info_list_t **core)
 size_t core_info_count(void)
 {
    core_info_state_t *p_coreinfo          = &core_info_st;
-   if (p_coreinfo && p_coreinfo->curr_list)
-      return p_coreinfo->curr_list->count;
-   return 0;
+   if (!p_coreinfo || !p_coreinfo->curr_list)
+      return 0;
+   return p_coreinfo->curr_list->count;
 }
 
 bool core_info_list_update_missing_firmware(
-      core_info_ctx_firmware_t *info)
+      core_info_ctx_firmware_t *info, bool *set_missing_bios)
 {
    core_info_state_t *p_coreinfo          = &core_info_st;
-   if (info)
-      return core_info_list_update_missing_firmware_internal(
-            p_coreinfo->curr_list,
-            info->path, info->directory.system);
-   return false;
+   if (!info)
+      return false;
+   return core_info_list_update_missing_firmware_internal(
+         p_coreinfo->curr_list,
+         info->path, info->directory.system,
+         set_missing_bios);
 }
-
-/* Backing storage for the current-core entry's path when the loaded
- * core has no info-list entry; see core_info_load(). */
-static char core_info_current_path[PATH_MAX_LENGTH];
 
 bool core_info_load(const char *core_path)
 {
@@ -2623,31 +2401,14 @@ bool core_info_load(const char *core_path)
 
    core_info_get_current_core(&core_info);
 
-   if (     p_coreinfo->curr_list
-         && core_info_list_get_info(p_coreinfo->curr_list,
-               core_info, core_path))
-      return true;
+   if (!p_coreinfo->curr_list)
+      return false;
 
-   /* No list entry for this core.  Reset the current-core entry so
-    * consumers see this core's path rather than a zeroed shell or a
-    * previously loaded core's data, which
-    * core_info_list_get_info() leaves in place on a miss.  Every
-    * pointer member of the entry is borrowed from the info list, so
-    * the reset frees nothing, and the stamped path lives in
-    * state-owned storage with the same lifetime as the entry. */
-   if (core_info)
-   {
-      memset(core_info, 0, sizeof(*core_info));
-      core_info->savestate_support_level =
-            CORE_INFO_SAVESTATE_DETERMINISTIC;
-      if (core_path && *core_path)
-      {
-         strlcpy(core_info_current_path, core_path,
-               sizeof(core_info_current_path));
-         core_info->path = core_info_current_path;
-      }
-   }
-   return false;
+   if (!core_info_list_get_info(p_coreinfo->curr_list,
+            core_info, core_path))
+      return false;
+
+   return true;
 }
 
 bool core_info_find(const char *core_path,
@@ -2659,7 +2420,9 @@ bool core_info_find(const char *core_path,
    if (!core_info || !p_coreinfo->curr_list)
       return false;
 
-   if (!(info = core_info_find_internal(p_coreinfo->curr_list, core_path)))
+   info = core_info_find_internal(p_coreinfo->curr_list, core_path);
+
+   if (!info)
       return false;
 
    *core_info = info;
@@ -2688,25 +2451,16 @@ void core_info_list_get_supported_cores(core_info_list_t *core_info_list,
    struct string_list *list      = NULL;
 #endif
    core_info_state_t *p_coreinfo = &core_info_st;
-   char dir_path[PATH_MAX_LENGTH];
 
    if (!core_info_list)
       return;
-
-   if (path_is_directory(path))
-   {
-      /* Add a slash so core_info_does_support_file can know it is
-         a directory without having to check the file system again. */
-      fill_pathname_join_special(dir_path, path, "", sizeof(dir_path));
-      path = dir_path;
-   }
 
    p_coreinfo->tmp_path          = path;
 
 #ifdef HAVE_COMPRESSION
    if (path_is_compressed_file(path))
-      list                       = file_archive_get_file_list(path, NULL);
-   p_coreinfo->tmp_list          = list;
+      list = file_archive_get_file_list(path, NULL);
+   p_coreinfo->tmp_list = list;
 #endif
 
    /* Let supported core come first in list so we can return
@@ -2743,7 +2497,7 @@ void core_info_list_get_supported_cores(core_info_list_t *core_info_list,
  *
  * e.g.:
  *   snes9x_libretro.dll and snes9x_libretro_android.so are matched
- *   snes9x__2005_libretro.dll and snes9x_libretro_android.so are
+ *   snes9x__2005_libretro.dll and snes9x_libretro_android.so are 
  *   NOT matched
  */
 bool core_info_core_file_id_is_equal(const char *core_path_a,
@@ -2751,23 +2505,21 @@ bool core_info_core_file_id_is_equal(const char *core_path_a,
 {
    char core_file_id_a[256];
    char core_file_id_b[256];
-   size_t _len;
 
-   if (!core_path_a || !core_path_b)
-      return false;
+   core_file_id_a[0] = '\0';
+   core_file_id_b[0] = '\0';
 
-   _len = core_info_get_file_id(
-         path_basename_nocompression(core_path_a),
-            core_file_id_a, sizeof(core_file_id_a));
-   if (!_len)
-      return false;
-
-   if (!core_info_get_file_id(
+   if (   string_is_empty(core_path_a)
+       || string_is_empty(core_path_b)
+       || !core_info_get_file_id(
+          path_basename_nocompression(core_path_a),
+            core_file_id_a, sizeof(core_file_id_a))
+       || !core_info_get_file_id(
           path_basename_nocompression(core_path_b),
             core_file_id_b, sizeof(core_file_id_b)))
       return false;
 
-   return !strcmp(core_file_id_a, core_file_id_b);
+   return string_is_equal(core_file_id_a, core_file_id_b);
 }
 
 bool core_info_database_match_archive_member(const char *database_path)
@@ -2776,16 +2528,16 @@ bool core_info_database_match_archive_member(const char *database_path)
    const char      *new_path     = path_basename_nocompression(
          database_path);
    core_info_state_t *p_coreinfo = NULL;
-   if (!new_path || !*new_path)
+
+   if (string_is_empty(new_path))
       return false;
    if (!(database = strdup(new_path)))
       return false;
+
    path_remove_extension(database);
+
    p_coreinfo                     = &core_info_st;
 
-   /* Task thread reader - see the comment in
-    * core_info_database_supports_content_path(). */
-   CORE_INFO_LIST_LOCK();
    if (p_coreinfo->curr_list)
    {
       size_t i;
@@ -2794,18 +2546,16 @@ bool core_info_database_match_archive_member(const char *database_path)
       {
          const core_info_t *info = &p_coreinfo->curr_list->list[i];
 
-         if (!(info->flags & CORE_INFO_FLAG_DATABASE_MATCH_ARCHIVE_MEMBER))
+         if (!info->database_match_archive_member)
              continue;
 
          if (!string_list_find_elem(info->databases_list, database))
              continue;
 
-         CORE_INFO_LIST_UNLOCK();
          free(database);
          return true;
       }
    }
-   CORE_INFO_LIST_UNLOCK();
 
    free(database);
    return false;
@@ -2817,18 +2567,16 @@ bool core_info_database_supports_content_path(
    char      *database           = NULL;
    const char      *new_path     = path_basename(database_path);
    core_info_state_t *p_coreinfo = NULL;
-   if (!new_path || !*new_path)
+
+   if (string_is_empty(new_path))
       return false;
    if (!(database = strdup(new_path)))
       return false;
+
    path_remove_extension(database);
+
    p_coreinfo                    = &core_info_st;
 
-   /* Called from the content scanner on a task thread. The whole
-    * walk has to be under the lock, not just the NULL check - the
-    * main thread can free the list out from under us at any point
-    * between the two. */
-   CORE_INFO_LIST_LOCK();
    if (p_coreinfo->curr_list)
    {
       size_t i;
@@ -2844,30 +2592,36 @@ bool core_info_database_supports_content_path(
          if (!string_list_find_elem(info->databases_list, database))
             continue;
 
-         CORE_INFO_LIST_UNLOCK();
          free(database);
          return true;
       }
    }
-   CORE_INFO_LIST_UNLOCK();
 
    free(database);
    return false;
 }
 
-size_t core_info_list_get_display_name(
+bool core_info_list_get_display_name(
       core_info_list_t *core_info_list,
       const char *core_path, char *s, size_t len)
 {
-   if (core_info_list)
+   core_info_t *info;
+
+   if (!core_info_list)
+     return false;
+
+   info = core_info_find_internal(
+         core_info_list, core_path);
+
+   if (s &&
+       info &&
+       !string_is_empty(info->display_name))
    {
-      core_info_t *info = core_info_find_internal(
-            core_info_list, core_path);
-      if (s && info && (info->display_name &&
-*info->display_name))
-         return strlcpy(s, info->display_name, len);
+      strlcpy(s, info->display_name, len);
+      return true;
    }
-   return 0;
+
+   return false;
 }
 
 /* Returns core_info parameters required for
@@ -2878,20 +2632,26 @@ size_t core_info_list_get_display_name(
 core_updater_info_t *core_info_get_core_updater_info(
       const char *info_path)
 {
+   struct config_entry_list 
+      *entry                 = NULL;
    bool tmp_bool             = false;
    core_updater_info_t *info = NULL;
    config_file_t *conf       = NULL;
-   if (!info_path || !*info_path)
+
+   if (string_is_empty(info_path))
       return NULL;
+
    /* Read config file */
-   if (!(conf = config_file_new_from_path_to_string(info_path)))
+   conf = config_file_new_from_path_to_string(info_path);
+
+   if (!conf)
       return NULL;
+
    /* Create info struct */
-   if (!(info = (core_updater_info_t*)malloc(sizeof(*info))))
-   {
-      config_file_free(conf);
+   info = (core_updater_info_t*)malloc(sizeof(*info));
+
+   if (!info)
       return NULL;
-   }
 
    info->is_experimental     = false;
    info->display_name        = NULL;
@@ -2905,13 +2665,31 @@ core_updater_info_t *core_info_get_core_updater_info(
       info->is_experimental  = tmp_bool;
 
    /* > display_name */
-   info->display_name = config_take_string(conf, "display_name");
+   entry                     = config_get_entry(conf, "display_name");
+
+   if (entry && !string_is_empty(entry->value))
+   {
+      info->display_name     = entry->value;
+      entry->value           = NULL;
+   }
 
    /* > description */
-   info->description = config_take_string(conf, "description");
+   entry                     = config_get_entry(conf, "description");
+
+   if (entry && !string_is_empty(entry->value))
+   {
+      info->description      = entry->value;
+      entry->value           = NULL;
+   }
 
    /* > licenses */
-   info->licenses = config_take_string(conf, "license");
+   entry                     = config_get_entry(conf, "license");
+
+   if (entry && !string_is_empty(entry->value))
+   {
+      info->licenses         = entry->value;
+      entry->value           = NULL;
+   }
 
    /* Clean up */
    config_file_free(conf);
@@ -2940,43 +2718,49 @@ void core_info_free_core_updater_info(core_updater_info_t *info)
 static int core_info_qsort_func_path(const core_info_t *a,
       const core_info_t *b)
 {
-   if (!a || !b || (!a->path || !*a->path) || (!b->path ||
-!*b->path))
+   if (!a || !b)
       return 0;
+
+   if (string_is_empty(a->path) || string_is_empty(b->path))
+      return 0;
+
    return strcasecmp(a->path, b->path);
 }
 
 static int core_info_qsort_func_display_name(const core_info_t *a,
       const core_info_t *b)
 {
-   if (     !a
-         || !b
-         || (!a->display_name || !*a->display_name)
-         || (!b->display_name || !*b->display_name))
+   if (!a || !b)
       return 0;
+
+   if (     string_is_empty(a->display_name) 
+         || string_is_empty(b->display_name))
+      return 0;
+
    return strcasecmp(a->display_name, b->display_name);
 }
 
 static int core_info_qsort_func_core_name(const core_info_t *a,
       const core_info_t *b)
 {
-   if (     !a
-         || !b
-         || (!a->core_name || !*a->core_name)
-         || (!b->core_name || !*b->core_name))
+   if (!a || !b)
       return 0;
+
+   if (string_is_empty(a->core_name) || string_is_empty(b->core_name))
+      return 0;
+
    return strcasecmp(a->core_name, b->core_name);
 }
 
 static int core_info_qsort_func_system_name(const core_info_t *a,
       const core_info_t *b)
 {
-   if (
-            !a
-         || !b
-         || (!a->systemname || !*a->systemname)
-         || (!b->systemname || !*b->systemname))
+   if (!a || !b)
       return 0;
+
+   if (string_is_empty(a->systemname) || string_is_empty(b->systemname))
+      return 0;
+
    return strcasecmp(a->systemname, b->systemname);
 }
 
@@ -3020,93 +2804,385 @@ void core_info_qsort(core_info_list_t *core_info_list,
                core_info_qsort_func_system_name);
          break;
       default:
-         break;
+         return;
    }
 }
 
-/* Optional runtime probe supplied by the frontend. Returns true when a
- * core is currently running and reports a nonzero serializable size, i.e.
- * savestates demonstrably work regardless of what the info file declares.
- *
- * core_info.c must stay linkable standalone (it is pulled into reduced
- * builds such as the database-task CI sample, which do not provide the
- * runloop/retroarch backend). Depending on runloop_get_flags() /
- * core_serialize_size() directly would drag that backend in, so the
- * runtime check is injected as a seam instead: it is NULL until the
- * frontend registers it, and the override below simply does not fire in
- * builds that never register one. */
-static core_info_savestate_probe_t core_info_savestate_probe = NULL;
-
-void core_info_set_savestate_probe(core_info_savestate_probe_t probe)
+static bool core_info_compare_api_version(
+      int sys_major, int sys_minor,
+      int major, int minor, enum compare_op op)
 {
-   core_info_savestate_probe = probe;
+   switch (op)
+   {
+      case COMPARE_OP_EQUAL:
+         if (sys_major == major && sys_minor == minor)
+            return true;
+         break;
+      case COMPARE_OP_NOT_EQUAL:
+         if (!(sys_major == major && sys_minor == minor))
+            return true;
+         break;
+      case COMPARE_OP_LESS:
+         if (      sys_major < major 
+               || (sys_major == major && sys_minor < minor))
+            return true;
+         break;
+      case COMPARE_OP_LESS_EQUAL:
+         if (      sys_major < major 
+               || (sys_major == major && sys_minor <= minor))
+            return true;
+         break;
+      case COMPARE_OP_GREATER:
+         if (      sys_major > major 
+               || (sys_major == major && sys_minor > minor))
+            return true;
+         break;
+      case COMPARE_OP_GREATER_EQUAL:
+         if (      sys_major > major 
+               || (sys_major == major && sys_minor >= minor))
+            return true;
+         break;
+      default:
+         break;
+   }
+
+   return false;
 }
 
-/* PERF-1: Common helper for all savestate support level checks */
-static bool core_info_current_supports_savestate_level(uint32_t min_level)
+bool core_info_hw_api_supported(core_info_t *info)
 {
-   core_info_state_t *p_coreinfo   = &core_info_st;
-   settings_t        *settings     = config_get_ptr();
-   if (settings->bools.core_info_savestate_bypass)
+#ifdef RARCH_INTERNAL
+   unsigned i;
+   enum gfx_ctx_api sys_api;
+   int sys_api_version_major       = 0;
+   int sys_api_version_minor       = 0;
+   const char *sys_api_version_str = video_driver_get_gpu_api_version_string();
+   gfx_ctx_flags_t sys_flags       = video_driver_get_flags_wrapper();
+
+   enum api_parse_state
+   {
+      STATE_API_NAME,
+      STATE_API_COMPARE_OP,
+      STATE_API_VERSION
+   };
+
+   if (     !info 
+         || !info->required_hw_api_list 
+         || info->required_hw_api_list->size == 0)
       return true;
+
+   sys_api = video_context_driver_get_api();
+
+   for (i = 0; i < info->required_hw_api_list->size; i++)
+   {
+      char api_str[32]           = {0};
+      char version[16]           = {0};
+      char major_str[16]         = {0};
+      char minor_str[16]         = {0};
+      const char *cur_api        = info->required_hw_api_list->elems[i].data;
+      int api_pos                = 0;
+      int major_str_pos          = 0;
+      int minor_str_pos          = 0;
+      int major                  = 0;
+      int minor                  = 0;
+      unsigned cur_api_len       = 0;
+      unsigned j                 = 0;
+      bool found_major           = false;
+      bool found_minor           = false;
+      enum compare_op op         = COMPARE_OP_GREATER_EQUAL;
+      enum api_parse_state state = STATE_API_NAME;
+
+      if (string_is_empty(cur_api))
+         continue;
+
+      cur_api_len                = (int)strlen(cur_api);
+
+      for (j = 0; j < cur_api_len; j++)
+      {
+         if (cur_api[j] == ' ')
+            continue;
+
+         switch (state)
+         {
+            case STATE_API_NAME:
+            {
+               if (  ISUPPER((unsigned char)cur_api[j]) || 
+                     ISLOWER((unsigned char)cur_api[j]))
+                  api_str[api_pos++] = cur_api[j];
+               else
+               {
+                  j--;
+                  state = STATE_API_COMPARE_OP;
+                  break;
+               }
+
+               break;
+            }
+            case STATE_API_COMPARE_OP:
+            {
+               if (        j < cur_api_len - 1 
+                        && !( cur_api[j] >= '0' 
+                        && cur_api[j] <= '9'))
+               {
+                  if (     cur_api[j]     == '=' 
+                        && cur_api[j + 1] == '=')
+                  {
+                     op = COMPARE_OP_EQUAL;
+                     j++;
+                  }
+                  else if (cur_api[j] == '=')
+                     op = COMPARE_OP_EQUAL;
+                  else if (cur_api[j]     == '!' 
+                        && cur_api[j + 1] == '=')
+                  {
+                     op = COMPARE_OP_NOT_EQUAL;
+                     j++;
+                  }
+                  else if (cur_api[j]     == '<' 
+                        && cur_api[j + 1] == '=')
+                  {
+                     op = COMPARE_OP_LESS_EQUAL;
+                     j++;
+                  }
+                  else if (cur_api[j]     == '>' 
+                        && cur_api[j + 1] == '=')
+                  {
+                     op = COMPARE_OP_GREATER_EQUAL;
+                     j++;
+                  }
+                  else if (cur_api[j] == '<')
+                     op = COMPARE_OP_LESS;
+                  else if (cur_api[j] == '>')
+                     op = COMPARE_OP_GREATER;
+               }
+
+               state = STATE_API_VERSION;
+
+               break;
+            }
+            case STATE_API_VERSION:
+            {
+               if (    !found_minor 
+                     && cur_api[j] >= '0'
+                     && cur_api[j] <= '9'
+                     && cur_api[j] != '.')
+               {
+                  found_major = true;
+
+                  if (major_str_pos < sizeof(major_str) - 1)
+                     major_str[major_str_pos++] = cur_api[j];
+               }
+               else if (
+                        found_major 
+                     && found_minor
+                     && cur_api[j] >= '0'
+                     && cur_api[j] <= '9')
+               {
+                  if (minor_str_pos < sizeof(minor_str) - 1)
+                     minor_str[minor_str_pos++] = cur_api[j];
+               }
+               else if (cur_api[j] == '.')
+                  found_minor = true;
+               break;
+            }
+            default:
+               break;
+         }
+      }
+
+      sscanf(major_str, "%d", &major);
+      sscanf(minor_str, "%d", &minor);
+      snprintf(version, sizeof(version), "%d.%d", major, minor);
+#if 0
+      printf("Major: %d\n", major);
+      printf("Minor: %d\n", minor);
+      printf("API: %s\n", api_str);
+      printf("Version: %s\n", version);
+      fflush(stdout);
+#endif
+
+      if (  (string_is_equal_noncase(api_str, "opengl") 
+             && sys_api == GFX_CTX_OPENGL_API) ||
+            (string_is_equal_noncase(api_str, "openglcompat") 
+             && sys_api == GFX_CTX_OPENGL_API) ||
+            (string_is_equal_noncase(api_str, "openglcompatibility") 
+             && sys_api == GFX_CTX_OPENGL_API)
+         )
+      {
+         /* system is running a core context while compat is requested */
+         if (sys_flags.flags & (1 << GFX_CTX_FLAGS_GL_CORE_CONTEXT))   
+            return false;
+
+         sscanf(sys_api_version_str, "%d.%d",
+               &sys_api_version_major, &sys_api_version_minor);
+
+         if (core_info_compare_api_version(sys_api_version_major,
+                  sys_api_version_minor, major, minor, op))
+            return true;
+      }
+      else if (string_is_equal_noncase(api_str, "openglcore") 
+            && sys_api == GFX_CTX_OPENGL_API)
+      {
+         sscanf(sys_api_version_str, "%d.%d",
+               &sys_api_version_major, &sys_api_version_minor);
+
+         if (core_info_compare_api_version(sys_api_version_major,
+                  sys_api_version_minor, major, minor, op))
+            return true;
+      }
+      else if (string_is_equal_noncase(api_str, "opengles") 
+            && sys_api == GFX_CTX_OPENGL_ES_API)
+      {
+         sscanf(sys_api_version_str, "OpenGL ES %d.%d",
+               &sys_api_version_major, &sys_api_version_minor);
+
+         if (core_info_compare_api_version(sys_api_version_major,
+                  sys_api_version_minor, major, minor, op))
+            return true;
+      }
+      else if (string_is_equal_noncase(api_str, "direct3d8") 
+            && sys_api == GFX_CTX_DIRECT3D8_API)
+      {
+         sys_api_version_major = 8;
+         sys_api_version_minor = 0;
+
+         if (core_info_compare_api_version(sys_api_version_major,
+                  sys_api_version_minor, major, minor, op))
+            return true;
+      }
+      else if (string_is_equal_noncase(api_str, "direct3d9") 
+            && sys_api == GFX_CTX_DIRECT3D9_API)
+      {
+         sys_api_version_major = 9;
+         sys_api_version_minor = 0;
+
+         if (core_info_compare_api_version(sys_api_version_major,
+                  sys_api_version_minor, major, minor, op))
+            return true;
+      }
+      else if (string_is_equal_noncase(api_str, "direct3d10") 
+            && sys_api == GFX_CTX_DIRECT3D10_API)
+      {
+         sys_api_version_major = 10;
+         sys_api_version_minor = 0;
+
+         if (core_info_compare_api_version(sys_api_version_major,
+                  sys_api_version_minor, major, minor, op))
+            return true;
+      }
+      else if (string_is_equal_noncase(api_str, "direct3d11") 
+            && sys_api == GFX_CTX_DIRECT3D11_API)
+      {
+         sys_api_version_major = 11;
+         sys_api_version_minor = 0;
+
+         if (core_info_compare_api_version(sys_api_version_major, sys_api_version_minor, major, minor, op))
+            return true;
+      }
+      else if (string_is_equal_noncase(api_str, "direct3d12") 
+            && sys_api == GFX_CTX_DIRECT3D12_API)
+      {
+         sys_api_version_major = 12;
+         sys_api_version_minor = 0;
+
+         if (core_info_compare_api_version(sys_api_version_major,
+                  sys_api_version_minor, major, minor, op))
+            return true;
+      }
+      else if (string_is_equal_noncase(api_str, "vulkan") 
+            && sys_api == GFX_CTX_VULKAN_API)
+      {
+         sscanf(sys_api_version_str, "%d.%d",
+               &sys_api_version_major, &sys_api_version_minor);
+
+         if (core_info_compare_api_version(sys_api_version_major,
+                  sys_api_version_minor, major, minor, op))
+            return true;
+      }
+      else if (string_is_equal_noncase(api_str, "metal") 
+            && sys_api == GFX_CTX_METAL_API)
+      {
+         sscanf(sys_api_version_str, "%d.%d",
+               &sys_api_version_major, &sys_api_version_minor);
+
+         if (core_info_compare_api_version(sys_api_version_major,
+                  sys_api_version_minor, major, minor, op))
+            return true;
+      }
+   }
+
+   return false;
+#else
+   return true;
+#endif
+}
+
+bool core_info_current_supports_savestate(void)
+{
+   core_info_state_t *p_coreinfo = &core_info_st;
+
    /* If no core is currently loaded, assume
     * by default that all savestate functionality
     * is supported */
    if (!p_coreinfo->current)
       return true;
-   if (p_coreinfo->current->savestate_support_level >= min_level)
-      return true;
-   /* The info file claims this level is unsupported. Info files can go
-    * stale in the blocking direction: a core that gains serialization
-    * support keeps being rejected here until its metadata is updated,
-    * even though the implementation works (and the API itself has no
-    * capability flag to consult - a nonzero retro_serialize_size() from
-    * the running core is the only ground truth available).
-    *
-    * For BASIC support (user-initiated save/load), let the running core
-    * override stale metadata: if it reports a nonzero serializable size,
-    * savestates demonstrably work. Higher support levels (rewind,
-    * run-ahead, netplay) still require explicit metadata, since those
-    * engage automatic high-frequency serialization that a bare nonzero
-    * size does not prove safe or fast enough. */
-   if (min_level <= CORE_INFO_SAVESTATE_BASIC
-         && core_info_savestate_probe
-         && core_info_savestate_probe())
-      return true;
-   return p_coreinfo->current->savestate_support_level >= min_level;
-}
 
-bool core_info_current_supports_savestate(void)
-{
-   return core_info_current_supports_savestate_level(
-         CORE_INFO_SAVESTATE_BASIC);
+   return p_coreinfo->current->savestate_support_level >=
+         CORE_INFO_SAVESTATE_BASIC;
 }
 
 bool core_info_current_supports_rewind(void)
 {
-   return core_info_current_supports_savestate_level(
-         CORE_INFO_SAVESTATE_SERIALIZED);
+   core_info_state_t *p_coreinfo = &core_info_st;
+
+   /* If no core is currently loaded, assume
+    * by default that all savestate functionality
+    * is supported */
+   if (!p_coreinfo->current)
+      return true;
+
+   return p_coreinfo->current->savestate_support_level >=
+         CORE_INFO_SAVESTATE_SERIALIZED;
 }
 
 bool core_info_current_supports_netplay(void)
 {
-   return core_info_current_supports_savestate_level(
-         CORE_INFO_SAVESTATE_DETERMINISTIC);
+   core_info_state_t *p_coreinfo = &core_info_st;
+
+   /* If no core is currently loaded, assume
+    * by default that all savestate functionality
+    * is supported */
+   if (!p_coreinfo->current)
+      return true;
+
+   return p_coreinfo->current->savestate_support_level >=
+         CORE_INFO_SAVESTATE_DETERMINISTIC;
 }
 
 bool core_info_current_supports_runahead(void)
 {
-   return core_info_current_supports_savestate_level(
-         CORE_INFO_SAVESTATE_DETERMINISTIC);
+   core_info_state_t *p_coreinfo = &core_info_st;
+
+   /* If no core is currently loaded, assume
+    * by default that all savestate functionality
+    * is supported */
+   if (!p_coreinfo->current)
+      return true;
+
+   return p_coreinfo->current->savestate_support_level >=
+         CORE_INFO_SAVESTATE_DETERMINISTIC;
 }
 
 static bool core_info_update_core_aux_file(const char *path, bool create)
 {
    bool aux_file_exists = false;
-   if (!path || !*path)
+
+   if (string_is_empty(path))
       return false;
+
    /* Check whether aux file exists */
    aux_file_exists = path_is_valid(path);
+
    /* Create or delete aux file, as required */
    if (create && !aux_file_exists)
    {
@@ -3143,6 +3219,8 @@ bool core_info_set_core_lock(const char *core_path, bool lock)
    core_info_t *core_info = NULL;
    char lock_file_path[PATH_MAX_LENGTH];
 
+   lock_file_path[0] = '\0';
+
 #if defined(ANDROID)
    /* Play Store builds do not support
     * core locking */
@@ -3151,15 +3229,14 @@ bool core_info_set_core_lock(const char *core_path, bool lock)
 #endif
 
    /* Search for specified core */
-   if (
-          (!core_path || !*core_path)
-       ||  !core_info_find(core_path, &core_info)
-       || (!core_info->path || !*core_info->path))
+   if (string_is_empty(core_path) ||
+       !core_info_find(core_path, &core_info) ||
+       string_is_empty(core_info->path))
       return false;
 
    /* Get lock file path */
-   fill_pathname(lock_file_path, core_info->path,
-         ".lck", sizeof(lock_file_path));
+   snprintf(lock_file_path, sizeof(lock_file_path),
+         "%s" FILE_PATH_LOCK_EXTENSION, core_info->path);
 
    /* Create or delete lock file, as required */
    if (!core_info_update_core_aux_file(lock_file_path, lock))
@@ -3167,10 +3244,7 @@ bool core_info_set_core_lock(const char *core_path, bool lock)
 
    /* File operations were successful - update
     * core info entry */
-   if (lock)
-      core_info->flags |= CORE_INFO_FLAG_IS_LOCKED;
-   else
-      core_info->flags &= ~CORE_INFO_FLAG_IS_LOCKED;
+   core_info->is_locked = lock;
 
    return true;
 }
@@ -3191,14 +3265,18 @@ bool core_info_get_core_lock(const char *core_path, bool validate_path)
    bool is_locked             = false;
    char lock_file_path[PATH_MAX_LENGTH];
 
+   lock_file_path[0] = '\0';
+
 #if defined(ANDROID)
    /* Play Store builds do not support
     * core locking */
    if (play_feature_delivery_enabled())
       return false;
 #endif
-   if (!core_path || !*core_path)
+
+   if (string_is_empty(core_path))
       return false;
+
    /* Check whether core path is to be validated */
    if (validate_path)
    {
@@ -3206,16 +3284,16 @@ bool core_info_get_core_lock(const char *core_path, bool validate_path)
          core_file_path = core_info->path;
    }
    else
-      core_file_path    = core_path;
+      core_file_path = core_path;
 
    /* A core cannot be locked if it does not exist... */
-   if (  (!core_file_path || !*core_file_path)
-       || !path_is_valid(core_file_path))
+   if (string_is_empty(core_file_path) ||
+       !path_is_valid(core_file_path))
       return false;
 
    /* Get lock file path */
-   fill_pathname(lock_file_path, core_file_path,
-         ".lck", sizeof(lock_file_path));
+   snprintf(lock_file_path, sizeof(lock_file_path),
+         "%s" FILE_PATH_LOCK_EXTENSION, core_file_path);
 
    /* Check whether lock file exists */
    is_locked = path_is_valid(lock_file_path);
@@ -3225,12 +3303,7 @@ bool core_info_get_core_lock(const char *core_path, bool validate_path)
     * that core info 'is_locked' field is
     * up to date */
    if (validate_path && core_info)
-   {
-      if (is_locked)
-         core_info->flags |= CORE_INFO_FLAG_IS_LOCKED;
-      else
-         core_info->flags &= ~CORE_INFO_FLAG_IS_LOCKED;
-   }
+      core_info->is_locked = is_locked;
 
    return is_locked;
 }
@@ -3245,36 +3318,38 @@ bool core_info_get_core_lock(const char *core_path, bool validate_path)
  * > *Not* thread safe */
 bool core_info_set_core_standalone_exempt(const char *core_path, bool exempt)
 {
-   /* Static platforms do not support the contentless
-    * cores menu */
 #if defined(HAVE_DYNAMIC)
    core_info_t *core_info = NULL;
    char exempt_file_path[PATH_MAX_LENGTH];
 
+   exempt_file_path[0] = '\0';
+
    /* Search for specified core */
-   if (   (!core_path || !*core_path)
-       || !core_info_find(core_path, &core_info)
-       || (!core_info->path || !*core_info->path)
-       || !(core_info->flags & CORE_INFO_FLAG_SUPPORTS_NO_GAME))
+   if (string_is_empty(core_path) ||
+       !core_info_find(core_path, &core_info) ||
+       string_is_empty(core_info->path) ||
+       !core_info->supports_no_game)
       return false;
 
    /* Get 'standalone exempt' file path */
-   fill_pathname(exempt_file_path, core_info->path,
-         ".lsae", sizeof(exempt_file_path));
+   snprintf(exempt_file_path, sizeof(exempt_file_path),
+         "%s" FILE_PATH_STANDALONE_EXEMPT_EXTENSION,
+         core_info->path);
 
    /* Create or delete 'standalone exempt' file, as required */
-   if (core_info_update_core_aux_file(exempt_file_path, exempt))
-   {
-      /* File operations were successful - update
-       * core info entry */
-      if (exempt)
-         core_info->flags |= CORE_INFO_FLAG_IS_STANDALONE_EXEMPT;
-      else
-         core_info->flags &= ~CORE_INFO_FLAG_IS_STANDALONE_EXEMPT;
-      return true;
-   }
-#endif
+   if (!core_info_update_core_aux_file(exempt_file_path, exempt))
+      return false;
+
+   /* File operations were successful - update
+    * core info entry */
+   core_info->is_standalone_exempt = exempt;
+
+   return true;
+#else
+   /* Static platforms do not support the contentless
+    * cores menu */
    return false;
+#endif
 }
 
 /* Fetches 'standalone exempt' status of specified core
@@ -3284,31 +3359,36 @@ bool core_info_set_core_standalone_exempt(const char *core_path, bool exempt)
  * > *Not* thread safe */
 bool core_info_get_core_standalone_exempt(const char *core_path)
 {
-   /* Static platforms do not support the contentless
-    * cores menu */
 #if defined(HAVE_DYNAMIC)
    core_info_t *core_info = NULL;
+   bool is_exempt         = false;
    char exempt_file_path[PATH_MAX_LENGTH];
 
+   exempt_file_path[0] = '\0';
+
    /* Search for specified core */
-   if (   (!core_path || !*core_path)
-       || !core_info_find(core_path, &core_info)
-       || (!core_info->path || !*core_info->path)
-       || !(core_info->flags & CORE_INFO_FLAG_SUPPORTS_NO_GAME))
+   if (string_is_empty(core_path) ||
+       !core_info_find(core_path, &core_info) ||
+       string_is_empty(core_info->path) ||
+       !core_info->supports_no_game)
       return false;
 
    /* Get 'standalone exempt' file path */
-   fill_pathname(exempt_file_path, core_info->path,
-         ".lsae", sizeof(exempt_file_path));
+   snprintf(exempt_file_path, sizeof(exempt_file_path),
+         "%s" FILE_PATH_STANDALONE_EXEMPT_EXTENSION,
+         core_info->path);
 
    /* Check whether 'standalone exempt' file exists */
-   if (path_is_valid(exempt_file_path))
-   {
-      core_info->flags |= CORE_INFO_FLAG_IS_STANDALONE_EXEMPT;
-      return true;
-   }
+   is_exempt = path_is_valid(exempt_file_path);
 
-   core_info->flags &= ~CORE_INFO_FLAG_IS_STANDALONE_EXEMPT;
-#endif
+   /* Ensure that core info 'is_standalone_exempt'
+    * field is up to date */
+   core_info->is_standalone_exempt = is_exempt;
+
+   return is_exempt;
+#else
+   /* Static platforms do not support the contentless
+    * cores menu */
    return false;
+#endif
 }

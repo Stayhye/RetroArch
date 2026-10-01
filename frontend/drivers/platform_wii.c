@@ -27,19 +27,14 @@
 #include <ogc/lwp_threads.h>
 #include <sdcard/wiisd_io.h>
 
-#include <string/stdstring.h>
 #include <file/file_path.h>
 #include <retro_miscellaneous.h>
+#include <paths.h>
 
 #ifdef HAVE_CONFIG_H
 #include "../../config.h"
 #endif
 
-#if !defined(IS_SALAMANDER) && defined(HAVE_NETWORKING)
-#include "../../network/netplay/netplay.h"
-#endif
-
-#include "../../paths.h"
 #include "../../verbosity.h"
 
 #define EXECUTE_ADDR ((uint8_t *) 0x91800000)
@@ -80,10 +75,10 @@ static void dol_copy_argv_path(const char *dolpath, const char *argpath)
    }
    /* a relative path */
    else if (
-            (strstr(dolpath, "sd:/")    != dolpath)
-         && (strstr(dolpath, "usb:/")   != dolpath)
-         && (strstr(dolpath, "carda:/") != dolpath)
-         && (strstr(dolpath, "cardb:/") != dolpath)
+         (strstr(dolpath, "sd:/")    != dolpath) &&
+         (strstr(dolpath, "usb:/")   != dolpath) &&
+         (strstr(dolpath, "carda:/") != dolpath) &&
+         (strstr(dolpath, "cardb:/") != dolpath)
          )
    {
       fill_pathname_parent_dir(tmp,
@@ -101,27 +96,23 @@ static void dol_copy_argv_path(const char *dolpath, const char *argpath)
    /* File must be split into two parts,
     * the path and the actual filename
     * done to be compatible with loaders. */
-   if (argpath)
+   if (argpath && strrchr(argpath, '/') != NULL)
    {
-      char *last_slash = strrchr(argpath, '/');
-      if (last_slash)
-      {
-         char *name = NULL;
+      char *name = NULL;
 
-         /* basedir */
-         fill_pathname_parent_dir(tmp, argpath, sizeof(tmp));
-         t_len = strlen(tmp);
-         memcpy(cmdline + len, tmp, t_len);
-         len  += t_len;
-         cmdline[len++] = 0;
+      /* basedir. */
+      fill_pathname_parent_dir(tmp, argpath, sizeof(tmp));
+      t_len = strlen(tmp);
+      memcpy(cmdline + len, tmp, t_len);
+      len += t_len;
+      cmdline[len++] = 0;
 
-         /* filename */
-         name  = last_slash + 1;
-         t_len = strlen(name);
-         memcpy(cmdline + len, name, t_len);
-         len  += t_len;
-         cmdline[len++] = 0;
-      }
+      /* filename */
+      name = strrchr(argpath, '/') + 1;
+      t_len = strlen(name);
+      memcpy(cmdline + len, name, t_len);
+      len += t_len;
+      cmdline[len++] = 0;
    }
 
    cmdline[len++] = 0;
@@ -129,101 +120,55 @@ static void dol_copy_argv_path(const char *dolpath, const char *argpath)
    DCFlushRange(ARGS_ADDR, sizeof(struct __argv) + argv->length);
 }
 
-static void dol_copy_raw_argv(const char *dolpath,
-      const void *args, size_t len)
-{
-   struct __argv *argv    = (struct __argv*)ARGS_ADDR;
-   char          *cmdline = (char*)++argv;
-
-   memset(argv, 0, sizeof(*argv));
-
-   argv->argvMagic   = ARGV_MAGIC;
-   argv->commandLine = cmdline;
-
-   /* a device-less fullpath */
-   if (dolpath[0] == '/')
-      strlcpy(cmdline, __system_argv->argv[0],
-         strchr(__system_argv->argv[0], ':') - __system_argv->argv[0] + 2);
-   /* a relative path */
-   else if (   !string_starts_with_size(dolpath, "sd:/",  STRLEN_CONST("sd:/"))
-            && !string_starts_with_size(dolpath, "usb:/", STRLEN_CONST("usb:/"))
-            && !string_starts_with_size(dolpath, "carda:/", STRLEN_CONST("carda:/"))
-            && !string_starts_with_size(dolpath, "cardb:/", STRLEN_CONST("cardb:/")))
-      fill_pathname_parent_dir(cmdline, __system_argv->argv[0],
-         PATH_MAX_LENGTH);
-   /* fullpath */
-   else
-      *cmdline = '\0';
-
-   argv->length  = (int)strlcat(cmdline, dolpath, PATH_MAX_LENGTH);
-   argv->length += 1;
-
-   memcpy(cmdline + argv->length, args, len);
-   argv->length += len;
-
-   DCFlushRange(argv, sizeof(*argv) + argv->length);
-}
-
 /* WARNING: after we move any data
  * into EXECUTE_ADDR, we can no longer use any
  * heap memory and are restricted to the stack only. */
 void system_exec_wii(const char *_path, bool should_load_game)
 {
-   FILE *fp;
-   void *dol;
-   char path[PATH_MAX_LENGTH];
-   char args[PATH_MAX_LENGTH];
-   size_t _len, __len;
+   size_t size, booter_size;
+   FILE *fp                        = NULL;
+   void *dol                       = NULL;
+   char path[PATH_MAX_LENGTH]      = {0};
+   char game_path[PATH_MAX_LENGTH] = {0};
 #ifndef IS_SALAMANDER
-   bool verbosity = verbosity_is_enabled();
+   bool original_verbose           = verbosity_is_enabled();
 #endif
-
-   __len = 0;
 
    /* copy heap info into stack so it survives
     * us moving the .dol into MEM2. */
    strlcpy(path, _path, sizeof(path));
-
    if (should_load_game)
    {
-#ifndef IS_SALAMANDER
-#ifdef HAVE_NETWORKING
-      net_driver_state_t *net_st = networking_state_get_ptr();
-
-      if (net_st->fork_args.size)
-      {
-         memcpy(args, net_st->fork_args.args, net_st->fork_args.size);
-         __len = net_st->fork_args.size;
-      }
-      else
-#endif
-         strlcpy(args, path_get(RARCH_PATH_CONTENT), sizeof(args));
+#ifdef IS_SALAMANDER
+      strlcpy(game_path, gx_rom_path, sizeof(game_path));
 #else
-      strlcpy(args, gx_rom_path, sizeof(args));
+      strlcpy(game_path, path_get(RARCH_PATH_CONTENT), sizeof(game_path));
 #endif
    }
+
+   RARCH_LOG("Attempt to load executable: [%s]\n", path);
 
    fp = fopen(path, "rb");
    if (!fp)
    {
-      RARCH_ERR("Could not open DOL file \"%s\".\n", path);
+      RARCH_ERR("Could not open DOL file %s.\n", path);
       goto exit;
    }
 
    fseek(fp, 0, SEEK_END);
-   _len = ftell(fp);
+   size = ftell(fp);
    fseek(fp, 0, SEEK_SET);
 
    /* try to allocate a buffer for it. if we can't, fail. */
-   dol = malloc(_len);
+   dol = malloc(size);
    if (!dol)
    {
-      RARCH_ERR("Could not execute DOL file \"%s\".\n", path);
+      RARCH_ERR("Could not execute DOL file %s.\n", path);
       fclose(fp);
       goto exit;
    }
 
-   fread(dol, 1, _len, fp);
+   fread(dol, 1, size, fp);
    fclose(fp);
 
    fatUnmount("carda:");
@@ -234,28 +179,25 @@ void system_exec_wii(const char *_path, bool should_load_game)
    __io_usbstorage.shutdown();
 
    /* don't use memcpy, there might be an overlap. */
-   memmove(EXECUTE_ADDR, dol, _len);
-   DCFlushRange(EXECUTE_ADDR, _len);
+   memmove(EXECUTE_ADDR, dol, size);
+   DCFlushRange(EXECUTE_ADDR, size);
 
-   if (__len)
-      dol_copy_raw_argv(path, args, __len);
-   else
-      dol_copy_argv_path(path, should_load_game ? args : NULL);
+   dol_copy_argv_path(path, should_load_game ? game_path : NULL);
 
-   _len = booter_end - booter_start;
-   memcpy(BOOTER_ADDR, booter_start, _len);
-   DCFlushRange(BOOTER_ADDR, _len);
+   booter_size = booter_end - booter_start;
+   memcpy(BOOTER_ADDR, booter_start, booter_size);
+   DCFlushRange(BOOTER_ADDR, booter_size);
 
-   SYS_ResetSystem(SYS_SHUTDOWN, 0, 0);
-   __lwp_thread_stopmultitasking((void (*)(void))BOOTER_ADDR);
+   RARCH_LOG("jumping to %08x\n", (unsigned) BOOTER_ADDR);
+   SYS_ResetSystem(SYS_SHUTDOWN,0,0);
+   __lwp_thread_stopmultitasking((void (*)(void)) BOOTER_ADDR);
 
 exit:
+   (void)0;
 #ifndef IS_SALAMANDER
-   if (verbosity)
+   if (original_verbose)
       verbosity_enable();
    else
       verbosity_disable();
-#else
-   return;
 #endif
 }

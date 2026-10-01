@@ -20,70 +20,70 @@
 * OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 */
 
-#include <retro_posix_source.h>
-
 #include <media/media_detect_cd.h>
 #include <streams/file_stream.h>
 #include <string/stdstring.h>
 #include <file/file_path.h>
 #include <retro_miscellaneous.h>
-#include <compat/strl.h>
 
 /*#define MEDIA_CUE_PARSE_DEBUG*/
 
-static void media_zero_trailing_spaces(char *s, size_t len)
+static void media_zero_trailing_spaces(char *buf, size_t len)
 {
    int i;
+
    for (i = len - 1; i >= 0; i--)
    {
-      if (s[i] == ' ')
-         s[i] = '\0';
-      else if (s[i] != '\0')
+      if (buf[i] == ' ')
+         buf[i] = '\0';
+      else if (buf[i] != '\0')
          break;
    }
 }
 
-static bool media_skip_spaces(const char **s, size_t len)
+static bool media_skip_spaces(const char **buf, size_t len)
 {
-   if (s && *s && **s)
+   bool found = false;
+   unsigned i;
+
+   if (!buf || !*buf || !**buf)
+      return false;
+
+   for (i = 0; i < len; i++)
    {
-      size_t i;
-      for (i = 0; i < len; i++)
-      {
-         if ((*s)[i] == ' ' || (*s)[i] == '\t')
-            continue;
-         *s += i;
-         return true;
-      }
+      if ((*buf)[i] == ' ' || (*buf)[i] == '\t')
+         continue;
+
+      *buf += i;
+      found = true;
+      break;
    }
+
+   if (found)
+      return true;
+
    return false;
 }
 
 /* Fill in "info" with detected CD info. Use this when you have a cue file and want it parsed to find the first data track and any pregap info. */
 bool media_detect_cd_info_cue(const char *path, media_detect_cd_info_t *info)
 {
-   char *buf                            = NULL;
-   char *line                           = NULL;
-   char track_path[PATH_MAX_LENGTH]     = {0};
+   RFILE *file = NULL;
+   char *line = NULL;
+   char track_path[PATH_MAX_LENGTH] = {0};
    char track_abs_path[PATH_MAX_LENGTH] = {0};
-   char track_mode[11]                  = {0};
-   bool found_file                      = false;
-   bool found_track                     = false;
-   unsigned first_data_track            = 0;
-   uint64_t data_track_pregap_bytes     = 0;
+   char track_mode[11] = {0};
+   bool found_file = false;
+   bool found_track = false;
+   unsigned first_data_track = 0;
+   uint64_t data_track_pregap_bytes = 0;
 
-   if (!path || !*path || !info)
+   if (string_is_empty(path) || !info)
       return false;
 
-   /* Read the whole cue once, then walk it line by line in memory:
-    * filestream_getline reads a byte per call through the VFS
-    * (getc == a 1-byte filestream_read), so the previous loop cost
-    * one virtual read per character.  The cue grammar is a flat
-    * sequence of lines with no includes or mid-parse seeks, so a
-    * single slurp and an in-place newline scan parse identically -
-    * each line is exactly what getline would have returned (it split
-    * on \n and kept any trailing \r, and so does this). */
-   if (!filestream_read_file(path, (void**)&buf, NULL) || !buf)
+   file = filestream_open(path, RETRO_VFS_FILE_ACCESS_READ, 0);
+
+   if (!file)
    {
 #ifdef MEDIA_CUE_PARSE_DEBUG
       printf("[MEDIA] Could not open cue path for reading: %s\n", path);
@@ -92,33 +92,32 @@ bool media_detect_cd_info_cue(const char *path, media_detect_cd_info_t *info)
       return false;
    }
 
-   line = buf;
-   while (line && *line)
+   while (!filestream_eof(file) && (line = filestream_getline(file)))
    {
-      size_t _len         = 0;
+      size_t len = 0;
       const char *command = NULL;
-      char *next          = strchr(line, '\n');
-      if (next)
-         *next = '\0';
 
-      if (!*line)
-         goto next_line;
+      if (string_is_empty(line))
+      {
+         free(line);
+         continue;
+      }
 
-      _len    = strlen(line);
+      len     = strlen(line);
       command = line;
 
-      media_skip_spaces(&command, _len);
+      media_skip_spaces(&command, len);
 
       if (!found_file && !strncasecmp(command, "FILE", 4))
       {
          const char *file = command + 4;
-         media_skip_spaces(&file, _len - 4);
+         media_skip_spaces(&file, len - 4);
 
-         if (file && *file)
+         if (!string_is_empty(file))
          {
             const char *file_end = NULL;
-            size_t file_len      = 0;
-            bool quoted          = false;
+            size_t file_len = 0;
+            bool quoted = false;
 
             if (file[0] == '"')
             {
@@ -146,12 +145,12 @@ bool media_detect_cd_info_cue(const char *path, media_detect_cd_info_t *info)
       else if (found_file && !found_track && !strncasecmp(command, "TRACK", 5))
       {
          const char *track = command + 5;
-         media_skip_spaces(&track, _len - 5);
+         media_skip_spaces(&track, len - 5);
 
-         if (track && *track)
+         if (!string_is_empty(track))
          {
-            char *ptr             = NULL;
-            unsigned track_number = (unsigned)strtol(track, &ptr, 10);
+            unsigned track_number = 0;
+            sscanf(track, "%d", (int*)&track_number);
 #ifdef MEDIA_CUE_PARSE_DEBUG
             printf("Found track: %d\n", track_number);
             fflush(stdout);
@@ -161,7 +160,7 @@ bool media_detect_cd_info_cue(const char *path, media_detect_cd_info_t *info)
             if (track[0] && track[0] != ' ' && track[0] != '\t')
                track++;
 
-            if (track && *track)
+            if (!string_is_empty(track))
             {
                media_skip_spaces(&track, strlen(track));
 #ifdef MEDIA_CUE_PARSE_DEBUG
@@ -182,12 +181,12 @@ bool media_detect_cd_info_cue(const char *path, media_detect_cd_info_t *info)
       else if (found_file && found_track && first_data_track && !strncasecmp(command, "INDEX", 5))
       {
          const char *index = command + 5;
-         media_skip_spaces(&index, _len - 5);
+         media_skip_spaces(&index, len - 5);
 
-         if (index && *index)
+         if (!string_is_empty(index))
          {
-            char *ptr             = NULL;
-            unsigned index_number = (unsigned)strtol(index, &ptr, 10);
+            unsigned index_number = 0;
+            sscanf(index, "%d", (int*)&index_number);
 
             if (index_number == 1)
             {
@@ -196,26 +195,20 @@ bool media_detect_cd_info_cue(const char *path, media_detect_cd_info_t *info)
                if (pregap[0] && pregap[0] != ' ' && pregap[0] != '\t')
                   pregap++;
 
-               if (pregap && *pregap)
+               if (!string_is_empty(pregap))
                {
                   media_skip_spaces(&pregap, strlen(pregap));
-                  found_file  = false;
+                  found_file = false;
                   found_track = false;
 
-                  if (first_data_track && *track_mode)
+                  if (first_data_track && !string_is_empty(track_mode))
                   {
                      unsigned track_sector_size = 0;
                      unsigned track_mode_number = 0;
 
                      if (strlen(track_mode) == 10)
                      {
-                        if (!strncasecmp(track_mode, "MODE", 4))
-                        {
-                           char *ptr = NULL;
-                           track_mode_number  = (unsigned)strtol(track_mode + 4, &ptr, 10);
-                           if (ptr && *ptr == '/')
-                              track_sector_size = (unsigned)strtol(ptr + 1, NULL, 10);
-                        }
+                        sscanf(track_mode, "MODE%d/%d", (int*)&track_mode_number, (int*)&track_sector_size);
 #ifdef MEDIA_CUE_PARSE_DEBUG
                         printf("Found track mode %d with sector size %d\n", track_mode_number, track_sector_size);
                         fflush(stdout);
@@ -225,16 +218,7 @@ bool media_detect_cd_info_cue(const char *path, media_detect_cd_info_t *info)
                            unsigned min = 0;
                            unsigned sec = 0;
                            unsigned frame = 0;
-                           {
-                              char *ptr = NULL;
-                              min   = (unsigned)strtol(pregap, &ptr, 10);
-                              if (ptr && *ptr == ':')
-                              {
-                                 sec   = (unsigned)strtol(ptr + 1, &ptr, 10);
-                                 if (ptr && *ptr == ':')
-                                    frame = (unsigned)strtol(ptr + 1, NULL, 10);
-                              }
-                           }
+                           sscanf(pregap, "%02d:%02d:%02d", (int*)&min, (int*)&sec, (int*)&frame);
 
                            if (min || sec || frame || strstr(pregap, "00:00:00"))
                            {
@@ -253,18 +237,14 @@ bool media_detect_cd_info_cue(const char *path, media_detect_cd_info_t *info)
          }
       }
 
-next_line:
-      if (!next)
-         break;
-      line = next + 1;
+      free(line);
    }
 
-   free(buf);
+   filestream_close(file);
 
-   if (*track_path)
+   if (!string_is_empty(track_path))
    {
-      size_t _len;
-      if (strchr(track_path, '/') || strchr(track_path, '\\'))
+      if (strstr(track_path, "/") || strstr(track_path, "\\"))
       {
 #ifdef MEDIA_CUE_PARSE_DEBUG
          printf("using path %s\n", track_path);
@@ -273,8 +253,8 @@ next_line:
          return media_detect_cd_info(track_path, data_track_pregap_bytes, info);
       }
 
-      _len = fill_pathname_basedir(track_abs_path, path, sizeof(track_abs_path));
-      strlcpy(track_abs_path + _len, track_path, sizeof(track_abs_path) - _len);
+      fill_pathname_basedir(track_abs_path, path, sizeof(track_abs_path));
+      strlcat(track_abs_path, track_path, sizeof(track_abs_path));
 #ifdef MEDIA_CUE_PARSE_DEBUG
       printf("using abs path %s\n", track_abs_path);
       fflush(stdout);
@@ -290,10 +270,12 @@ bool media_detect_cd_info(const char *path, uint64_t pregap_bytes, media_detect_
 {
    RFILE *file;
 
-   if (!path || !*path || !info)
+   if (string_is_empty(path) || !info)
       return false;
 
-   if (!(file = filestream_open(path, RETRO_VFS_FILE_ACCESS_READ, 0)))
+   file = filestream_open(path, RETRO_VFS_FILE_ACCESS_READ, 0);
+
+   if (!file)
    {
 #ifdef MEDIA_CUE_PARSE_DEBUG
       printf("[MEDIA] Could not open path for reading: %s\n", path);
@@ -303,11 +285,11 @@ bool media_detect_cd_info(const char *path, uint64_t pregap_bytes, media_detect_
    }
 
    {
-      unsigned offset      = 0;
+      unsigned offset = 0;
       unsigned sector_size = 0;
-      unsigned buf_size    = 17 * 2352;
-      char *buf            = (char*)calloc(1, buf_size);
-      int64_t read_bytes   = 0;
+      unsigned buf_size = 17 * 2352;
+      char *buf = (char*)calloc(1, buf_size);
+      int64_t read_bytes = 0;
 
       if (!buf)
          return false;
@@ -339,26 +321,38 @@ bool media_detect_cd_info(const char *path, uint64_t pregap_bytes, media_detect_
          /* Assume track data contains all fields. */
          sector_size = 2352;
 
-         /* Assume Mode 2 formed (formless is rarely used) */
          if (buf[15] == 2)
-            offset   = 24;
-         else /* Assume Mode 1 */
-            offset   = 16;
+         {
+            /* assume Mode 2 formed (formless is rarely used) */
+            offset = 24;
+         }
+         else
+         {
+            /* assume Mode 1 */
+            offset = 16;
+         }
       }
-      else /* Assume sectors only contain user data instead. */
+      else
+      {
+         /* Assume sectors only contain user data instead. */
+         offset = 0;
          sector_size = 2048;
+      }
 
       if (!memcmp(buf + offset, "SEGADISCSYSTEM",
                STRLEN_CONST("SEGADISCSYSTEM")))
       {
          const char *title_pos  = NULL;
          const char *serial_pos = NULL;
+#if 0
+         bool title_found       = false;
+#endif
 
          /* All discs currently in Redump for MCD start with SEGADISCSYSTEM. There are other strings mentioned elsewhere online,
           * but I have not seen any real examples of them. */
          info->system_id = MEDIA_CD_SYSTEM_MEGA_CD;
 
-         strlcpy_lit(info->system, "Sega CD / Mega CD", sizeof(info->system));
+         strcpy_literal(info->system, "Sega CD / Mega CD");
 
          title_pos = buf + offset + 0x150;
 
@@ -368,7 +362,7 @@ bool media_detect_cd_info(const char *path, uint64_t pregap_bytes, media_detect_
             media_zero_trailing_spaces(info->title, sizeof(info->title));
          }
          else
-            strlcpy_lit(info->title, "N/A", sizeof(info->title));
+            strcpy_literal(info->title, "N/A");
 
          serial_pos = buf + offset + 0x183;
 
@@ -378,12 +372,7 @@ bool media_detect_cd_info(const char *path, uint64_t pregap_bytes, media_detect_
             media_zero_trailing_spaces(info->serial, sizeof(info->serial));
          }
          else
-         {
-            info->serial[0] = 'N';
-            info->serial[1] = '/';
-            info->serial[2] = 'A';
-            info->serial[3] = '\0';
-         }
+            strcpy_literal(info->serial, "N/A");
       }
       else if (!memcmp(buf + offset, "SEGA SEGASATURN",
                STRLEN_CONST("SEGA SEGASATURN")))
@@ -392,10 +381,13 @@ bool media_detect_cd_info(const char *path, uint64_t pregap_bytes, media_detect_
          const char *serial_pos       = NULL;
          const char *version_pos      = NULL;
          const char *release_date_pos = NULL;
+#if 0
+         bool title_found             = false;
+#endif
 
          info->system_id = MEDIA_CD_SYSTEM_SATURN;
 
-         strlcpy_lit(info->system, "Sega Saturn", sizeof(info->system));
+         strcpy_literal(info->system, "Sega Saturn");
 
          title_pos = buf + offset + 0x60;
 
@@ -405,7 +397,7 @@ bool media_detect_cd_info(const char *path, uint64_t pregap_bytes, media_detect_
             media_zero_trailing_spaces(info->title, sizeof(info->title));
          }
          else
-            strlcpy_lit(info->title, "N/A", sizeof(info->title));
+            strcpy_literal(info->title, "N/A");
 
          serial_pos = buf + offset + 0x20;
 
@@ -415,12 +407,7 @@ bool media_detect_cd_info(const char *path, uint64_t pregap_bytes, media_detect_
             media_zero_trailing_spaces(info->serial, sizeof(info->serial));
          }
          else
-         {
-            info->serial[0] = 'N';
-            info->serial[1] = '/';
-            info->serial[2] = 'A';
-            info->serial[3] = '\0';
-         }
+            strcpy_literal(info->serial, "N/A");
 
          version_pos = buf + offset + 0x2a;
 
@@ -430,12 +417,7 @@ bool media_detect_cd_info(const char *path, uint64_t pregap_bytes, media_detect_
             media_zero_trailing_spaces(info->version, sizeof(info->version));
          }
          else
-         {
-            info->version[0] = 'N';
-            info->version[1] = '/';
-            info->version[2] = 'A';
-            info->version[3] = '\0';
-         }
+            strcpy_literal(info->version, "N/A");
 
          release_date_pos = buf + offset + 0x30;
 
@@ -445,12 +427,7 @@ bool media_detect_cd_info(const char *path, uint64_t pregap_bytes, media_detect_
             media_zero_trailing_spaces(info->release_date, sizeof(info->release_date));
          }
          else
-         {
-            info->release_date[0] = 'N';
-            info->release_date[1] = '/';
-            info->release_date[2] = 'A';
-            info->release_date[3] = '\0';
-         }
+            strcpy_literal(info->release_date, "N/A");
       }
       else if (!memcmp(buf + offset, "SEGA SEGAKATANA", STRLEN_CONST("SEGA SEGAKATANA")))
       {
@@ -458,10 +435,13 @@ bool media_detect_cd_info(const char *path, uint64_t pregap_bytes, media_detect_
          const char *serial_pos       = NULL;
          const char *version_pos      = NULL;
          const char *release_date_pos = NULL;
+#if 0
+         bool title_found             = false;
+#endif
 
          info->system_id = MEDIA_CD_SYSTEM_DREAMCAST;
 
-         strlcpy_lit(info->system, "Sega Dreamcast", sizeof(info->system));
+         strcpy_literal(info->system, "Sega Dreamcast");
 
          title_pos = buf + offset + 0x80;
 
@@ -471,7 +451,7 @@ bool media_detect_cd_info(const char *path, uint64_t pregap_bytes, media_detect_
             media_zero_trailing_spaces(info->title, sizeof(info->title));
          }
          else
-            strlcpy_lit(info->title, "N/A", sizeof(info->title));
+            strcpy_literal(info->title, "N/A");
 
          serial_pos = buf + offset + 0x40;
 
@@ -481,12 +461,7 @@ bool media_detect_cd_info(const char *path, uint64_t pregap_bytes, media_detect_
             media_zero_trailing_spaces(info->serial, sizeof(info->serial));
          }
          else
-         {
-            info->serial      [0] = 'N';
-            info->serial      [1] = '/';
-            info->serial      [2] = 'A';
-            info->serial      [3] = '\0';
-         }
+            strcpy_literal(info->serial, "N/A");
 
          version_pos = buf + offset + 0x4a;
 
@@ -496,12 +471,7 @@ bool media_detect_cd_info(const char *path, uint64_t pregap_bytes, media_detect_
             media_zero_trailing_spaces(info->version, sizeof(info->version));
          }
          else
-         {
-            info->version     [0] = 'N';
-            info->version     [1] = '/';
-            info->version     [2] = 'A';
-            info->version     [3] = '\0';
-         }
+            strcpy_literal(info->version, "N/A");
 
          release_date_pos = buf + offset + 0x50;
 
@@ -511,21 +481,19 @@ bool media_detect_cd_info(const char *path, uint64_t pregap_bytes, media_detect_
             media_zero_trailing_spaces(info->release_date, sizeof(info->release_date));
          }
          else
-         {
-            info->release_date[0] = 'N';
-            info->release_date[1] = '/';
-            info->release_date[2] = 'A';
-            info->release_date[3] = '\0';
-         }
+            strcpy_literal(info->release_date, "N/A");
       }
       /* Primary Volume Descriptor fields of ISO9660 */
       else if (!memcmp(buf + offset + (16 * sector_size), "\1CD001\1\0PLAYSTATION", 19))
       {
          const char *title_pos = NULL;
+#if 0
+         bool title_found      = false;
+#endif
 
          info->system_id = MEDIA_CD_SYSTEM_PSX;
 
-         strlcpy_lit(info->system, "Sony PlayStation", sizeof(info->system));
+         strcpy_literal(info->system, "Sony PlayStation");
 
          title_pos = buf + offset + (16 * sector_size) + 40;
 
@@ -535,17 +503,19 @@ bool media_detect_cd_info(const char *path, uint64_t pregap_bytes, media_detect_
             media_zero_trailing_spaces(info->title, sizeof(info->title));
          }
          else
-            strlcpy_lit(info->title, "N/A", sizeof(info->title));
+            strcpy_literal(info->title, "N/A");
       }
       else if (!memcmp(buf + offset, "\x01\x5a\x5a\x5a\x5a\x5a\x01\x00\x00\x00\x00\x00", 12))
       {
          info->system_id = MEDIA_CD_SYSTEM_3DO;
-         strlcpy_lit(info->system, "3DO", sizeof(info->system));
+
+         strcpy_literal(info->system, "3DO");
       }
       else if (!memcmp(buf + offset + 0x950, "PC Engine CD-ROM SYSTEM", 23))
       {
          info->system_id = MEDIA_CD_SYSTEM_PC_ENGINE_CD;
-         strlcpy_lit(info->system, "TurboGrafx-CD / PC-Engine CD", sizeof(info->system));
+
+         strcpy_literal(info->system, "TurboGrafx-CD / PC-Engine CD");
       }
 
       free(buf);

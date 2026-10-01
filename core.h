@@ -36,20 +36,17 @@ bool core_unset_netplay_callbacks(void);
 bool core_set_poll_type(unsigned type);
 
 /* Runs the core for one frame. */
-void core_run(void);
+bool core_run(void);
 
-void core_reset(void);
+bool core_reset(void);
 
-size_t core_serialize_size(void);
-size_t core_serialize_size_special(void);
+bool core_serialize_size(retro_ctx_size_info_t *info);
 
 uint64_t core_serialization_quirks(void);
 
 bool core_serialize(retro_ctx_serialize_info_t *info);
-bool core_serialize_special(retro_ctx_serialize_info_t *info);
 
 bool core_unserialize(retro_ctx_serialize_info_t *info);
-bool core_unserialize_special(retro_ctx_serialize_info_t *info);
 
 bool core_set_cheat(retro_ctx_cheat_info_t *info);
 

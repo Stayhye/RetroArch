@@ -20,27 +20,14 @@
 #include <stddef.h>
 
 #include <boolean.h>
-#include <retro_atomic.h>
 #include <retro_common_api.h>
 #include <lists/file_list.h>
-#include <lists/string_list.h>
 
 #ifdef HAVE_CONFIG_H
 #include "../config.h"
 #endif
 
 #include "../command.h"
-
-/* A desktop ("WIMP") companion backend is available in this build.
- * The Qt companion, the native Win32 companion (any desktop Windows
- * target) and the native Cocoa companion (macOS) all count. This
- * condition must be kept in sync with the guards in
- * settings/settings_def_desktop_menu.h, which cannot include this
- * header. */
-#if defined(HAVE_QT) || defined(HAVE_COCOA) || \
-      (defined(_WIN32) && !defined(_XBOX) && !defined(__WINRT__))
-#define HAVE_COMPANION_WIMP 1
-#endif
 
 RETRO_BEGIN_DECLS
 
@@ -69,11 +56,6 @@ enum ui_msg_window_type
     UI_MSG_WINDOW_TYPE_WARNING
 };
 
-enum uico_driver_state_flags
-{
-   UICO_ST_FLAG_WIMP_IS_INITED   = (1 << 0)
-};
-
 typedef struct ui_msg_window_state
 {
    enum ui_msg_window_buttons buttons;
@@ -84,6 +66,17 @@ typedef struct ui_msg_window_state
 
 typedef struct ui_browser_window_state
 {
+   struct
+   {
+      bool can_choose_directories;
+      bool can_choose_directories_val;
+      bool can_choose_files;
+      bool can_choose_files_val;
+      bool allows_multiple_selection;
+      bool allows_multiple_selection_val;
+      bool treat_file_packages_as_directories;
+      bool treat_file_packages_as_directories_val;
+   } capabilities;
    void *window;
    char *filters;
    char *filters_title;
@@ -135,21 +128,15 @@ typedef struct ui_companion_driver
    void *(*init)(void);
    void (*deinit)(void *data);
    void (*toggle)(void *data, bool force);
-   /* Per-frame hook for desktop companion drivers that do not own the
-    * platform event pump (the native Win32 / Cocoa companions). Called
-    * once per runloop iteration while the driver is initialised. Must
-    * be bounded and never block. */
-   void (*iterate)(void *data);
    void (*event_command)(void *data, enum event_command action);
+   void (*notify_content_loaded)(void *data);
+   void (*notify_list_loaded)(void *data, file_list_t *list, file_list_t *menu_list);
    void (*notify_refresh)(void *data);
    void (*msg_queue_push)(void *data, const char *msg, unsigned priority, unsigned duration, bool flush);
    void (*render_messagebox)(const char *msg);
    void *(*get_main_window)(void *data);
    void (*log_msg)(void *data, const char *msg);
    bool (*is_active)(void *data);
-   struct string_list *(*get_app_icons)(void);
-   void (*set_app_icon)(const char *icon);
-   uintptr_t (*get_app_icon_texture)(const char *icon);
    ui_browser_window_t *browser_window;
    ui_msg_window_t     *msg_window;
    ui_window_t         *window;
@@ -159,36 +146,33 @@ typedef struct ui_companion_driver
 
 typedef struct
 {
-   /* Platform driver: OS glue (message pump, message boxes, file
-    * browser, window handling). Always present; selected by platform. */
    const ui_companion_driver_t *drv;
    void *data;
-#ifdef HAVE_COMPANION_WIMP
-   /* Desktop companion ("WIMP") driver: the playlist / content browser
-    * window. Selected by the ui_companion_driver setting, enabled by
-    * desktop_menu_enable. Layered on top of the platform driver: with
-    * the Qt companion on Windows / macOS the platform driver keeps
-    * doing exactly what it does today. */
-   const ui_companion_driver_t *wimp;
-   void *wimp_data;
+#ifdef HAVE_QT
+   void *qt_data;
+   bool qt_is_inited;
 #endif
-   /* desktop_menu_enable, latched on the main thread wherever the
-    * live value arrives (init and toggle both receive it from their
-    * callers' settings read). Read with relaxed loads from the log
-    * sink, the message push and the refresh notification, which run
-    * on whatever thread logs or finishes a task, and so must not
-    * touch the live settings (on Windows every log line passes
-    * through here). Staleness across a toggle costs at most one
-    * line. */
-   retro_atomic_int_t desktop_menu_enable;
-   uint8_t flags;
+   bool is_on_foreground;
 } uico_driver_state_t;
 
-uint8_t ui_companion_get_flags(void);
+extern ui_companion_driver_t ui_companion_cocoa;
+extern ui_companion_driver_t ui_companion_cocoatouch;
+extern ui_companion_driver_t ui_companion_qt;
+extern ui_companion_driver_t ui_companion_win32;
+
+extern ui_msg_window_t ui_msg_window_win32;
+
+bool ui_companion_is_on_foreground(void);
+
+void ui_companion_set_foreground(unsigned enable);
 
 void ui_companion_event_command(enum event_command action);
 
 void ui_companion_driver_notify_refresh(void);
+
+void ui_companion_driver_notify_list_loaded(file_list_t *list, file_list_t *menu_list);
+
+void ui_companion_driver_notify_content_loaded(void);
 
 const ui_msg_window_t *ui_companion_driver_get_msg_window_ptr(void);
 
@@ -202,11 +186,7 @@ void *ui_companion_driver_get_main_window(void);
 
 const char *ui_companion_driver_get_ident(void);
 
-void ui_companion_driver_init_first(
-      bool desktop_menu_enable,
-      bool ui_companion_toggle,
-      unsigned ui_companion_start_on_boot
-      );
+void ui_companion_driver_init_first(void);
 
 void ui_companion_driver_msg_queue_push(
       const char *msg, unsigned priority,
@@ -214,58 +194,12 @@ void ui_companion_driver_msg_queue_push(
 
 void ui_companion_driver_deinit(void);
 
-/* Tear down just the desktop companion window (safe to call more than
- * once). Called at quit before the drivers go away, so the window is
- * gone while its own thread's message pump is still running - otherwise
- * a native companion window outlives the pump and the process hangs
- * with an undestroyed window. */
-void ui_companion_driver_wimp_deinit(void);
-
 void ui_companion_driver_toggle(
       bool desktop_menu_enable,
       bool ui_companion_toggle,
       bool force);
 
 uico_driver_state_t *uico_state_get_ptr(void);
-
-/* True when a desktop companion with a log view is open. verbosity.c
- * asks this before formatting a copy of a log line and only then calls
- * ui_companion_driver_log_msg(), which delivers without re-checking. */
-bool ui_companion_driver_log_active(void);
-
-/* Per-frame hook for the desktop companion driver; call once per
- * runloop iteration from the platform's main loop. */
-void ui_companion_driver_wimp_iterate(void);
-
-/* True when the active desktop companion's toolkit application has
- * asked the process to exit (Qt sets this when its last window closes
- * with quit-on-close; the native companions never do - they only hide).
- * The main loops treat it like runloop_iterate() returning -1. */
-bool ui_companion_driver_wimp_exiting(void);
-
-/* Tell the active desktop companion's toolkit application to quit
- * (Qt: QApplication::quit). No-op for companions without one. Called by
- * the main loops right before they break out on shutdown. */
-void ui_companion_driver_wimp_quit(void);
-
-/* Desktop companion driver selection (Settings -> Drivers ->
- * Companion UI). */
-const ui_companion_driver_t *ui_companion_wimp_find_driver(const char *ident);
-const char *ui_companion_wimp_find_ident(int idx);
-/* Space-separated list of available desktop companion driver idents. */
-const char *config_get_ui_companion_driver_options(void);
-const char *config_get_default_ui_companion(void);
-
-extern ui_companion_driver_t ui_companion_cocoa;
-extern ui_companion_driver_t ui_companion_cocoatouch;
-extern ui_companion_driver_t ui_companion_qt;
-extern ui_companion_driver_t ui_companion_win32;
-/* Native desktop companions (shared core + native controls). */
-extern ui_companion_driver_t ui_companion_wimp_win32;
-extern ui_companion_driver_t ui_companion_wimp_cocoa;
-
-extern ui_msg_window_t ui_msg_window_win32;
-
 
 RETRO_END_DECLS
 

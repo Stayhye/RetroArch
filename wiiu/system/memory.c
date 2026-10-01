@@ -55,14 +55,14 @@ void memoryRelease(void)
     bucket_heap = NULL;
 }
 
-void* _memalign_r(struct _reent *r, size_t alignment, size_t len)
+void* _memalign_r(struct _reent *r, size_t alignment, size_t size)
 {
-   return MEMAllocFromExpHeapEx(MEMGetBaseHeapHandle(MEM_BASE_HEAP_MEM2), len, alignment);
+   return MEMAllocFromExpHeapEx(MEMGetBaseHeapHandle(MEM_BASE_HEAP_MEM2), size, alignment);
 }
 
-void* _malloc_r(struct _reent *r, size_t len)
+void* _malloc_r(struct _reent *r, size_t size)
 {
-   return _memalign_r(r, 4, len);
+   return _memalign_r(r, 4, size);
 }
 
 void _free_r(struct _reent *r, void *ptr)
@@ -76,16 +76,16 @@ size_t _malloc_usable_size_r(struct _reent *r, void *ptr)
    return MEMGetSizeForMBlockExpHeap(ptr);
 }
 
-void * _realloc_r(struct _reent *r, void *ptr, size_t len)
+void * _realloc_r(struct _reent *r, void *ptr, size_t size)
 {
    void *realloc_ptr = NULL;
    if (!ptr)
-      return _malloc_r(r, len);
+      return _malloc_r(r, size);
 
-   if (_malloc_usable_size_r(r, ptr) >= len)
+   if (_malloc_usable_size_r(r, ptr) >= size)
       return ptr;
 
-   realloc_ptr = _malloc_r(r, len);
+   realloc_ptr = _malloc_r(r, size);
 
    if(!realloc_ptr)
       return NULL;
@@ -96,24 +96,24 @@ void * _realloc_r(struct _reent *r, void *ptr, size_t len)
    return realloc_ptr;
 }
 
-void* _calloc_r(struct _reent *r, size_t num, size_t len)
+void* _calloc_r(struct _reent *r, size_t num, size_t size)
 {
-   void *ptr = _malloc_r(r, num * len);
+   void *ptr = _malloc_r(r, num*size);
 
    if(ptr)
-      memset(ptr, 0, num * len);
+      memset(ptr, 0, num*size);
 
    return ptr;
 }
 
-void * _valloc_r(struct _reent *r, size_t len)
+void * _valloc_r(struct _reent *r, size_t size)
 {
-   return _memalign_r(r, 64, len);
+   return _memalign_r(r, 64, size);
 }
 
 /* some wrappers */
 
-void *MEM2_alloc(unsigned int size, unsigned int align)
+void * MEM2_alloc(unsigned int size, unsigned int align)
 {
    return MEMAllocFromExpHeapEx(MEMGetBaseHeapHandle(MEM_BASE_HEAP_MEM2), size, align);
 }

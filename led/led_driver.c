@@ -40,28 +40,25 @@ void led_driver_init(const char *led_driver)
    current_led_driver     = &null_led_driver;
 
 #ifdef HAVE_OVERLAY
-   if (string_is_equal(drivername, "overlay"))
+   if (string_is_equal("overlay", drivername))
       current_led_driver  = &overlay_led_driver;
 #endif
 
 #ifdef HAVE_RPILED
-   if (string_is_equal(drivername, "rpi"))
+   if (string_is_equal("rpi", drivername))
       current_led_driver  = &rpi_led_driver;
-   if (string_is_equal(drivername, "sysled"))
-      current_led_driver  = &sys_led_driver;
 #endif
 
-#if (defined(_WIN32) && !defined(_XBOX) && !defined(__WINRT__)) || defined(HAVE_X11)
-   if (string_is_equal(drivername, "keyboard"))
+#if defined(_WIN32) && !defined(_XBOX) && !defined(__WINRT__)
+   if (string_is_equal("keyboard", drivername))
       current_led_driver  = &keyboard_led_driver;
 #endif
-
 
    if (current_led_driver)
       (*current_led_driver->init)();
 
-   if (!string_is_equal(drivername, "null"))
-      RARCH_LOG("[LED] Using driver: \"%s\".\n", led_driver);
+   if (!string_is_equal("null", drivername))
+      RARCH_LOG("[LED]: Using driver: \"%s\".\n", led_driver);
 }
 
 void led_driver_free(void)

@@ -14,12 +14,11 @@
  *  You should have received a copy of the GNU General Public License along with RetroArch.
  *  If not, see <http://www.gnu.org/licenses/>.
  */
-#include <compat/strl.h>
-#include <string/stdstring.h>
 
 #include "../gfx_widgets.h"
 #include "../gfx_animation.h"
 #include "../gfx_display.h"
+#include "../../retroarch.h"
 
 #define LIBRETRO_MESSAGE_FADE_DURATION MSG_QUEUE_ANIMATION_DURATION
 
@@ -44,7 +43,7 @@ struct gfx_widget_libretro_message_state
 
    unsigned message_duration;
 
-   float timer;   /* float alignment */
+   gfx_timer_t timer;   /* float alignment */
 
    float bg_x;
    float bg_y_start;
@@ -55,8 +54,6 @@ struct gfx_widget_libretro_message_state
    float alpha;
 
    float frame_color[16];
- 
-   size_t message_len;
 
    enum gfx_widget_libretro_message_status status;
 
@@ -71,7 +68,7 @@ static gfx_widget_libretro_message_state_t p_w_libretro_message_st = {
    0,                                  /* bg_width */
    0,                                  /* bg_height */
    0,                                  /* text_padding */
-   TEXT_COLOR_INFO,                    /* text_color */
+   0xE0E0E0FF,                         /* text_color */
    0,                                  /* frame_width */
 
    0,                                  /* message_duration */
@@ -86,9 +83,7 @@ static gfx_widget_libretro_message_state_t p_w_libretro_message_st = {
    0.0f,                               /* text_y_end */
    0.0f,                               /* alpha */
 
-   COLOR_HEX_TO_FLOAT(BG_COLOR_DEFAULT, 1.0f), /* frame_color */
-
-   0,                                  /* message_len */
+   COLOR_HEX_TO_FLOAT(0x909090, 1.0f), /* frame_color */
 
    GFX_WIDGET_LIBRETRO_MESSAGE_IDLE,   /* status */
 
@@ -105,8 +100,8 @@ static void gfx_widget_libretro_message_reset(bool cancel_pending)
    uintptr_t timer_tag                        = (uintptr_t)&state->timer;
 
    /* Kill any existing timers/animations */
-   gfx_animation_kill_widget_by_tag(&timer_tag);
-   gfx_animation_kill_widget_by_tag(&alpha_tag);
+   gfx_animation_kill_by_tag(&timer_tag);
+   gfx_animation_kill_by_tag(&alpha_tag);
 
    /* Reset status */
    state->status             = GFX_WIDGET_LIBRETRO_MESSAGE_IDLE;
@@ -137,7 +132,7 @@ static void gfx_widget_libretro_message_wait_cb(void *userdata)
    animation_entry.cb           = gfx_widget_libretro_message_fade_out_cb;
    animation_entry.userdata     = NULL;
 
-   gfx_animation_push_widget(&animation_entry);
+   gfx_animation_push(&animation_entry);
    state->status = GFX_WIDGET_LIBRETRO_MESSAGE_FADE_OUT;
 }
 
@@ -152,13 +147,13 @@ static void gfx_widget_libretro_message_slide_in_cb(void *userdata)
    timer.cb       = gfx_widget_libretro_message_wait_cb;
    timer.userdata = state;
 
-   gfx_animation_timer_start_widget(&state->timer, &timer);
+   gfx_animation_timer_start(&state->timer, &timer);
    state->status = GFX_WIDGET_LIBRETRO_MESSAGE_WAIT;
 }
 
 /* Widget interface */
 
-static void gfx_widget_set_libretro_message_state(
+void gfx_widget_set_libretro_message(
       const char *msg, unsigned duration)
 {
    dispgfx_widget_t *p_dispwidget             = dispwidget_get_ptr();
@@ -166,18 +161,18 @@ static void gfx_widget_set_libretro_message_state(
    gfx_widget_font_data_t *font_msg_queue     = &p_dispwidget->gfx_widget_fonts.msg_queue;
 
    /* Ensure we have a valid message string */
-   if (!msg || !*msg)
+   if (string_is_empty(msg))
       return;
 
    /* Cache message parameters */
-   state->message_len      = strlcpy(state->message, msg, sizeof(state->message));
+   strlcpy(state->message, msg, sizeof(state->message));
    state->message_duration = duration;
 
    /* Get background width */
    state->bg_width = (state->text_padding * 2) +
          font_driver_get_message_width(
                font_msg_queue->font, state->message,
-               state->message_len, 1.0f);
+               (unsigned)strlen(state->message), 1.0f);
 
    /* If a 'slide in' animation is already in
     * progress, no further action is required;
@@ -208,14 +203,6 @@ static void gfx_widget_set_libretro_message_state(
    state->message_updated = true;
 }
 
-void gfx_widget_set_libretro_message(
-      const char *msg, unsigned duration)
-{
-   gfx_widgets_state_lock();
-   gfx_widget_set_libretro_message_state(msg, duration);
-   gfx_widgets_state_unlock();
-}
-
 /* Widget layout() */
 
 static void gfx_widget_libretro_message_layout(
@@ -225,7 +212,7 @@ static void gfx_widget_libretro_message_layout(
    dispgfx_widget_t *p_dispwidget             = (dispgfx_widget_t*)data;
    gfx_widget_libretro_message_state_t *state = &p_w_libretro_message_st;
 
-   unsigned last_video_height                 = VIDEO_SCALE_H(p_dispwidget->last_video_dims);
+   unsigned last_video_height                 = p_dispwidget->last_video_height;
    unsigned divider_width                     = p_dispwidget->divider_width_1px;
    gfx_widget_font_data_t *font_msg_queue     = &p_dispwidget->gfx_widget_fonts.msg_queue;
 
@@ -234,11 +221,10 @@ static void gfx_widget_libretro_message_layout(
    state->text_padding = (unsigned)(((float)font_msg_queue->line_height * (2.0f / 3.0f)) + 0.5f);
    state->frame_width  = divider_width;
 
-   /* X-alignment with other widget types */
-   state->bg_x         = (float)state->text_padding * 2.0f;
+   state->bg_x         = 0.0f;
    state->bg_y_start   = (float)last_video_height + (float)state->frame_width;
    state->bg_y_end     = (float)last_video_height - (float)state->bg_height;
-   state->text_x       = state->bg_x + (float)state->text_padding;
+   state->text_x       = (float)state->text_padding;
    state->text_y_start = state->bg_y_start + ((float)state->bg_height * 0.5f) +
          (float)font_msg_queue->line_centre_offset;
    state->text_y_end   = state->bg_y_end + ((float)state->bg_height * 0.5f) +
@@ -247,16 +233,16 @@ static void gfx_widget_libretro_message_layout(
    /* Update values that are dependent upon message length */
    state->bg_width     = state->text_padding * 2;
 
-   if (*state->message)
+   if (!string_is_empty(state->message))
       state->bg_width += font_driver_get_message_width(
             font_msg_queue->font, state->message,
-            state->message_len, 1.0f);
+            (unsigned)strlen(state->message), 1.0f);
 }
 
 /* Widget iterate() */
 
 static void gfx_widget_libretro_message_iterate(void *user_data,
-      unsigned dims, bool fullscreen,
+      unsigned width, unsigned height, bool fullscreen,
       const char *dir_assets, char *font_path,
       bool is_threaded)
 {
@@ -287,7 +273,7 @@ static void gfx_widget_libretro_message_iterate(void *user_data,
             animation_entry.cb           = gfx_widget_libretro_message_slide_in_cb;
             animation_entry.userdata     = state;
 
-            gfx_animation_push_widget(&animation_entry);
+            gfx_animation_push(&animation_entry);
             state->status = GFX_WIDGET_LIBRETRO_MESSAGE_SLIDE_IN;
             break;
          case GFX_WIDGET_LIBRETRO_MESSAGE_FADE_IN:
@@ -318,7 +304,7 @@ static void gfx_widget_libretro_message_iterate(void *user_data,
                   animation_entry.cb           = gfx_widget_libretro_message_slide_in_cb;
                   animation_entry.userdata     = state;
 
-                  gfx_animation_push_widget(&animation_entry);
+                  gfx_animation_push(&animation_entry);
                   state->status = GFX_WIDGET_LIBRETRO_MESSAGE_FADE_IN;
                }
             }
@@ -356,8 +342,8 @@ static void gfx_widget_libretro_message_frame(void *data, void *user_data)
       gfx_display_t *p_disp                  = (gfx_display_t*)video_info->disp_userdata;
       dispgfx_widget_t *p_dispwidget         = (dispgfx_widget_t*)user_data;
 
-      unsigned video_width                   = VIDEO_SCALE_W(video_info->dims);
-      unsigned video_height                  = VIDEO_SCALE_H(video_info->dims);
+      unsigned video_width                   = video_info->width;
+      unsigned video_height                  = video_info->height;
       void *userdata                         = video_info->userdata;
 
       gfx_widget_font_data_t *font_msg_queue = &p_dispwidget->gfx_widget_fonts.msg_queue;
@@ -418,11 +404,14 @@ static void gfx_widget_libretro_message_frame(void *data, void *user_data)
          gfx_display_draw_quad(
                p_disp,
                userdata,
-               VIDEO_SCALE_PACK(video_width, video_height),
+               video_width,
+               video_height,
                state->bg_x,
                bg_y,
-               VIDEO_SCALE_PACK(state->bg_width, state->bg_height),
-               VIDEO_SCALE_PACK(video_width, video_height),
+               state->bg_width,
+               state->bg_height,
+               video_width,
+               video_height,
                bg_color, 
                NULL);
 
@@ -430,34 +419,28 @@ static void gfx_widget_libretro_message_frame(void *data, void *user_data)
          gfx_display_draw_quad(
                p_disp,
                userdata,
-               VIDEO_SCALE_PACK(video_width, video_height),
-               state->bg_x,
-               bg_y,
-               VIDEO_SCALE_PACK(state->frame_width, state->bg_height),
-               VIDEO_SCALE_PACK(video_width, video_height),
-               state->frame_color,
-               NULL);
-
-         gfx_display_draw_quad(
-               p_disp,
-               userdata,
-               VIDEO_SCALE_PACK(video_width, video_height),
+               video_width,
+               video_height,
                state->bg_x,
                bg_y - (float)state->frame_width,
-               VIDEO_SCALE_PACK(state->bg_width + state->frame_width,
-                     state->frame_width),
-               VIDEO_SCALE_PACK(video_width, video_height),
+               state->bg_width + state->frame_width,
+               state->frame_width,
+               video_width,
+               video_height,
                state->frame_color,
                NULL);
 
          gfx_display_draw_quad(
                p_disp,
                userdata,
-               VIDEO_SCALE_PACK(video_width, video_height),
+               video_width,
+               video_height,
                state->bg_x + (float)state->bg_width,
                bg_y,
-               VIDEO_SCALE_PACK(state->frame_width, state->bg_height),
-               VIDEO_SCALE_PACK(video_width, video_height),
+               state->frame_width,
+               state->bg_height,
+               video_width,
+               video_height,
                state->frame_color,
                NULL);
       }
@@ -475,7 +458,8 @@ static void gfx_widget_libretro_message_frame(void *data, void *user_data)
                state->message,
                state->text_x,
                text_y,
-               VIDEO_SCALE_PACK(video_width, video_height),
+               video_width,
+               video_height,
                text_color,
                TEXT_ALIGN_LEFT,
                true);
@@ -483,7 +467,7 @@ static void gfx_widget_libretro_message_frame(void *data, void *user_data)
          /* If the message queue is active, must flush the
           * text here to avoid overlaps */
          if (msg_queue_size > 0)
-            gfx_widgets_flush_text(VIDEO_SCALE_PACK(video_width, video_height),
+            gfx_widgets_flush_text(video_width, video_height,
                   font_msg_queue);
       }
    }
@@ -498,12 +482,6 @@ static void gfx_widget_libretro_message_free(void)
 
 /* Widget definition */
 
-static bool gfx_widget_libretro_message_visible(void)
-{
-   gfx_widget_libretro_message_state_t *state = &p_w_libretro_message_st;
-   return state->status != GFX_WIDGET_LIBRETRO_MESSAGE_IDLE;
-}
-
 const gfx_widget_t gfx_widget_libretro_message = {
    NULL, /* init */
    gfx_widget_libretro_message_free,
@@ -511,6 +489,5 @@ const gfx_widget_t gfx_widget_libretro_message = {
    NULL, /* context_destroy */
    gfx_widget_libretro_message_layout,
    gfx_widget_libretro_message_iterate,
-   gfx_widget_libretro_message_frame,
-   gfx_widget_libretro_message_visible
+   gfx_widget_libretro_message_frame
 };

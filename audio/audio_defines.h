@@ -21,21 +21,25 @@
 
 RETRO_BEGIN_DECLS
 
+#define AUDIO_CHUNK_SIZE_BLOCKING      512
+
+/* So we don't get complete line-noise when fast-forwarding audio. */
+#define AUDIO_CHUNK_SIZE_NONBLOCKING   2048
+
+#define AUDIO_MAX_RATIO                16
+
 #define AUDIO_MIXER_MAX_STREAMS        16
 
-#define AUDIO_MIXER_MAX_SYSTEM_STREAMS (AUDIO_MIXER_MAX_STREAMS + 8)
+#define AUDIO_MIXER_MAX_SYSTEM_STREAMS (AUDIO_MIXER_MAX_STREAMS + 5)
 
-/* Do not define more than (MAX_SYSTEM_STREAMS - MAX_STREAMS) */
+/* do not define more than (MAX_SYSTEM_STREAMS - MAX_STREAMS) */
 enum audio_mixer_system_slot
 {
    AUDIO_MIXER_SYSTEM_SLOT_OK = AUDIO_MIXER_MAX_STREAMS,
    AUDIO_MIXER_SYSTEM_SLOT_CANCEL,
    AUDIO_MIXER_SYSTEM_SLOT_NOTICE,
-   AUDIO_MIXER_SYSTEM_SLOT_NOTICE_BACK,
    AUDIO_MIXER_SYSTEM_SLOT_BGM,
-   AUDIO_MIXER_SYSTEM_SLOT_ACHIEVEMENT_UNLOCK,
-   AUDIO_MIXER_SYSTEM_SLOT_UP,
-   AUDIO_MIXER_SYSTEM_SLOT_DOWN
+   AUDIO_MIXER_SYSTEM_SLOT_ACHIEVEMENT_UNLOCK
 };
 
 enum audio_action
@@ -69,132 +73,6 @@ enum audio_mixer_state
    AUDIO_STREAM_STATE_PLAYING,
    AUDIO_STREAM_STATE_PLAYING_LOOPED,
    AUDIO_STREAM_STATE_PLAYING_SEQUENTIAL
-};
-
-/**
- * Bit flags that describe the current state of the audio driver.
- */
-enum audio_driver_state_flags
-{
-   /**
-    * Indicates that the driver was successfully created
-    * and is currently valid.
-    * You may submit samples for output at any time.
-    *
-    * This flag does \em not mean that the player will hear anything;
-    * the driver might be suspended.
-    *
-    * @see AUDIO_FLAG_SUSPENDED
-    */
-   AUDIO_FLAG_ACTIVE       = (1 << 0),
-
-   /**
-    * Indicates that the audio driver outputs floating-point samples,
-    * as opposed to integer samples.
-    *
-    * All audio is sent through the resampler,
-    * which operates on floating-point samples.
-    *
-    * If this flag is set, then the resampled output doesn't need
-    * to be converted back to \c int16_t format.
-    *
-    * This won't affect the audio that the core writes;
-    * either way, it's supposed to output \c int16_t samples.
-    *
-    * This flag won't be set if the selected audio driver
-    * doesn't support (or is configured to not use) \c float samples.
-    *
-    * @see audio_driver_t::use_float
-    */
-   AUDIO_FLAG_USE_FLOAT    = (1 << 1),
-
-   /**
-    * Indicates that the audio driver is not currently rendering samples,
-    * although it's valid and can be resumed.
-    *
-    * Usually set when RetroArch needs to simulate audio output
-    * without actually rendering samples (e.g. runahead),
-    * or when reinitializing the driver.
-    *
-    * Samples will still be accepted, but they will be silently dropped.
-    */
-   AUDIO_FLAG_SUSPENDED    = (1 << 2),
-
-   /**
-    * Indicates that the audio mixer is available
-    * and can mix one or more audio streams.
-    *
-    * Will not be set if RetroArch was built without \c HAVE_AUDIOMIXER.
-    */
-   AUDIO_FLAG_MIXER_ACTIVE = (1 << 3),
-
-   /**
-    * Indicates that the frontend will never need audio from the core,
-    * usually when runahead is active.
-    *
-    * When set, any audio received by the core will not be processed.
-    *
-    * Will not be set if RetroArch was built without \c HAVE_RUNAHEAD.
-    *
-    * @see RETRO_ENVIRONMENT_GET_AUDIO_VIDEO_ENABLE
-    */
-   AUDIO_FLAG_HARD_DISABLE = (1 << 4),
-
-   /**
-    * Indicates that audio rate control is enabled.
-    * This means that the audio system will adjust the rate at which
-    * it sends samples to the driver,
-    * minimizing the occurrences of buffer overrun or underrun.
-    *
-    * @see audio_driver_t::write_avail
-    * @see audio_driver_t::buffer_size
-    */
-   AUDIO_FLAG_CONTROL      = (1 << 5),
-
-   /**
-    * Indicates that the audio driver is forcing gain to 0.
-    * Used for temporary rewind and fast-forward muting.
-    */
-   AUDIO_FLAG_MUTED        = (1 << 6),
-   /**
-    * Mirrors the non-blocking state last handed to the driver
-    * (fast-forward, or audio_sync off). Read by the producer side of
-    * the threaded pipeline to decide whether a full ring drops or waits.
-    */
-   AUDIO_FLAG_NONBLOCK     = (1 << 7),
-   /**
-    * The convert/DSP/resample/volume pass runs on the audio thread:
-    * core audio is published into pipe_ring by the frame-end flush and
-    * consumed by audio_driver_pipeline_consume() from the wrapper
-    * thread's loop. Set from the audio_threaded_pipeline setting at
-    * driver init; constant for the driver's lifetime.
-    */
-   AUDIO_FLAG_PIPELINE_THREADED = (1 << 8),
-   /**
-    * The driver is between audio_driver_start() and audio_driver_stop().
-    * The threaded pipeline's producer only waits for ring space while
-    * this is set: with the consumer parked, waiting could never end.
-    */
-   AUDIO_FLAG_STARTED      = (1 << 9),
-   /**
-    * A driver write happened since the runloop last cleared this. Set at
-    * the write sites, whichever path reached them - core audio, or the
-    * frame of silence audio_driver_menu_sample() feeds while the core is
-    * paused with the mixer and thumbnail audio mixed in. Read by the
-    * runloop's pace record so "audio is holding the loop" is a fact
-    * about this iteration rather than a guess about who wrote.
-    */
-   AUDIO_FLAG_WROTE        = (1 << 10),
-   /* The mixer subsystem is between audio_mixer_init() and
-    * audio_mixer_done(): the window in which claiming voices is
-    * legal. audio_driver_init_internal() raises it right after the
-    * mixer comes up; audio_driver_mixer_deinit() drops it before the
-    * mixer goes down. Streams arriving outside the window - a mixer
-    * load task retiring after teardown at shutdown, or a menu sound
-    * during a session whose audio driver failed to initialize - are
-    * refused at audio_driver_mixer_add_stream() instead of claiming
-    * voices whose locks are gone. */
-   AUDIO_FLAG_MIXER_INITED = (1 << 11)
 };
 
 typedef struct audio_statistics

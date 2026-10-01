@@ -20,6 +20,7 @@
 #include <malloc.h>
 #endif
 #include <string.h>
+#include <assert.h>
 #include <stddef.h>
 #include <stdlib.h>
 #include <fcntl.h>
@@ -36,6 +37,7 @@
 
 #include <memmap.h>
 
+#include <retro_assert.h>
 #include <retro_miscellaneous.h>
 #include <gfx/scaler/scaler.h>
 #include <gfx/video_frame.h>
@@ -59,14 +61,15 @@ typedef struct video4linux
    int fd;
    struct buffer *buffers;
    unsigned n_buffers;
-   unsigned dims;               /* VIDEO_SCALE_PACK */
+   unsigned width;
+   unsigned height;
    size_t pitch;
 
    struct scaler_ctx scaler;
    uint32_t *buffer_output;
    bool ready;
 
-   char dev_name[NAME_MAX_LENGTH];
+   char dev_name[255];
 } video4linux_t;
 
 static int xioctl(int fd, unsigned long request, void *args)
@@ -93,15 +96,15 @@ static bool init_mmap(void *data)
    if (xioctl(v4l->fd, VIDIOC_REQBUFS, &req) == -1)
    {
       if (errno == EINVAL)
-         RARCH_ERR("[V4L2] %s does not support memory mapping.\n", v4l->dev_name);
+         RARCH_ERR("[V4L2]: %s does not support memory mapping.\n", v4l->dev_name);
       else
-         RARCH_ERR("[V4L2] xioctl of VIDIOC_REQBUFS failed.\n");
+         RARCH_ERR("[V4L2]: xioctl of VIDIOC_REQBUFS failed.\n");
       return false;
    }
 
    if (req.count < 2)
    {
-      RARCH_ERR("[V4L2] Insufficient buffer memory on %s.\n", v4l->dev_name);
+      RARCH_ERR("[V4L2]: Insufficient buffer memory on %s.\n", v4l->dev_name);
       return false;
    }
 
@@ -109,7 +112,7 @@ static bool init_mmap(void *data)
 
    if (!v4l->buffers)
    {
-      RARCH_ERR("[V4L2] Out of memory allocating V4L2 buffers.\n");
+      RARCH_ERR("[V4L2]: Out of memory allocating V4L2 buffers.\n");
       return false;
    }
 
@@ -123,7 +126,7 @@ static bool init_mmap(void *data)
 
       if (xioctl(v4l->fd, VIDIOC_QUERYBUF, &buf) == -1)
       {
-         RARCH_ERR("[V4L2] Error - xioctl VIDIOC_QUERYBUF.\n");
+         RARCH_ERR("[V4L2]: Error - xioctl VIDIOC_QUERYBUF.\n");
          return false;
       }
 
@@ -135,7 +138,7 @@ static bool init_mmap(void *data)
 
       if (v4l->buffers[v4l->n_buffers].start == MAP_FAILED)
       {
-         RARCH_ERR("[V4L2] Error - mmap.\n");
+         RARCH_ERR("[V4L2]: Error - mmap.\n");
          return false;
       }
    }
@@ -154,21 +157,21 @@ static bool init_device(void *data)
    if (xioctl(v4l->fd, VIDIOC_QUERYCAP, &cap) < 0)
    {
       if (errno == EINVAL)
-         RARCH_ERR("[V4L2] %s is no V4L2 device.\n", v4l->dev_name);
+         RARCH_ERR("[V4L2]: %s is no V4L2 device.\n", v4l->dev_name);
       else
-         RARCH_ERR("[V4L2] Error - VIDIOC_QUERYCAP.\n");
+         RARCH_ERR("[V4L2]: Error - VIDIOC_QUERYCAP.\n");
       return false;
    }
 
    if (!(cap.capabilities & V4L2_CAP_VIDEO_CAPTURE))
    {
-      RARCH_ERR("[V4L2] %s is no video capture device.\n", v4l->dev_name);
+      RARCH_ERR("[V4L2]: %s is no video capture device.\n", v4l->dev_name);
       return false;
    }
 
    if (!(cap.capabilities & V4L2_CAP_STREAMING))
    {
-      RARCH_ERR("[V4L2] %s does not support streaming I/O (V4L2_CAP_STREAMING).\n",
+      RARCH_ERR("[V4L2]: %s does not support streaming I/O (V4L2_CAP_STREAMING).\n",
             v4l->dev_name);
       return false;
    }
@@ -184,25 +187,21 @@ static bool init_device(void *data)
    }
 
    fmt.type                = V4L2_BUF_TYPE_VIDEO_CAPTURE;
-   fmt.fmt.pix.width       = VIDEO_SCALE_W(v4l->dims);
-   fmt.fmt.pix.height      = VIDEO_SCALE_H(v4l->dims);
+   fmt.fmt.pix.width       = v4l->width;
+   fmt.fmt.pix.height      = v4l->height;
    fmt.fmt.pix.pixelformat = V4L2_PIX_FMT_YUYV;
    fmt.fmt.pix.field       = V4L2_FIELD_NONE;
 
    if (xioctl(v4l->fd, VIDIOC_S_FMT, &fmt) < 0)
    {
-      RARCH_ERR("[V4L2] Error - VIDIOC_S_FMT.\n");
+      RARCH_ERR("[V4L2]: Error - VIDIOC_S_FMT\n");
       return false;
    }
 
    /* VIDIOC_S_FMT may change width, height and pitch. */
-   if (!VIDEO_SCALE_FITS(fmt.fmt.pix.width, fmt.fmt.pix.height))
-   {
-      RARCH_ERR("[V4L2] The device frame is too large.\n");
-      return false;
-   }
-   v4l->dims   = VIDEO_SCALE_PACK(fmt.fmt.pix.width, fmt.fmt.pix.height);
-   v4l->pitch  = MAX(fmt.fmt.pix.bytesperline, fmt.fmt.pix.width * 2);
+   v4l->width  = fmt.fmt.pix.width;
+   v4l->height = fmt.fmt.pix.height;
+   v4l->pitch  = MAX(fmt.fmt.pix.bytesperline, v4l->width * 2);
 
    /* Sanity check to see if our assumptions are met.
     * It is possible to support whatever the device gives us,
@@ -210,19 +209,18 @@ static bool init_device(void *data)
     */
    if (fmt.fmt.pix.pixelformat != V4L2_PIX_FMT_YUYV)
    {
-      RARCH_ERR("[V4L2] The V4L2 device doesn't support YUYV.\n");
+      RARCH_ERR("[V4L2]: The V4L2 device doesn't support YUYV.\n");
       return false;
    }
 
    if (fmt.fmt.pix.field != V4L2_FIELD_NONE
          && fmt.fmt.pix.field != V4L2_FIELD_INTERLACED)
    {
-      RARCH_ERR("[V4L2] The V4L2 device doesn't support progressive nor interlaced video.\n");
+      RARCH_ERR("[V4L2]: The V4L2 device doesn't support progressive nor interlaced video.\n");
       return false;
    }
 
-   RARCH_LOG("[V4L2] Device: %ux%u.\n",
-         VIDEO_SCALE_W(v4l->dims), VIDEO_SCALE_H(v4l->dims));
+   RARCH_LOG("[V4L2]: device: %u x %u.\n", v4l->width, v4l->height);
 
    return init_mmap(v4l);
 }
@@ -233,7 +231,7 @@ static void v4l_stop(void *data)
    enum v4l2_buf_type type = V4L2_BUF_TYPE_VIDEO_CAPTURE;
 
    if (xioctl(v4l->fd, VIDIOC_STREAMOFF, &type) == -1)
-      RARCH_ERR("[V4L2] Error - VIDIOC_STREAMOFF.\n");
+      RARCH_ERR("[V4L2]: Error - VIDIOC_STREAMOFF.\n");
 
    v4l->ready = false;
 }
@@ -254,7 +252,7 @@ static bool v4l_start(void *data)
 
       if (xioctl(v4l->fd, VIDIOC_QBUF, &buf) == -1)
       {
-         RARCH_ERR("[V4L2] Error - VIDIOC_QBUF.\n");
+         RARCH_ERR("[V4L2]: Error - VIDIOC_QBUF.\n");
          return false;
       }
    }
@@ -263,7 +261,7 @@ static bool v4l_start(void *data)
 
    if (xioctl(v4l->fd, VIDIOC_STREAMON, &type) == -1)
    {
-      RARCH_ERR("[V4L2] Error - VIDIOC_STREAMON.\n");
+      RARCH_ERR("[V4L2]: Error - VIDIOC_STREAMON.\n");
       return false;
    }
 
@@ -279,7 +277,7 @@ static void v4l_free(void *data)
    unsigned i;
    for (i = 0; i < v4l->n_buffers; i++)
       if (munmap(v4l->buffers[i].start, v4l->buffers[i].length) == -1)
-         RARCH_ERR("[V4L2] munmap failed.\n");
+         RARCH_ERR("[V4L2]: munmap failed.\n");
 
    if (v4l->fd >= 0)
       close(v4l->fd);
@@ -290,13 +288,13 @@ static void v4l_free(void *data)
 }
 
 static void *v4l_init(const char *device, uint64_t caps,
-      unsigned dims)
+      unsigned width, unsigned height)
 {
    video4linux_t *v4l = NULL;
 
    if ((caps & (UINT64_C(1) << RETRO_CAMERA_BUFFER_RAW_FRAMEBUFFER)) == 0)
    {
-      RARCH_ERR("[V4L2] Returns raw framebuffers.\n");
+      RARCH_ERR("[V4L2]: Returns raw framebuffers.\n");
       return NULL;
    }
 
@@ -307,21 +305,21 @@ static void *v4l_init(const char *device, uint64_t caps,
    strlcpy(v4l->dev_name, device ? device : "/dev/video0",
          sizeof(v4l->dev_name));
 
-   v4l->dims   = dims;
+   v4l->width  = width;
+   v4l->height = height;
    v4l->ready  = false;
 
    if (!path_is_character_special(v4l->dev_name))
    {
-      RARCH_ERR("[V4L2] %s is no device.\n", v4l->dev_name);
-      free(v4l);
-      return NULL;
+      RARCH_ERR("[V4L2]: %s is no device.\n", v4l->dev_name);
+      goto error;
    }
 
    v4l->fd = open(v4l->dev_name, O_RDWR | O_NONBLOCK, 0);
 
    if (v4l->fd == -1)
    {
-      RARCH_ERR("[V4L2] Cannot open '%s': %d, %s.\n", v4l->dev_name,
+      RARCH_ERR("[V4L2]: Cannot open '%s': %d, %s\n", v4l->dev_name,
             errno, strerror(errno));
       goto error;
    }
@@ -330,32 +328,31 @@ static void *v4l_init(const char *device, uint64_t caps,
       goto error;
 
    v4l->buffer_output = (uint32_t*)
-      malloc((size_t)VIDEO_SCALE_W(v4l->dims) * VIDEO_SCALE_H(v4l->dims)
-            * sizeof(uint32_t));
+      malloc(v4l->width * v4l->height * sizeof(uint32_t));
 
    if (!v4l->buffer_output)
    {
-      RARCH_ERR("[V4L2] Failed to allocate output buffer.\n");
+      RARCH_ERR("[V4L2]: Failed to allocate output buffer.\n");
       goto error;
    }
 
-   v4l->scaler.in_width   = v4l->scaler.out_width  = VIDEO_SCALE_W(v4l->dims);
-   v4l->scaler.in_height  = v4l->scaler.out_height = VIDEO_SCALE_H(v4l->dims);
+   v4l->scaler.in_width   = v4l->scaler.out_width = v4l->width;
+   v4l->scaler.in_height  = v4l->scaler.out_height = v4l->height;
    v4l->scaler.in_fmt     = SCALER_FMT_YUYV;
    v4l->scaler.out_fmt    = SCALER_FMT_ARGB8888;
    v4l->scaler.in_stride  = v4l->pitch;
-   v4l->scaler.out_stride = VIDEO_SCALE_W(v4l->dims) * 4;
+   v4l->scaler.out_stride = v4l->width * 4;
 
    if (!scaler_ctx_gen_filter(&v4l->scaler))
    {
-      RARCH_ERR("[V4L2] Failed to create scaler.\n");
+      RARCH_ERR("[V4L2]: Failed to create scaler.\n");
       goto error;
    }
 
    return v4l;
 
 error:
-   RARCH_ERR("[V4L2] Failed to initialize camera.\n");
+   RARCH_ERR("[V4L2]: Failed to initialize camera.\n");
    v4l_free(v4l);
    return NULL;
 }
@@ -376,19 +373,21 @@ static bool preprocess_image(void *data)
          case EAGAIN:
             break;
          default:
-            RARCH_ERR("[V4L2] VIDIOC_DQBUF.\n");
+            RARCH_ERR("[V4L2]: VIDIOC_DQBUF.\n");
             break;
       }
 
       return false;
    }
 
+   retro_assert(buf.index < v4l->n_buffers);
+
    ctx = &v4l->scaler;
 
    scaler_ctx_scale_direct(ctx, v4l->buffer_output, (const uint8_t*)v4l->buffers[buf.index].start);
 
    if (xioctl(v4l->fd, VIDIOC_QBUF, &buf) == -1)
-      RARCH_ERR("[V4L2] VIDIOC_QBUF.\n");
+      RARCH_ERR("[V4L2]: VIDIOC_QBUF\n");
 
    return true;
 }
@@ -406,8 +405,8 @@ static bool v4l_poll(void *data,
    if (preprocess_image(data))
    {
       if (frame_raw_cb)
-         frame_raw_cb(v4l->buffer_output, VIDEO_SCALE_W(v4l->dims),
-               VIDEO_SCALE_H(v4l->dims), VIDEO_SCALE_W(v4l->dims) * 4);
+         frame_raw_cb(v4l->buffer_output, v4l->width,
+               v4l->height, v4l->width * 4);
       return true;
    }
 

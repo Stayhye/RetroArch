@@ -22,11 +22,6 @@
 #include <stddef.h>
 #include <boolean.h>
 
-/**
- * label_sanitize:
- *
- * NOTE: Does not work with nested blocks.
- **/
 void label_sanitize(char *label, bool (*left)(char*), bool (*right)(char*));
 
 void label_remove_parens(char *label);

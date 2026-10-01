@@ -183,6 +183,7 @@ typedef struct rsound
    rsd_error_callback_t error_callback;
    size_t cb_max_size;
    void *cb_data;
+   slock_t *cb_lock;
 } rsound_t;
 
 /* -- API --
@@ -256,6 +257,15 @@ int rsd_set_param (rsound_t *rd, enum rsd_settings option, void* param);
 
 void rsd_set_callback (rsound_t *rd, rsd_audio_callback_t callback, rsd_error_callback_t err_callback, size_t max_size, void *userdata);
 
+/* Lock and unlock the callback. When the callback lock is aquired, the callback is guaranteed to not be executing.
+   The lock has to be unlocked afterwards.
+   Attemping to call several rsd_callback_lock() in succession might cause a deadlock.
+   The lock should be held for as short period as possible.
+   Try to avoid calling code that may block when holding the lock. */
+void rsd_callback_lock (rsound_t *rd);
+
+void rsd_callback_unlock (rsound_t *rd);
+
 /* Establishes connection to server. Might fail if connection can't be established or that one of
    the mandatory options isn't set in rsd_set_param(). This needs to be called after params have been set
    with rsd_set_param(), and before rsd_write(). */
@@ -276,7 +286,7 @@ int rsd_stop (rsound_t *rd);
    or there was an unexpected error. This function will block until all data has
    been written to the buffer. This function will return the number of bytes written to the buffer,
    or 0 should it fail (disconnection from server). You will have to restart the stream again should this occur. */
-size_t rsd_write (rsound_t *rd, const void *s, size_t len);
+size_t rsd_write (rsound_t *rd, const void* buf, size_t size);
 
 /* Gets the position of the buffer pointer.
    Not really interesting for normal applications.
@@ -284,10 +294,10 @@ size_t rsd_write (rsound_t *rd, const void *s, size_t len);
  *NOTE* This function is deprecated, it should not be used in new applications. */
 size_t rsd_pointer (rsound_t *rd);
 
-/* Acquires how much data can be written to the buffer without blocking */
+/* Aquires how much data can be written to the buffer without blocking */
 size_t rsd_get_avail (rsound_t *rd);
 
-/* Acquires the latency at the moment for the audio stream. It is measured in bytes. Useful for syncing video and audio. */
+/* Aquires the latency at the moment for the audio stream. It is measured in bytes. Useful for syncing video and audio. */
 size_t rsd_delay (rsound_t *rd);
 
 /* Utility for returning latency in milliseconds. */

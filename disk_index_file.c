@@ -25,8 +25,6 @@
 #include <streams/file_stream.h>
 #include <formats/rjson.h>
 
-#include <compat/strl.h>
-
 #include "file_path_special.h"
 #include "verbosity.h"
 #include "msg_hash.h"
@@ -45,7 +43,7 @@ typedef struct
    char *image_path;
 } DCifJSONContext;
 
-static bool DCifJSONObjectMemberHandler(void* context, const char *pValue, size_t len)
+static bool DCifJSONObjectMemberHandler(void* context, const char *pValue, size_t length)
 {
    DCifJSONContext *pCtx = (DCifJSONContext*)context;
 
@@ -53,7 +51,7 @@ static bool DCifJSONObjectMemberHandler(void* context, const char *pValue, size_
    if (pCtx->current_entry_str_val)
       return false;
 
-   if (len)
+   if (length)
    {
       if (string_is_equal(pValue, "image_index"))
          pCtx->current_entry_uint_val = &pCtx->image_index;
@@ -65,11 +63,11 @@ static bool DCifJSONObjectMemberHandler(void* context, const char *pValue, size_
    return true;
 }
 
-static bool DCifJSONNumberHandler(void* context, const char *pValue, size_t len)
+static bool DCifJSONNumberHandler(void* context, const char *pValue, size_t length)
 {
    DCifJSONContext *pCtx = (DCifJSONContext*)context;
 
-   if (pCtx->current_entry_uint_val && len && (pValue && *pValue))
+   if (pCtx->current_entry_uint_val && length && !string_is_empty(pValue))
       *pCtx->current_entry_uint_val = string_to_unsigned(pValue);
    /* ignore unknown members */
 
@@ -78,13 +76,14 @@ static bool DCifJSONNumberHandler(void* context, const char *pValue, size_t len)
    return true;
 }
 
-static bool DCifJSONStringHandler(void* context, const char *pValue, size_t len)
+static bool DCifJSONStringHandler(void* context, const char *pValue, size_t length)
 {
    DCifJSONContext *pCtx = (DCifJSONContext*)context;
 
-   if (pCtx->current_entry_str_val && len && (pValue && *pValue))
+   if (pCtx->current_entry_str_val && length && !string_is_empty(pValue))
    {
-      free(*pCtx->current_entry_str_val);
+      if (*pCtx->current_entry_str_val)
+         free(*pCtx->current_entry_str_val);
 
       *pCtx->current_entry_str_val = strdup(pValue);
    }
@@ -99,6 +98,18 @@ static bool DCifJSONStringHandler(void* context, const char *pValue, size_t len)
 /* Initialisation */
 /******************/
 
+/* Resets existing disk index record */
+static void disk_index_file_reset(disk_index_file_t *disk_index_file)
+{
+   if (!disk_index_file)
+      return;
+
+   disk_index_file->modified      = false;
+   disk_index_file->image_index   = 0;
+   disk_index_file->image_path[0] = '\0';
+   disk_index_file->file_path[0]  = '\0';
+}
+
 /* Parses disk index file referenced by
  * disk_index_file->file_path.
  * Does nothing if disk index file does not exist. */
@@ -107,8 +118,7 @@ static bool disk_index_file_read(disk_index_file_t *disk_index_file)
    const char *file_path   = NULL;
    bool success            = false;
    DCifJSONContext context = {0};
-   uint8_t *file_buf       = NULL;
-   int64_t file_len        = 0;
+   RFILE *file             = NULL;
    rjson_t* parser;
 
    /* Sanity check */
@@ -117,43 +127,30 @@ static bool disk_index_file_read(disk_index_file_t *disk_index_file)
 
    file_path = disk_index_file->file_path;
 
-   if (!file_path || !*file_path)
+   if (   string_is_empty(file_path) ||
+         !path_is_valid(file_path)
+      )
       return false;
 
-   /* Read the whole record in one operation: these files are tiny
-    * and always parsed in full, so a single open/size/read/close
-    * beats a pre-open stat plus the chunked callback path (which
-    * itself sizes the stream with an extra fstat).  Most content
-    * has no disk index record - that common case is one failed
-    * open, and the stat runs only to classify a failure as worth
-    * logging. */
-   if (!filestream_read_file(file_path,
-         (void**)&file_buf, &file_len))
-   {
-      if (path_is_valid(file_path))
-         RARCH_ERR(
-               "[Disk index file] Failed to open disk index record file: \"%s\".\n",
-               file_path);
-      return false;
-   }
+   /* Attempt to open disk index file */
+   file = filestream_open(
+         file_path,
+         RETRO_VFS_FILE_ACCESS_READ,
+         RETRO_VFS_FILE_ACCESS_HINT_NONE);
 
-   /* A zero-length record is the residue of an interrupted
-    * write, not a JSON document: treat it like an absent file
-    * - the caller marks the record modified and the next save
-    * replaces it - instead of reporting a JSON format error on
-    * every launch for a file that never held any data. */
-   if (file_len == 0)
+   if (!file)
    {
-      RARCH_WARN(
-            "[Disk index file] Empty disk index file: \"%s\". Record will be regenerated.\n",
+      RARCH_ERR(
+            "[disk index file] Failed to open disk index record file: %s\n",
             file_path);
-      goto end;
+      return false;
    }
 
    /* Initialise JSON parser */
-   if (!(parser = rjson_open_buffer(file_buf, (size_t)file_len)))
+   parser = rjson_open_rfile(file);
+   if (!parser)
    {
-      RARCH_ERR("[Disk index file] Failed to create JSON parser.\n");
+      RARCH_ERR("[disk index file] Failed to create JSON parser.\n");
       goto end;
    }
 
@@ -172,28 +169,18 @@ static bool disk_index_file_read(disk_index_file_t *disk_index_file)
       if (rjson_get_source_context_len(parser))
       {
          RARCH_ERR(
-               "[Disk index file] Error parsing chunk of disk index file: %s\n---snip---\n%.*s\n---snip---\n",
+               "[disk index file] Error parsing chunk of disk index file: %s\n---snip---\n%.*s\n---snip---\n",
                file_path,
                rjson_get_source_context_len(parser),
                rjson_get_source_context_buf(parser));
       }
       RARCH_WARN(
-            "[Disk index file] Error parsing disk index file: \"%s\".\n",
+            "[disk index file] Error parsing disk index file: %s\n",
             file_path);
-      RARCH_ERR("[Disk index file] Error: Invalid JSON at line %d, column %d - %s.\n",
+      RARCH_ERR("[disk index file] Error: Invalid JSON at line %d, column %d - %s.\n",
             (int)rjson_get_source_line(parser),
             (int)rjson_get_source_column(parser),
             (*rjson_get_error(parser) ? rjson_get_error(parser) : "format error"));
-
-      /* A record that does not parse cannot be trusted - discard
-       * any partially extracted values and report failure, so the
-       * caller marks the record modified and the next save
-       * replaces the broken file.  This restores the pre-rjson
-       * behaviour: the jsonsax reader failed here, but the
-       * migration in ba1ed2da4b fell through to success, leaving
-       * corrupt records in place to fail again on every launch. */
-      rjson_free(parser);
-      goto end;
    }
 
    /* Free parser */
@@ -202,7 +189,7 @@ static bool disk_index_file_read(disk_index_file_t *disk_index_file)
    /* Copy values read from JSON file */
    disk_index_file->image_index = context.image_index;
 
-   if (context.image_path && *context.image_path)
+   if (!string_is_empty(context.image_path))
       strlcpy(
             disk_index_file->image_path, context.image_path,
             sizeof(disk_index_file->image_path));
@@ -216,8 +203,8 @@ end:
    if (context.image_path)
       free(context.image_path);
 
-   /* Release file contents */
-   free(file_buf);
+   /* Close log file */
+   filestream_close(file);
 
    return success;
 }
@@ -230,9 +217,14 @@ bool disk_index_file_init(
       const char *content_path,
       const char *dir_savefile)
 {
-   size_t _len;
-   char content_name[NAME_MAX_LENGTH];
-   char disk_index_file_dir[DIR_MAX_LENGTH];
+   const char *content_file = NULL;
+   char content_name[PATH_MAX_LENGTH];
+   char disk_index_file_dir[PATH_MAX_LENGTH];
+   char disk_index_file_path[PATH_MAX_LENGTH];
+
+   content_name[0]         = '\0';
+   disk_index_file_dir[0]  = '\0';
+   disk_index_file_path[0] = '\0';
 
    /* Sanity check */
    if (!disk_index_file)
@@ -241,56 +233,73 @@ bool disk_index_file_init(
    /* Disk index records are only valid when loading
     * content (i.e. they do not apply to contentless
     * cores) */
-   if (!content_path || !*content_path)
+   if (string_is_empty(content_path))
       goto error;
 
    /* Build disk index file path */
-   fill_pathname(content_name, path_basename(content_path), "",
-         sizeof(content_name));
-   if (!*content_name)
+
+   /* > Get content name */
+   content_file = path_basename(content_path);
+   if (string_is_empty(content_file))
+      goto error;
+
+   strlcpy(content_name, content_file, sizeof(content_name));
+   path_remove_extension(content_name);
+   if (string_is_empty(content_name))
       goto error;
 
    /* > Get disk index file directory */
-   if (dir_savefile && *dir_savefile)
+   if (!string_is_empty(dir_savefile))
       strlcpy(disk_index_file_dir, dir_savefile, sizeof(disk_index_file_dir));
-   else /* Use content directory */
-      fill_pathname_basedir(disk_index_file_dir, content_path,
-            sizeof(disk_index_file_dir));
+   else
+   {
+      /* Use content directory */
+      strlcpy(disk_index_file_dir, content_path, sizeof(disk_index_file_dir));
+      path_basedir(disk_index_file_dir);
+   }
 
-   /* > Generate final path
-    * Note: the directory is not created here - reading an
-    * existing record does not need it to exist, and most
-    * content never writes one.  disk_index_file_save()
-    * creates it when a record is actually written, so the
-    * common load path no longer pays a stat (plus a possible
-    * mkdir) per content load. */
-   _len = fill_pathname_join_special(
-         disk_index_file->file_path, disk_index_file_dir,
-         content_name, sizeof(disk_index_file->file_path));
-   strlcpy(disk_index_file->file_path       + _len,
+   /* > Create directory, if required */
+   if (!path_is_directory(disk_index_file_dir))
+   {
+      if (!path_mkdir(disk_index_file_dir))
+      {
+         RARCH_ERR(
+               "[disk index file] failed to create directory for disk index file: %s\n",
+               disk_index_file_dir);
+         goto error;
+      }
+   }
+
+   /* > Generate final path */
+   fill_pathname_join(
+         disk_index_file_path, disk_index_file_dir,
+         content_name, sizeof(disk_index_file_path));
+   strlcat(
+         disk_index_file_path,
          FILE_PATH_DISK_CONTROL_INDEX_EXTENSION,
-         sizeof(disk_index_file->file_path) - _len);
+         sizeof(disk_index_file_path));
+   if (string_is_empty(disk_index_file_path))
+      goto error;
 
    /* All is well - reset disk_index_file_t and
     * attempt to load values from file */
-   disk_index_file->modified      = false;
-   disk_index_file->image_index   = 0;
-   disk_index_file->image_path[0] = '\0';
+   disk_index_file_reset(disk_index_file);
+   strlcpy(
+         disk_index_file->file_path,
+         disk_index_file_path,
+         sizeof(disk_index_file->file_path));
 
    /* > If file does not exist (or some other
     *   error occurs) then this is a new record
     *   - in this case, 'modified' flag should
     *   be set to 'true' */
    if (!disk_index_file_read(disk_index_file))
-      disk_index_file->modified   = true;
+      disk_index_file->modified = true;
 
    return true;
 
 error:
-   disk_index_file->modified      = false;
-   disk_index_file->image_index   = 0;
-   disk_index_file->image_path[0] = '\0';
-   disk_index_file->file_path[0]  = '\0';
+   disk_index_file_reset(disk_index_file);
    return false;
 }
 
@@ -310,22 +319,22 @@ void disk_index_file_set(
    /* Check whether image index should be updated */
    if (disk_index_file->image_index != image_index)
    {
-      disk_index_file->image_index   = image_index;
-      disk_index_file->modified      = true;
+      disk_index_file->image_index = image_index;
+      disk_index_file->modified    = true;
    }
 
    /* Check whether image path should be updated */
-   if (image_path && *image_path)
+   if (!string_is_empty(image_path))
    {
       if (!string_is_equal(disk_index_file->image_path, image_path))
       {
          strlcpy(
                disk_index_file->image_path, image_path,
                sizeof(disk_index_file->image_path));
-         disk_index_file->modified   = true;
+         disk_index_file->modified = true;
       }
    }
-   else if (*disk_index_file->image_path)
+   else if (!string_is_empty(disk_index_file->image_path))
    {
       disk_index_file->image_path[0] = '\0';
       disk_index_file->modified      = true;
@@ -339,11 +348,10 @@ void disk_index_file_set(
 /* Saves specified disk index file to disk */
 bool disk_index_file_save(disk_index_file_t *disk_index_file)
 {
-   int _len;
-   char dir[DIR_MAX_LENGTH];
    const char *file_path;
-   const char *buf;
    rjsonwriter_t* writer;
+   RFILE *file             = NULL;
+   bool success            = false;
 
    /* Sanity check */
    if (!disk_index_file)
@@ -357,94 +365,86 @@ bool disk_index_file_save(disk_index_file_t *disk_index_file)
       return true;
 
    file_path = disk_index_file->file_path;
-
-   if (!file_path || !*file_path)
+   
+   if (string_is_empty(file_path))
       return false;
 
    RARCH_LOG(
-         "[Disk index file] Saving disk index file: \"%s\".\n",
+         "[disk index file] Saving disk index file: %s\n",
          file_path);
+   
+   /* Attempt to open disk index file */
+   file = filestream_open(
+         file_path,
+         RETRO_VFS_FILE_ACCESS_WRITE,
+         RETRO_VFS_FILE_ACCESS_HINT_NONE);
 
-   /* Create the record directory, if required (deferred from
-    * disk_index_file_init(), which runs on every content load
-    * whether or not a record will ever be written) */
-   fill_pathname_basedir(dir, file_path, sizeof(dir));
-
-   if (     !path_is_directory(dir)
-         && !path_mkdir(dir))
+   if (!file)
    {
       RARCH_ERR(
-            "[Disk index file] Failed to create directory for disk index file: \"%s\".\n",
-            dir);
+            "[disk index file] Failed to open disk index file: %s\n",
+            file_path);
       return false;
    }
 
-   /* Serialise the whole record in memory and write it with a
-    * single filestream_write_file() call.  Opening the output
-    * before the JSON exists truncates the previous record, and
-    * any failure past that point - writer allocation, a write
-    * error, a crash mid-save - left a zero-length file behind
-    * in place of the record it destroyed.  The record is a few
-    * hundred bytes; nothing here needs to stream. */
-   if (!(writer = rjsonwriter_open_memory()))
+   /* Initialise JSON writer */
+   writer = rjsonwriter_open_rfile(file);
+
+   if (!writer)
    {
-      RARCH_ERR("[Disk index file] Failed to create JSON writer.\n");
-      return false;
+      RARCH_ERR("[disk index file] Failed to create JSON writer.\n");
+      goto end;
    }
 
    /* Write output file */
-   rjsonwriter_raw(writer, "{", 1);
-   rjsonwriter_raw(writer, "\n", 1);
+   rjsonwriter_add_start_object(writer);
+   rjsonwriter_add_newline(writer);
 
    /* > Version entry */
    rjsonwriter_add_spaces(writer, 2);
    rjsonwriter_add_string(writer, "version");
-   rjsonwriter_raw(writer, ":", 1);
-   rjsonwriter_raw(writer, " ", 1);
+   rjsonwriter_add_colon(writer);
+   rjsonwriter_add_space(writer);
    rjsonwriter_add_string(writer, "1.0");
-   rjsonwriter_raw(writer, ",", 1);
-   rjsonwriter_raw(writer, "\n", 1);
+   rjsonwriter_add_comma(writer);
+   rjsonwriter_add_newline(writer);
 
    /* > image index entry */
    rjsonwriter_add_spaces(writer, 2);
    rjsonwriter_add_string(writer, "image_index");
-   rjsonwriter_raw(writer, ":", 1);
-   rjsonwriter_raw(writer, " ", 1);
-   rjsonwriter_rawf(writer, "%u", disk_index_file->image_index);
-   rjsonwriter_raw(writer, ",", 1);
-   rjsonwriter_raw(writer, "\n", 1);
+   rjsonwriter_add_colon(writer);
+   rjsonwriter_add_space(writer);
+   rjsonwriter_add_unsigned(writer, disk_index_file->image_index);
+   rjsonwriter_add_comma(writer);
+   rjsonwriter_add_newline(writer);
 
    /* > image path entry */
    rjsonwriter_add_spaces(writer, 2);
    rjsonwriter_add_string(writer, "image_path");
-   rjsonwriter_raw(writer, ":", 1);
-   rjsonwriter_raw(writer, " ", 1);
+   rjsonwriter_add_colon(writer);
+   rjsonwriter_add_space(writer);
    rjsonwriter_add_string(writer, disk_index_file->image_path);
-   rjsonwriter_raw(writer, "\n", 1);
+   rjsonwriter_add_newline(writer);
 
    /* > Finalise */
-   rjsonwriter_raw(writer, "}", 1);
-   rjsonwriter_raw(writer, "\n", 1);
+   rjsonwriter_add_end_object(writer);
+   rjsonwriter_add_newline(writer);
 
-   /* NULL means the writer hit an error while serialising */
-   buf = rjsonwriter_get_memory_buffer(writer, &_len);
-
-   if (!buf || !filestream_write_file(file_path, buf, _len))
+   /* Free JSON writer */
+   if (!rjsonwriter_free(writer))
    {
-      RARCH_ERR("[Disk index file] Error writing disk index file: \"%s\".\n", file_path);
-      rjsonwriter_free(writer);
-      /* The record stays 'modified': a later save retries the
-       * write instead of reporting success over a failure (the
-       * previous code cleared the flag and returned true even
-       * when the writer reported an error). */
-      return false;
+      RARCH_ERR("[disk index file] Error writing disk index file: %s\n", file_path);
    }
-
-   rjsonwriter_free(writer);
 
    /* Changes have been written - record
     * is no longer considered to be in a
     * 'modified' state */
    disk_index_file->modified = false;
-   return true;
+   success                   = true;
+
+end:
+   /* Close disk index file */
+   filestream_close(file);
+
+   return success;
 }

@@ -1,5 +1,5 @@
 /*  RetroArch - A frontend for libretro.
- *  Copyright (C) 2021-2022 - Libretro team
+ *  Copyright (C) 2021-2022 - Roberto V. Rampim
  *
  *  RetroArch is free software: you can redistribute it and/or modify it under the terms
  *  of the GNU General Public License as published by the Free Software Found-
@@ -115,6 +115,7 @@ void natt_device_end(struct natt_discovery *discovery);
  * natt_query_device:
  *
  * @device : Pointer to a device to query into.
+ * @block  : Blocks until the HTTP task is finished.
  *
  * Query an IGD for its service type and control URL.
  *
@@ -122,12 +123,13 @@ void natt_device_end(struct natt_discovery *discovery);
  * If both device->service_type and device->control are not empty strings,
  * the task completed successfully.
  */
-bool natt_query_device(struct natt_device *device);
+bool natt_query_device(struct natt_device *device, bool block);
 
 /**
  * natt_external_address:
  *
  * @device : Pointer to a device to retrieve its external address.
+ * @block  : Blocks until the HTTP task is finished.
  *
  * Retrieve the external IP address of an IGD.
  * natt_query_device must have been successfully called.
@@ -136,7 +138,7 @@ bool natt_query_device(struct natt_device *device);
  * If device->ext_addr.sin_family is AF_INET,
  * the task completed successfully.
  */
-bool natt_external_address(struct natt_device *device);
+bool natt_external_address(struct natt_device *device, bool block);
 
 /**
  * natt_open_port:
@@ -144,6 +146,7 @@ bool natt_external_address(struct natt_device *device);
  * @device       : Pointer to a device to forward a port.
  * @request      : Port forwarding request information.
  * @forward_type : UPnP port forwarding command type.
+ * @block        : Blocks until the HTTP task is finished.
  *
  * Forward a port.
  * natt_query_device must have been successfully called.
@@ -152,13 +155,15 @@ bool natt_external_address(struct natt_device *device);
  * If request->success is true, the task completed successfully.
  */
 bool natt_open_port(struct natt_device *device,
-   struct natt_request *request, enum natt_forward_type forward_type);
+   struct natt_request *request, enum natt_forward_type forward_type,
+   bool block);
 
 /**
  * natt_close_port:
  *
  * @device       : Pointer to a device to unforward a port.
  * @request      : Port unforwarding request information.
+ * @block        : Blocks until the HTTP task is finished.
  *
  * Unforward a port.
  * natt_query_device must have been successfully called.
@@ -167,6 +172,6 @@ bool natt_open_port(struct natt_device *device,
  * If request->success is true, the task completed successfully.
  */
 bool natt_close_port(struct natt_device *device,
-   struct natt_request *request);
+   struct natt_request *request, bool block);
 
 #endif /* __RARCH_NATT_H */

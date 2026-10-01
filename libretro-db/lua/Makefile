@@ -21,7 +21,6 @@ LUA_CONVERTER_C = \
 			 lua_converter.c \
 			 $(LIBRETRO_COMMON_DIR)/compat/compat_fnmatch.c \
 			 $(LIBRETRO_COMMON_DIR)/streams/file_stream.c \
-			 $(LIBRETRO_COMMON_DIR)/string/rstrtod.c \
 			 $(LIBRETRO_COMMON_DIR)/compat/compat_strl.c
 
 LUA_CONVERTER_OBJS := $(LUA_CONVERTER_C:.c=.o)
@@ -35,7 +34,6 @@ RARCHDB_TOOL_C = \
 			 ($LIBRETRODB_DIR)/libretrodb.c \
 			 $(LIBRETRO_COMMON_DIR)/compat/compat_fnmatch.c \
 			 $(LIBRETRO_COMMON_DIR)/streams/file_stream.c \
-			 $(LIBRETRO_COMMON_DIR)/string/rstrtod.c \
 			 $(LIBRETRO_COMMON_DIR)/compat/compat_strl.c
 
 RARCHDB_TOOL_OBJS := $(RARCHDB_TOOL_C:.c=.o)
@@ -49,7 +47,6 @@ TESTLIB_C = \
 			 $(LIBRETRODB_DIR)/rmsgpack_dom.c \
 			 $(LIBRETRO_COMMON_DIR)/compat/compat_fnmatch.c \
 			 $(LIBRETRO_COMMON_DIR)/streams/file_stream.c \
-			 $(LIBRETRO_COMMON_DIR)/string/rstrtod.c \
 			 $(LIBRETRO_COMMON_DIR)/compat/compat_strl.c
 
 TESTLIB_OBJS := $(TESTLIB_C:.c=.o)
@@ -57,8 +54,7 @@ TESTLIB_OBJS := $(TESTLIB_C:.c=.o)
 RMSGPACK_C = \
 			$(LIBRETRODB_DIR)/rmsgpack.c \
 			$(LIBRETRODB_DIR)/rmsgpack_test.c \
-			$(LIBRETRO_COMMON_DIR)/streams/file_stream.c \
-			$(LIBRETRO_COMMON_DIR)/string/rstrtod.c
+			$(LIBRETRO_COMMON_DIR)/streams/file_stream.c
 
 RMSGPACK_OBJS := $(RMSGPACK_C:.c=.o)
 

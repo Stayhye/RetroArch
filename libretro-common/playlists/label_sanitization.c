@@ -20,23 +20,19 @@
  * OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
  */
 
-#include <retro_posix_source.h>
-
-#include <string.h>
-
+#include <playlists/label_sanitization.h>
 #include <compat/strl.h>
 #include <retro_miscellaneous.h>
-#include <playlists/label_sanitization.h>
+#include <string/stdstring.h>
+#include <string.h>
 
-#define DISC_STRINGS_LENGTH   5
+#define DISC_STRINGS_LENGTH   3
 #define REGION_STRINGS_LENGTH 20
 
 const char *disc_strings[DISC_STRINGS_LENGTH] = {
    "(CD",
    "(Disc",
-   "(Disk",
-   "(Side",
-   "(Tape"
+   "(Disk"
 };
 
 /*
@@ -65,11 +61,9 @@ const char *region_strings[REGION_STRINGS_LENGTH] = {
    "(USA, Europe)"
 };
 
-/**
- * label_sanitize:
- *
- * NOTE: Does not work with nested blocks.
- **/
+/*
+ * Does not work with nested blocks.
+ */
 void label_sanitize(char *label, bool (*left)(char*), bool (*right)(char*))
 {
    bool copy = true;
@@ -83,25 +77,16 @@ void label_sanitize(char *label, bool (*left)(char*), bool (*right)(char*))
       {
          /* check for the start of the range */
          if ((*left)(&label[lindex]))
-            copy                = false;
-         else
-         {
-            const bool whitespace = label[lindex] == ' ' && (rindex == 0 || new_label[rindex - 1] == ' ');
+            copy = false;
 
-            /* Simplify consecutive whitespaces */
-            if (!whitespace)
-               new_label[rindex++] = label[lindex];
-         }
+         if (copy)
+            new_label[rindex++] = label[lindex];
       }
       else if ((*right)(&label[lindex]))
          copy = true;
    }
 
-   /* Trim trailing whitespace */
-   if (rindex > 0 && new_label[rindex - 1] == ' ')
-      new_label[rindex - 1] = '\0';
-   else
-      new_label[rindex] = '\0';
+   new_label[rindex] = '\0';
 
    strlcpy(label, new_label, PATH_MAX_LENGTH);
 }
@@ -140,12 +125,22 @@ static bool left_exclusion(char *left,
       const char **strings, const size_t strings_count)
 {
    unsigned i;
+   char exclusion_string[32];
+   char comparison_string[32];
+
+   strlcpy(exclusion_string, left, sizeof(exclusion_string));
+   string_to_upper(exclusion_string);
+
    for (i = 0; i < (unsigned)strings_count; i++)
    {
-      if (left && strings[i]
-            && !strncasecmp(left, strings[i], strlen(strings[i])))
+      strlcpy(comparison_string, strings[i], sizeof(comparison_string));
+      string_to_upper(comparison_string);
+
+      if (string_starts_with(exclusion_string,
+               comparison_string))
          return true;
    }
+
    return false;
 }
 

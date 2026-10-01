@@ -3772,6 +3772,9 @@ int yychar;
 YY_INITIAL_VALUE (static YYSTYPE yyval_default;)
 YYSTYPE yylval YY_INITIAL_VALUE (= yyval_default);
 
+    /* Number of syntax errors so far.  */
+    int yynerrs;
+
     int yystate;
     /* Number of tokens to shift before error messages enabled.  */
     int yyerrstatus;
@@ -3824,6 +3827,7 @@ YYSTYPE yylval YY_INITIAL_VALUE (= yyval_default);
 
   yystate = 0;
   yyerrstatus = 0;
+  yynerrs = 0;
   yychar = YYEMPTY; /* Cause a token to be read.  */
   goto yysetstate;
 
@@ -9863,6 +9867,7 @@ yyerrlab:
   /* If not already recovering from an error, report this error.  */
   if (!yyerrstatus)
     {
+      ++yynerrs;
 #if ! YYERROR_VERBOSE
       yyerror (pParseContext, YY_("syntax error"));
 #else

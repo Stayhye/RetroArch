@@ -18,10 +18,9 @@
 
 #include "com_retroarch_browser_retroactivity_RetroActivityCommon.h"
 
-#include <retro_atomic.h>
-
 #ifdef HAVE_THREADS
 #include <rthreads/rthreads.h>
+#include <retro_assert.h>
 #include <stdlib.h>
 #endif
 
@@ -29,7 +28,6 @@
 #include "../frontend/drivers/platform_unix.h"
 
 #include "play_feature_delivery.h"
-#include <compat/strl.h>
 
 /***************************/
 /* Globals (do not fix...) */
@@ -46,30 +44,28 @@
 typedef struct
 {
 #ifdef HAVE_THREADS
+   slock_t *enabled_lock;
    slock_t *status_lock;
 #endif
-   /* Cached result of play_feature_delivery_enabled_internal():
-    * -1 = not yet queried, 0 = disabled, 1 = enabled.  Queried
-    * frequently, often in loops, so the fast path is a single
-    * acquire load with no lock.  A cold race can at worst issue
-    * the (idempotent) Java query twice; both stores write the
-    * same value. */
-   retro_atomic_int_t enabled_cached;
    unsigned download_progress;
    enum play_feature_delivery_install_status last_status;
    char last_core_name[256];
+   bool enabled;
+   bool enabled_set;
    bool active;
 } play_feature_delivery_state_t;
 
 static play_feature_delivery_state_t play_feature_delivery_state = {
 
 #ifdef HAVE_THREADS
+   NULL,                       /* enabled_lock */
    NULL,                       /* status_lock */
 #endif
-   RETRO_ATOMIC_INT_INITIALIZER(-1), /* enabled_cached */
    0,                          /* download_progress */
    PLAY_FEATURE_DELIVERY_IDLE, /* last_status */
    {'\0'},                     /* last_core_name */
+   false,                      /* enabled */
+   false,                      /* enabled_set */
    false,                      /* active */
 };
 
@@ -209,8 +205,15 @@ void play_feature_delivery_init(void)
    play_feature_delivery_deinit();
 
 #ifdef HAVE_THREADS
+   if (!state->enabled_lock)
+      state->enabled_lock = slock_new();
+
+   retro_assert(state->enabled_lock);
+
    if (!state->status_lock)
-      state->status_lock  = slock_new();
+      state->status_lock = slock_new();
+
+   retro_assert(state->status_lock);
 #endif
 
    /* Note: Would like to cache whether this
@@ -225,6 +228,12 @@ void play_feature_delivery_deinit(void)
    play_feature_delivery_state_t* state = play_feature_delivery_get_state();
 
 #ifdef HAVE_THREADS
+   if (state->enabled_lock)
+   {
+      slock_free(state->enabled_lock);
+      state->enabled_lock = NULL;
+   }
+
    if (state->status_lock)
    {
       slock_free(state->status_lock);
@@ -242,7 +251,7 @@ static bool play_feature_delivery_get_core_name(
 {
    size_t core_file_len;
 
-   if (!core_file || !*core_file)
+   if (string_is_empty(core_file))
       return false;
 
    core_file_len = strlen(core_file);
@@ -289,21 +298,32 @@ static bool play_feature_delivery_enabled_internal(void)
 bool play_feature_delivery_enabled(void)
 {
    play_feature_delivery_state_t* state = play_feature_delivery_get_state();
+   bool enabled;
+
+   /* Lock mutex */
+#ifdef HAVE_THREADS
+   slock_lock(state->enabled_lock);
+#endif
 
    /* Calling Java functions is slow. We need to
     * check Play Store build status frequently,
     * often in loops, so rely on a cached global
     * status flag instead dealing with Java
     * interfaces */
-   int cached = retro_atomic_load_acquire_int(&state->enabled_cached);
-
-   if (cached < 0)
+   if (!state->enabled_set)
    {
-      cached = play_feature_delivery_enabled_internal() ? 1 : 0;
-      retro_atomic_store_release_int(&state->enabled_cached, cached);
+      state->enabled     = play_feature_delivery_enabled_internal();
+      state->enabled_set = true;
    }
 
-   return (cached == 1);
+   enabled = state->enabled;
+
+   /* Unlock mutex */
+#ifdef HAVE_THREADS
+   slock_unlock(state->enabled_lock);
+#endif
+
+   return enabled;
 }
 
 /* Returns a list of cores currently available
@@ -343,16 +363,17 @@ struct string_list *play_feature_delivery_available_cores(void)
       /* Convert Java-style string to a proper char array */
       core_name = (*env)->GetStringUTFChars(env, core_name_jni, NULL);
 
-      if (core_name && *core_name)
+      if (!string_is_empty(core_name))
       {
          char core_file[256];
+         core_file[0] = '\0';
+
          /* Generate core file name */
-         size_t _len = strlcpy(core_file, core_name, sizeof(core_file));
-         strlcpy_lit(core_file       + _len,
-               "_libretro_android.so",
-               sizeof(core_file) - _len);
+         strlcpy(core_file, core_name, sizeof(core_file));
+         strlcat(core_file, "_libretro_android.so", sizeof(core_file));
+
          /* Add entry to list */
-         if (*core_file)
+         if (!string_is_empty(core_file))
             string_list_append(core_list, core_file, attr);
       }
 
@@ -412,8 +433,8 @@ bool play_feature_delivery_core_installed(const char *core_file)
             env, installed_core_name_jni, NULL);
 
       /* Check for a match */
-      if (  (installed_core_name && *installed_core_name)
-          && string_is_equal(core_name, installed_core_name))
+      if (!string_is_empty(installed_core_name) &&
+          string_is_equal(core_name, installed_core_name))
       {
          /* Must always 'release' the converted string */
          (*env)->ReleaseStringUTFChars(env,
@@ -477,15 +498,15 @@ bool play_feature_delivery_download(const char *core_file)
    play_feature_delivery_state_t* state = play_feature_delivery_get_state();
    JNIEnv *env                          = jni_thread_getenv();
    struct android_app *app              = (struct android_app*)g_android;
-   bool ret                             = false;
+   bool success                         = false;
    char core_name[256];
    jstring core_name_jni;
 
    core_name[0] = '\0';
 
-   if (   !env
-       || !app
-       || !app->downloadCore)
+   if (!env ||
+       !app ||
+       !app->downloadCore)
       return false;
 
    /* Extract core name */
@@ -518,7 +539,7 @@ bool play_feature_delivery_download(const char *core_file)
       /* Free core_name_jni reference */
       (*env)->DeleteLocalRef(env, core_name_jni);
 
-      ret = true;
+      success = true;
    }
 
    /* Unlock mutex */
@@ -526,7 +547,7 @@ bool play_feature_delivery_download(const char *core_file)
    slock_unlock(state->status_lock);
 #endif
 
-   return ret;
+   return success;
 }
 
 /* Deletes specified core.
@@ -540,9 +561,9 @@ bool play_feature_delivery_delete(const char *core_file)
 
    core_name[0] = '\0';
 
-   if (   !env
-       || !app
-       || !app->deleteCore)
+   if (!env ||
+       !app ||
+       !app->deleteCore)
       return false;
 
    /* Extract core name */

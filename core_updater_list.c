@@ -27,8 +27,6 @@
 #include <array/rbuf.h>
 #include <retro_miscellaneous.h>
 
-#include <compat/strl.h>
-
 #include "file_path_special.h"
 #include "core_info.h"
 
@@ -238,28 +236,29 @@ bool core_updater_list_get_filename(
       const char *remote_filename,
       const core_updater_list_entry_t **entry)
 {
-   if (core_list && entry && remote_filename && *remote_filename)
+   size_t num_entries;
+   size_t i;
+
+   if (!core_list || !entry || string_is_empty(remote_filename))
+      return false;
+
+   num_entries = RBUF_LEN(core_list->entries);
+
+   if (num_entries < 1)
+      return false;
+
+   /* Search for specified filename */
+   for (i = 0; i < num_entries; i++)
    {
-      size_t num_entries = RBUF_LEN(core_list->entries);
+      core_updater_list_entry_t *current_entry = &core_list->entries[i];
 
-      if (num_entries >= 1)
+      if (string_is_empty(current_entry->remote_filename))
+         continue;
+
+      if (string_is_equal(remote_filename, current_entry->remote_filename))
       {
-         size_t i;
-         /* Search for specified filename */
-         for (i = 0; i < num_entries; i++)
-         {
-            core_updater_list_entry_t *current_entry = &core_list->entries[i];
-
-            if (!current_entry->remote_filename || !*current_entry->remote_filename)
-               continue;
-
-            if (string_is_equal(remote_filename,
-                current_entry->remote_filename))
-            {
-               *entry = current_entry;
-               return true;
-            }
-         }
+         *entry = current_entry;
+         return true;
       }
    }
 
@@ -279,9 +278,14 @@ bool core_updater_list_get_core(
    size_t i;
    char real_core_path[PATH_MAX_LENGTH];
 
-   if (!core_list || !entry || !local_core_path || !*local_core_path)
+   real_core_path[0] = '\0';
+
+   if (!core_list || !entry || string_is_empty(local_core_path))
       return false;
-   if ((num_entries = RBUF_LEN(core_list->entries)) < 1)
+
+   num_entries = RBUF_LEN(core_list->entries);
+
+   if (num_entries < 1)
       return false;
 
    /* Resolve absolute pathname of local_core_path */
@@ -295,7 +299,7 @@ bool core_updater_list_get_core(
    path_resolve_realpath(real_core_path, sizeof(real_core_path),
          resolve_symlinks);
 
-   if (!*real_core_path)
+   if (string_is_empty(real_core_path))
       return false;
 
    /* Search for specified core */
@@ -303,17 +307,15 @@ bool core_updater_list_get_core(
    {
       core_updater_list_entry_t *current_entry = &core_list->entries[i];
 
-      if (!current_entry->local_core_path || !*current_entry->local_core_path)
+      if (string_is_empty(current_entry->local_core_path))
          continue;
 
 #ifdef _WIN32
       /* Handle case-insensitive operating systems*/
-      if (string_is_equal_noncase(real_core_path,
-          current_entry->local_core_path))
+      if (string_is_equal_noncase(real_core_path, current_entry->local_core_path))
       {
 #else
-      if (string_is_equal(real_core_path,
-          current_entry->local_core_path))
+      if (string_is_equal(real_core_path, current_entry->local_core_path))
       {
 #endif
          *entry = current_entry;
@@ -333,35 +335,35 @@ bool core_updater_list_get_core(
 static bool core_updater_list_set_date(
       core_updater_list_entry_t *entry, const char *date_str)
 {
-   unsigned year, month, day;
-   const char *p = date_str;
-   char *end;
+   struct string_list date_list = {0};
 
-   if (!entry || !date_str || !*date_str)
-      return false;
+   if (!entry || string_is_empty(date_str))
+      goto error;
 
-   year = (unsigned)strtoul(p, &end, 10);
-   if (*end != '-')
-      return false;
-   p = end + 1;
+   /* Split date string into component values */
+   string_list_initialize(&date_list);
+   if (!string_split_noalloc(&date_list, date_str, "-"))
+         goto error;
 
-   month = (unsigned)strtoul(p, &end, 10);
-   if (*end != '-')
-      return false;
-   p = end + 1;
+   /* Date string must have 3 values:
+    * [year] [month] [day] */
+   if (date_list.size < 3)
+      goto error;
 
-   day = (unsigned)strtoul(p, &end, 10);
-   if (*end != '\0')
-      return false;
+   /* Convert date string values */
+   entry->date.year  = string_to_unsigned(date_list.elems[0].data);
+   entry->date.month = string_to_unsigned(date_list.elems[1].data);
+   entry->date.day   = string_to_unsigned(date_list.elems[2].data);
 
-   if (month < 1 || month > 12 || day < 1 || day > 31)
-      return false;
-
-   entry->date.year  = year;
-   entry->date.month = month;
-   entry->date.day   = day;
+   /* Clean up */
+   string_list_deinitialize(&date_list);
 
    return true;
+
+error:
+   string_list_deinitialize(&date_list);
+
+   return false;
 }
 
 /* Parses crc string and adds value to
@@ -371,10 +373,12 @@ static bool core_updater_list_set_crc(
 {
    uint32_t crc;
 
-   if (!entry || !crc_str || !*crc_str)
+   if (!entry || string_is_empty(crc_str))
       return false;
 
-   if ((crc = (uint32_t)string_hex_to_unsigned(crc_str)) == 0)
+   crc = (uint32_t)string_hex_to_unsigned(crc_str);
+
+   if (crc == 0)
       return false;
 
    entry->crc = crc;
@@ -393,78 +397,75 @@ static bool core_updater_list_set_paths(
       const char *filename_str,
       enum core_updater_list_type list_type)
 {
-   size_t _len;
-   bool is_archive;
-   bool resolve_symlinks;
+   char *last_underscore                  = NULL;
+   char *tmp_url                          = NULL;
+   bool is_archive                        = true;
+   /* Can't resolve symlinks when dealing with cores
+    * installed via play feature delivery, because the
+    * source files have non-standard file names (which
+    * will not be recognised by regular core handling
+    * routines) */
+   bool resolve_symlinks                  = (list_type != CORE_UPDATER_LIST_TYPE_PFD);
    char remote_core_path[PATH_MAX_LENGTH];
    char local_core_path[PATH_MAX_LENGTH];
    char local_info_path[PATH_MAX_LENGTH];
-   char *last_underscore = NULL;
 
-   if (  !entry
-       || (!filename_str || !*filename_str)
-       || (!path_dir_libretro || !*path_dir_libretro)
-       || (!path_libretro_info || !*path_libretro_info))
+   remote_core_path[0] = '\0';
+   local_core_path[0]  = '\0';
+   local_info_path[0]  = '\0';
+
+   if (!entry ||
+       string_is_empty(filename_str) ||
+       string_is_empty(path_dir_libretro) ||
+       string_is_empty(path_libretro_info))
       return false;
 
-   if (  (list_type == CORE_UPDATER_LIST_TYPE_BUILDBOT)
-       && (!network_buildbot_url || !*network_buildbot_url))
+   /* Only buildbot cores require the buildbot URL */
+   if ((list_type == CORE_UPDATER_LIST_TYPE_BUILDBOT) &&
+       string_is_empty(network_buildbot_url))
       return false;
 
-   is_archive       = path_is_compressed_file(filename_str);
-   resolve_symlinks = (list_type != CORE_UPDATER_LIST_TYPE_PFD);
+   /* Check whether remote file is an archive */
+   is_archive = path_is_compressed_file(filename_str);
 
-   /* remote_filename - reuse buffer if large enough */
-   _len = strlen(filename_str) + 1;
+   /* remote_filename */
    if (entry->remote_filename)
    {
-      char *tmp = (char*)realloc(entry->remote_filename, _len);
-      if (!tmp)
-         return false;
-      entry->remote_filename = tmp;
+      free(entry->remote_filename);
+      entry->remote_filename = NULL;
    }
-   else
-   {
-      entry->remote_filename = (char*)malloc(_len);
-      if (!entry->remote_filename)
-         return false;
-   }
-   memcpy(entry->remote_filename, filename_str, _len);
 
-   /* remote_core_path */
-   remote_core_path[0] = '\0';
+   entry->remote_filename = strdup(filename_str);
+
+   /* remote_core_path
+    * > Leave blank if this is not a buildbot core */
    if (list_type == CORE_UPDATER_LIST_TYPE_BUILDBOT)
    {
-      fill_pathname_join_special(
+      fill_pathname_join(
             remote_core_path,
             network_buildbot_url,
             filename_str,
             sizeof(remote_core_path));
-      /* URL-encode in place using local_core_path as temp buffer */
-      strlcpy(local_core_path, remote_core_path, sizeof(local_core_path));
+
+      /* > Apply proper URL encoding (messy...) */
+      tmp_url = strdup(remote_core_path);
       remote_core_path[0] = '\0';
       net_http_urlencode_full(
-            remote_core_path, local_core_path, sizeof(remote_core_path));
+            remote_core_path, tmp_url, sizeof(remote_core_path));
+      if (tmp_url)
+         free(tmp_url);
    }
 
-   _len = strlen(remote_core_path) + 1;
    if (entry->remote_core_path)
    {
-      char *tmp = (char*)realloc(entry->remote_core_path, _len);
-      if (!tmp)
-         return false;
-      entry->remote_core_path = tmp;
+      free(entry->remote_core_path);
+      entry->remote_core_path = NULL;
    }
-   else
-   {
-      entry->remote_core_path = (char*)malloc(_len);
-      if (!entry->remote_core_path)
-         return false;
-   }
-   memcpy(entry->remote_core_path, remote_core_path, _len);
+
+   entry->remote_core_path = strdup(remote_core_path);
 
    /* local_core_path */
-   fill_pathname_join_special(
+   fill_pathname_join(
          local_core_path,
          path_dir_libretro,
          filename_str,
@@ -476,60 +477,48 @@ static bool core_updater_list_set_paths(
    path_resolve_realpath(local_core_path, sizeof(local_core_path),
          resolve_symlinks);
 
-   _len = strlen(local_core_path) + 1;
    if (entry->local_core_path)
    {
-      char *tmp = (char*)realloc(entry->local_core_path, _len);
-      if (!tmp)
-         return false;
-      entry->local_core_path = tmp;
+      free(entry->local_core_path);
+      entry->local_core_path = NULL;
    }
-   else
-   {
-      entry->local_core_path = (char*)malloc(_len);
-      if (!entry->local_core_path)
-         return false;
-   }
-   memcpy(entry->local_core_path, local_core_path, _len);
+
+   entry->local_core_path = strdup(local_core_path);
 
    /* local_info_path */
-   fill_pathname_join_special(
+   fill_pathname_join_noext(
          local_info_path,
          path_libretro_info,
          filename_str,
          sizeof(local_info_path));
 
-   path_remove_extension(local_info_path);
-
    if (is_archive)
       path_remove_extension(local_info_path);
 
+   /* > Remove any non-standard core filename
+    *   additions (i.e. info files end with
+    *   '_libretro' but core files may have
+    *   a platform specific addendum,
+    *   e.g. '_android')*/
    last_underscore = (char*)strrchr(local_info_path, '_');
-   if (last_underscore && *last_underscore)
-      if (memcmp(last_underscore, "_libretro", 9) != 0)
+
+   if (!string_is_empty(last_underscore))
+      if (!string_is_equal(last_underscore, "_libretro"))
          *last_underscore = '\0';
 
-   _len = strlen(local_info_path);
-   strlcpy(
-         local_info_path         + _len,
+   /* > Add proper file extension */
+   strlcat(
+         local_info_path,
          FILE_PATH_CORE_INFO_EXTENSION,
-         sizeof(local_info_path) - _len);
+         sizeof(local_info_path));
 
-   _len = strlen(local_info_path) + 1;
    if (entry->local_info_path)
    {
-      char *tmp = (char*)realloc(entry->local_info_path, _len);
-      if (!tmp)
-         return false;
-      entry->local_info_path = tmp;
+      free(entry->local_info_path);
+      entry->local_info_path = NULL;
    }
-   else
-   {
-      entry->local_info_path = (char*)malloc(_len);
-      if (!entry->local_info_path)
-         return false;
-   }
-   memcpy(entry->local_info_path, local_info_path, _len);
+
+   entry->local_info_path = strdup(local_info_path);
 
    return true;
 }
@@ -544,9 +533,9 @@ static bool core_updater_list_set_core_info(
 {
    core_updater_info_t *core_info = NULL;
 
-   if (  !entry
-       || (!local_info_path || !*local_info_path)
-       || (!filename_str || !*filename_str))
+   if (!entry ||
+       string_is_empty(local_info_path) ||
+       string_is_empty(filename_str))
       return false;
 
    /* Clear any existing core info */
@@ -578,24 +567,33 @@ static bool core_updater_list_set_core_info(
     *   Would be better to cache this globally
     *   (at present, we only cache info for
     *    *installed* cores...) */
-   if ((core_info = core_info_get_core_updater_info(local_info_path)))
-   {
-      entry->is_experimental    = (core_info->is_experimental);
+   core_info = core_info_get_core_updater_info(local_info_path);
 
-      /* display name */
-      if (core_info->display_name && *core_info->display_name)
+   if (core_info)
+   {
+      /* display_name + is_experimental */
+      if (!string_is_empty(core_info->display_name))
+      {
          entry->display_name    = strdup(core_info->display_name);
+         entry->is_experimental = core_info->is_experimental;
+      }
       else
+      {
+         /* If display name is blank, use core filename and
+          * assume core is experimental (i.e. all 'fit for consumption'
+          * cores must have a valid/complete core info file) */
          entry->display_name    = strdup(filename_str);
+         entry->is_experimental = true;
+      }
 
       /* description */
-      if (core_info->description && *core_info->description)
+      if (!string_is_empty(core_info->description))
          entry->description     = strdup(core_info->description);
       else
-         entry->description     = strldup("", sizeof(""));
+         entry->description     = strdup("");
 
       /* licenses_list */
-      if (core_info->licenses && *core_info->licenses)
+      if (!string_is_empty(core_info->licenses))
          entry->licenses_list   = string_split(core_info->licenses, "|");
 
       /* Clean up */
@@ -603,9 +601,12 @@ static bool core_updater_list_set_core_info(
    }
    else
    {
-      /* If info file is missing, use core filename */
+      /* If info file is missing, use core filename and
+       * assume core is experimental (i.e. all 'fit for consumption'
+       * cores must have a valid/complete core info file) */
       entry->display_name       = strdup(filename_str);
-      entry->description        = strldup("", sizeof(""));
+      entry->is_experimental    = true;
+      entry->description        = strdup("");
    }
 
    return true;
@@ -669,12 +670,31 @@ static void core_updater_list_add_entry(
       const char *path_dir_libretro,
       const char *path_libretro_info,
       const char *network_buildbot_url,
-      const char *date_str,
-      const char *crc_str,
-      const char *filename_str)
+      struct string_list *network_core_entry_list)
 {
+   const char *date_str                          = NULL;
+   const char *crc_str                           = NULL;
+   const char *filename_str                      = NULL;
    const core_updater_list_entry_t *search_entry = NULL;
    core_updater_list_entry_t entry               = {0};
+
+   if (!core_list || !network_core_entry_list)
+      goto error;
+
+   /* > Listings must have 3 entries:
+    *   [date] [crc] [filename] */
+   if (network_core_entry_list->size < 3)
+      goto error;
+
+   /* Get handles of the individual listing strings */
+   date_str     = network_core_entry_list->elems[0].data;
+   crc_str      = network_core_entry_list->elems[1].data;
+   filename_str = network_core_entry_list->elems[2].data;
+
+   if (string_is_empty(date_str) ||
+       string_is_empty(crc_str) ||
+       string_is_empty(filename_str))
+      goto error;
 
    /* Check whether core file is already included
     * in the list (this is *not* an error condition,
@@ -734,8 +754,12 @@ error:
 static int core_updater_list_qsort_func(
       const core_updater_list_entry_t *a, const core_updater_list_entry_t *b)
 {
-   if (!a || !b || (!a->display_name || !*a->display_name) || (!b->display_name || !*b->display_name))
+   if (!a || !b)
       return 0;
+
+   if (string_is_empty(a->display_name) || string_is_empty(b->display_name))
+      return 0;
+
    return strcasecmp(a->display_name, b->display_name);
 }
 
@@ -746,10 +770,13 @@ static void core_updater_list_qsort(core_updater_list_t *core_list)
 
    if (!core_list)
       return;
-   if ((num_entries = RBUF_LEN(core_list->entries)) < 2)
+
+   num_entries = RBUF_LEN(core_list->entries);
+
+   if (num_entries < 2)
       return;
-   if (core_list->entries)
-      qsort(
+
+   qsort(
          core_list->entries, num_entries,
          sizeof(core_updater_list_entry_t),
          (int (*)(const void *, const void *))
@@ -767,13 +794,13 @@ bool core_updater_list_parse_network_data(
       const char *network_buildbot_url,
       const char *data, size_t len)
 {
-   char *data_buf     = NULL;
-   char *line         = NULL;
-   char *data_end     = NULL;
+   size_t i;
+   char *data_buf                       = NULL;
+   struct string_list network_core_list = {0};
 
    /* Sanity check */
-   if (!core_list || !data || !*data || (len < 1))
-      return false;
+   if (!core_list || string_is_empty(data) || (len < 1))
+      goto error;
 
    /* We're populating a list 'from scratch' - remove
     * any existing entries */
@@ -781,99 +808,58 @@ bool core_updater_list_parse_network_data(
 
    /* Input data string is not terminated - have
     * to copy it to a temporary buffer... */
-   if (!(data_buf = (char*)malloc((len + 1) * sizeof(char))))
-      return false;
+   data_buf = (char*)malloc((len + 1) * sizeof(char));
+
+   if (!data_buf)
+      goto error;
 
    memcpy(data_buf, data, len * sizeof(char));
    data_buf[len] = '\0';
 
-   data_end = data_buf + len;
+   /* Split network listing request into lines */
+   string_list_initialize(&network_core_list);
+   if (!string_split_noalloc(&network_core_list, data_buf, "\n"))
+      goto error;
 
-   /* Parse each line from the network data */
-   for (line = data_buf; line < data_end; )
-   {
-      char *line_end;
-      char *p;
-      char *elem0 = NULL; /* date     */
-      char *elem1 = NULL; /* crc      */
-      char *elem2 = NULL; /* filename */
-
-      /* Find end of current line and terminate it */
-      for (line_end = line; line_end < data_end && *line_end != '\n'; line_end++)
-         ;
-      *line_end = '\0';
-
-      /* Skip empty lines */
-      if (!line || !*line)
-      {
-         line = line_end + 1;
-         continue;
-      }
-
-      p = line;
-
-      /* --- elem0: date --- */
-      /* Skip leading spaces */
-      while (*p == ' ')
-         p++;
-      if (*p != '\0')
-      {
-         elem0 = p;
-         /* Advance to next space and terminate */
-         while (*p != ' ' && *p != '\0')
-            p++;
-         if (*p == ' ')
-            *p++ = '\0';
-      }
-
-      /* --- elem1: crc --- */
-      while (*p == ' ')
-         p++;
-      if (*p != '\0')
-      {
-         elem1 = p;
-         while (*p != ' ' && *p != '\0')
-            p++;
-         if (*p == ' ')
-            *p++ = '\0';
-      }
-
-      /* --- elem2: filename --- */
-      while (*p == ' ')
-         p++;
-      if (*p != '\0')
-      {
-         elem2 = p;
-         while (*p != ' ' && *p != '\0')
-            p++;
-         if (*p == ' ')
-            *p = '\0';
-      }
-
-      /* Parse listings info and add to core updater
-       * list */
-      /* > Listings must have 3 entries:
-       *   [date] [crc] [filename] */
-      if (     (elem0 && *elem0)
-            && (elem1 && *elem1)
-            && (elem2 && *elem2))
-         core_updater_list_add_entry(
-               core_list,
-               path_dir_libretro,
-               path_libretro_info,
-               network_buildbot_url,
-               elem0, elem1, elem2);
-
-      /* Advance to next line */
-      line = line_end + 1;
-   }
+   if (network_core_list.size < 1)
+      goto error;
 
    /* Temporary data buffer is no longer required */
    free(data_buf);
+   data_buf = NULL;
+
+   /* Loop over lines */
+   for (i = 0; i < network_core_list.size; i++)
+   {
+      struct string_list network_core_entry_list  = {0};
+      const char *line = network_core_list.elems[i].data;
+
+      if (string_is_empty(line))
+         continue;
+
+      string_list_initialize(&network_core_entry_list);
+      /* Split line into listings info components */
+      string_split_noalloc(&network_core_entry_list, line, " ");
+
+      /* Parse listings info and add to core updater
+       * list */
+      core_updater_list_add_entry(
+            core_list,
+            path_dir_libretro,
+            path_libretro_info,
+            network_buildbot_url,
+            &network_core_entry_list);
+
+      /* Clean up */
+      string_list_deinitialize(&network_core_entry_list);
+   }
 
    /* Sanity check */
    if (RBUF_LEN(core_list->entries) < 1)
-      return false;
+      goto error;
+
+   /* Clean up */
+   string_list_deinitialize(&network_core_list);
 
    /* Sort completed list */
    core_updater_list_qsort(core_list);
@@ -882,6 +868,14 @@ bool core_updater_list_parse_network_data(
    core_list->type = CORE_UPDATER_LIST_TYPE_BUILDBOT;
 
    return true;
+
+error:
+   string_list_deinitialize(&network_core_list);
+
+   if (data_buf)
+      free(data_buf);
+
+   return false;
 }
 
 /* Parses a single play feature delivery core
@@ -896,7 +890,7 @@ static void core_updater_list_add_pfd_entry(
    const core_updater_list_entry_t *search_entry = NULL;
    core_updater_list_entry_t entry               = {0};
 
-   if (!core_list || !filename_str || !*filename_str)
+   if (!core_list || string_is_empty(filename_str))
       goto error;
 
    /* Check whether core file is already included
@@ -970,7 +964,7 @@ bool core_updater_list_parse_pfd_data(
    {
       const char *filename_str = pfd_cores->elems[i].data;
 
-      if (!filename_str || !*filename_str)
+      if (string_is_empty(filename_str))
          continue;
 
       /* Parse core file name and add to core

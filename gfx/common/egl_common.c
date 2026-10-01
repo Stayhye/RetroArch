@@ -18,11 +18,8 @@
 #endif
 
 #include <stdlib.h>
-#include <stdio.h>
-#include <string.h>
 
-#include <lists/string_list.h>
-#include <compat/strl.h>
+#include <retro_assert.h>
 
 #ifdef HAVE_CONFIG_H
 #include "../../config.h"
@@ -36,24 +33,15 @@
 #include "../../verbosity.h"
 #include "../../frontend/frontend_driver.h"
 
-#ifndef EGL_OPENGL_ES3_BIT_KHR
-#define EGL_OPENGL_ES3_BIT_KHR 0x0040
-#endif
-
 /* TODO/FIXME - globals */
 bool g_egl_inited    = false;
 
 unsigned g_egl_major = 0;
 unsigned g_egl_minor = 0;
 
-#ifdef HAVE_DYLIB
+#if defined(HAVE_DYNAMIC) && defined(HAVE_DYNAMIC_EGL)
 #include <dynamic/dylib.h>
 
-static dylib_t g_egl_gl_dll = NULL;
-static EGLint g_egl_gl_dll_version = 0;
-#endif
-
-#if defined(HAVE_DYLIB) && defined(HAVE_DYNAMIC_EGL)
 typedef EGLBoolean(* PFN_EGL_QUERY_SURFACE)(
       EGLDisplay dpy,
       EGLSurface surface,
@@ -135,11 +123,13 @@ static PFN_EGL_SWAP_INTERVAL             _egl_swap_interval;
 
 bool egl_init_dll(void)
 {
-#if defined(HAVE_DYLIB) && defined(HAVE_DYNAMIC_EGL)
+#if defined(HAVE_DYNAMIC) && defined(HAVE_DYNAMIC_EGL)
    static dylib_t egl_dll;
+
    if (!egl_dll)
    {
-      if ((egl_dll = dylib_load("libEGL.dll")))
+      egl_dll = dylib_load("libEGL.dll");
+      if (egl_dll)
       {
          /* Setup function callbacks once */
          _egl_query_surface         = (PFN_EGL_QUERY_SURFACE)dylib_proc(
@@ -191,9 +181,9 @@ bool egl_init_dll(void)
 
 void egl_report_error(void)
 {
-   EGLint      err = _egl_get_error();
+   EGLint    error = _egl_get_error();
    const char *str = NULL;
-   switch (err)
+   switch (error)
    {
       case EGL_SUCCESS:
          str = "EGL_SUCCESS";
@@ -252,39 +242,12 @@ void egl_report_error(void)
          break;
    }
 
-   RARCH_ERR("[EGL] #0x%x, %s.\n", (unsigned)err, str);
+   RARCH_ERR("[EGL]: #0x%x, %s\n", (unsigned)error, str);
 }
 
 gfx_ctx_proc_t egl_get_proc_address(const char *symbol)
 {
-   gfx_ctx_proc_t proc = _egl_get_proc_address(symbol);
-   if (proc)
-      return proc;
-
-#ifdef HAVE_DYLIB
-   /* EGL versions older than 1.5 cannot get OpenGL functions that are required
-    * to be implemented (i.e. functions that are not extensions), so we may also
-    * need to check the OpenGL library directly for the symbol if EGL failed to
-    * find it. */
-   if (g_egl_gl_dll_version)
-   {
-      if (g_egl_gl_dll_version == EGL_OPENGL_ES3_BIT_KHR)
-         g_egl_gl_dll = dylib_load("libGLESv3.so");
-      else if (g_egl_gl_dll_version == EGL_OPENGL_ES2_BIT)
-         g_egl_gl_dll = dylib_load("libGLESv2.so");
-      else if (g_egl_gl_dll_version == EGL_OPENGL_BIT)
-         g_egl_gl_dll = dylib_load("libGL.so");
-      g_egl_gl_dll_version = 0;
-   }
-   if (g_egl_gl_dll)
-   {
-      proc = (gfx_ctx_proc_t)dylib_proc(g_egl_gl_dll, symbol);
-      if (proc)
-         return proc;
-   }
-#endif
-
-   return NULL;
+   return _egl_get_proc_address(symbol);
 }
 
 void egl_terminate(EGLDisplay dpy)
@@ -306,18 +269,6 @@ bool egl_initialize(EGLDisplay dpy, EGLint *major, EGLint *minor)
 bool egl_bind_api(EGLenum egl_api)
 {
    return _egl_bind_api(egl_api);
-}
-
-void egl_destroy_gl_dll(void)
-{
-#ifdef HAVE_DYLIB
-   if (g_egl_gl_dll)
-   {
-      dylib_close(g_egl_gl_dll);
-      g_egl_gl_dll = NULL;
-   }
-   g_egl_gl_dll_version = 0;
-#endif
 }
 
 void egl_destroy(egl_ctx_data_t *egl)
@@ -347,17 +298,15 @@ void egl_destroy(egl_ctx_data_t *egl)
       egl_terminate(egl->dpy);
    }
 
-   egl_destroy_gl_dll();
-
    /* Be as careful as possible in deinit.
     * If we screw up, any TTY will not restore.
     */
 
-   egl->ctx      = EGL_NO_CONTEXT;
-   egl->hw_ctx   = EGL_NO_CONTEXT;
-   egl->surf     = EGL_NO_SURFACE;
-   egl->dpy      = EGL_NO_DISPLAY;
-   egl->config   = 0;
+   egl->ctx     = EGL_NO_CONTEXT;
+   egl->hw_ctx  = EGL_NO_CONTEXT;
+   egl->surf    = EGL_NO_SURFACE;
+   egl->dpy     = EGL_NO_DISPLAY;
+   egl->config  = 0;
    g_egl_inited  = false;
 
    frontend_driver_destroy_signal_handler_state();
@@ -365,30 +314,24 @@ void egl_destroy(egl_ctx_data_t *egl)
 
 void egl_bind_hw_render(egl_ctx_data_t *egl, bool enable)
 {
-   egl->use_hw_ctx     = enable;
+   egl->use_hw_ctx = enable;
 
    if (egl->dpy  == EGL_NO_DISPLAY)
       return;
    if (egl->surf == EGL_NO_SURFACE)
       return;
+
    _egl_make_current(egl->dpy, egl->surf,
          egl->surf,
          enable ? egl->hw_ctx : egl->ctx);
 }
 
-void egl_release_current(egl_ctx_data_t *egl)
-{
-   if (!egl || egl->dpy == EGL_NO_DISPLAY)
-      return;
-   _egl_make_current(egl->dpy, EGL_NO_SURFACE, EGL_NO_SURFACE, EGL_NO_CONTEXT);
-}
-
 void egl_swap_buffers(void *data)
 {
    egl_ctx_data_t *egl = (egl_ctx_data_t*)data;
-   if (     (egl)
-         && (egl->dpy  != EGL_NO_DISPLAY)
-         && (egl->surf != EGL_NO_SURFACE)
+   if (  egl                         &&
+         egl->dpy  != EGL_NO_DISPLAY &&
+         egl->surf != EGL_NO_SURFACE
          )
       _egl_swap_buffers(egl->dpy, egl->surf);
 }
@@ -401,21 +344,22 @@ void egl_set_swap_interval(egl_ctx_data_t *egl, int interval)
     */
    egl->interval = interval;
 
-   if (egl->dpy == EGL_NO_DISPLAY)
+   if (egl->dpy  == EGL_NO_DISPLAY)
       return;
    if (!_egl_get_current_context())
       return;
 
    if (!_egl_swap_interval(egl->dpy, interval))
    {
-      RARCH_ERR("[EGL] eglSwapInterval(%i) failed.\n", interval);
+      RARCH_ERR("[EGL]: eglSwapInterval(%i) failed.\n", interval);
       egl_report_error();
    }
 }
 
-void egl_get_video_size(egl_ctx_data_t *egl, unsigned *dims)
+void egl_get_video_size(egl_ctx_data_t *egl, unsigned *width, unsigned *height)
 {
-   *dims = VIDEO_SCALE_PACK(0, 0);
+   *width  = 0;
+   *height = 0;
 
    if (egl->dpy != EGL_NO_DISPLAY && egl->surf != EGL_NO_SURFACE)
    {
@@ -423,82 +367,59 @@ void egl_get_video_size(egl_ctx_data_t *egl, unsigned *dims)
 
       _egl_query_surface(egl->dpy, egl->surf, EGL_WIDTH, &gl_width);
       _egl_query_surface(egl->dpy, egl->surf, EGL_HEIGHT, &gl_height);
-      *dims = VIDEO_SCALE_PACK(gl_width, gl_height);
+      *width  = gl_width;
+      *height = gl_height;
    }
 }
 
-#if defined(EGL_VERSION_1_5)
-static bool check_egl_version(int min_major_version, int min_minor_version)
+bool check_egl_version(int minMajorVersion, int minMinorVersion)
 {
+   int count;
+   int major, minor;
    const char *str = _egl_query_string(EGL_NO_DISPLAY, EGL_VERSION);
 
-   if (str)
-   {
-      char *endptr;
-      int major = (int)strtol(str, &endptr, 10);
-      if (endptr != str && *endptr == '.')
-      {
-         const char *minor_str = endptr + 1;
-         int minor = (int)strtol(minor_str, &endptr, 10);
-         if (endptr != minor_str)
-         {
-            if (major >= min_major_version)
-            {
-               if (major > min_major_version)
-                  return true;
-               else if (minor >= min_minor_version)
-                  return true;
-            }
-         }
-      }
-   }
+   if (!str)
+      return false;
+
+   count = sscanf(str, "%d.%d", &major, &minor);
+   if (count != 2)
+      return false;
+
+   if (major < minMajorVersion)
+      return false;
+
+   if (major > minMajorVersion)
+      return true;
+
+   if (minor >= minMinorVersion)
+      return true;
 
    return false;
 }
-#endif
 
-#if defined(EGL_EXT_platform_base)
-static bool check_egl_client_extension(const char *name, size_t name_len)
+bool check_egl_client_extension(const char *name)
 {
+   size_t nameLen;
    const char *str = _egl_query_string(EGL_NO_DISPLAY, EGL_EXTENSIONS);
 
    /* The EGL implementation doesn't support client extensions at all. */
-   if (str)
+   if (!str)
+      return false;
+
+   nameLen = strlen(name);
+   while (*str != '\0')
    {
-      while (*str != '\0')
-      {
-         /* Use strspn and strcspn to find the start position and length of each
-          * token in the extension string. Using strtok could also work, but
-          * that would require allocating a copy of the string. */
-         size_t _len = strcspn(str, " ");
-         if (_len == name_len && strncmp(str, name, name_len) == 0)
-            return true;
-         str       += _len;
-         str       += strspn(str, " ");
-      }
+      /* Use strspn and strcspn to find the start position and length of each
+       * token in the extension string. Using strtok could also work, but
+       * that would require allocating a copy of the string. */
+      size_t len = strcspn(str, " ");
+      if (len == nameLen && strncmp(str, name, nameLen) == 0)
+         return true;
+      str += len;
+      str += strspn(str, " ");
    }
 
    return false;
-}
-#endif
-
-#ifndef EGL_DEVICE_EXT
-#define EGL_DEVICE_EXT               0x322C
-#endif
-#ifndef EGL_DRM_DEVICE_FILE_EXT
-#define EGL_DRM_DEVICE_FILE_EXT      0x3233
-#endif
-#ifndef EGL_RENDERER_EXT
-#define EGL_RENDERER_EXT             0x335F
-#endif
-
-/* The EGL device the next display is made on (EGL_EXT_explicit_device),
- * or NULL for the implementation's own choice. */
-static void *egl_display_device = NULL;
-
-void egl_set_display_device(void *device)
-{
-   egl_display_device = device;
 }
 
 static EGLDisplay get_egl_display(EGLenum platform, void *native)
@@ -515,27 +436,13 @@ static EGLDisplay get_egl_display(EGLenum platform, void *native)
             (EGLenum platform, void *native_display, const EGLAttrib *attrib_list);
          pfn_eglGetPlatformDisplay ptr_eglGetPlatformDisplay;
 
-         RARCH_LOG("[EGL] Found EGL client version >= 1.5, trying eglGetPlatformDisplay.\n");
+         RARCH_LOG("[EGL] Found EGL client version >= 1.5, trying eglGetPlatformDisplay\n");
          ptr_eglGetPlatformDisplay = (pfn_eglGetPlatformDisplay)
-            _egl_get_proc_address("eglGetPlatformDisplay");
+            egl_get_proc_address("eglGetPlatformDisplay");
 
          if (ptr_eglGetPlatformDisplay)
          {
-            EGLDisplay dpy;
-            if (     egl_display_device
-                  && check_egl_client_extension("EGL_EXT_explicit_device",
-                     (sizeof("EGL_EXT_explicit_device")-1)))
-            {
-               EGLAttrib attribs[3];
-               attribs[0] = EGL_DEVICE_EXT;
-               attribs[1] = (EGLAttrib)egl_display_device;
-               attribs[2] = EGL_NONE;
-               if ((dpy = ptr_eglGetPlatformDisplay(platform, native,
-                           attribs)) != EGL_NO_DISPLAY)
-                  return dpy;
-               RARCH_WARN("[EGL] The chosen GPU cannot make this display; using the default.\n");
-            }
-            dpy = ptr_eglGetPlatformDisplay(platform, native, NULL);
+            EGLDisplay dpy = ptr_eglGetPlatformDisplay(platform, native, NULL);
             if (dpy != EGL_NO_DISPLAY)
                return dpy;
          }
@@ -543,13 +450,13 @@ static EGLDisplay get_egl_display(EGLenum platform, void *native)
 #endif /* defined(EGL_VERSION_1_5) */
 
 #if defined(EGL_EXT_platform_base)
-      if (check_egl_client_extension("EGL_EXT_platform_base", (sizeof("EGL_EXT_platform_base")-1)))
+      if (check_egl_client_extension("EGL_EXT_platform_base"))
       {
          PFNEGLGETPLATFORMDISPLAYEXTPROC ptr_eglGetPlatformDisplayEXT;
 
-         RARCH_LOG("[EGL] Found EGL_EXT_platform_base, trying eglGetPlatformDisplayEXT.\n");
+         RARCH_LOG("[EGL] Found EGL_EXT_platform_base, trying eglGetPlatformDisplayEXT\n");
          ptr_eglGetPlatformDisplayEXT = (PFNEGLGETPLATFORMDISPLAYEXTPROC)
-            _egl_get_proc_address("eglGetPlatformDisplayEXT");
+            egl_get_proc_address("eglGetPlatformDisplayEXT");
 
          if (ptr_eglGetPlatformDisplayEXT)
          {
@@ -564,7 +471,7 @@ static EGLDisplay get_egl_display(EGLenum platform, void *native)
    /* Either the caller didn't provide a platform type, or the EGL
     * implementation doesn't support eglGetPlatformDisplay. In this case, try
     * eglGetDisplay and hope for the best. */
-   RARCH_LOG("[EGL] Falling back to eglGetDisplay.\n");
+   RARCH_LOG("[EGL] Falling back to eglGetDisplay\n");
    return _egl_get_display((EGLNativeDisplayType) native);
 }
 
@@ -573,7 +480,7 @@ bool egl_get_native_visual_id(egl_ctx_data_t *egl, EGLint *value)
    if (!egl_get_config_attrib(egl->dpy, egl->config,
          EGL_NATIVE_VISUAL_ID, value))
    {
-      RARCH_ERR("[EGL] egl_get_native_visual_id failed.\n");
+      RARCH_ERR("[EGL]: egl_get_native_visual_id failed.\n");
       return false;
    }
 
@@ -611,7 +518,7 @@ bool egl_init_context_common(
 
    if (!_egl_get_configs(egl->dpy, NULL, 0, count) || *count < 1)
    {
-      RARCH_ERR("[EGL] No configs to choose from.\n");
+      RARCH_ERR("[EGL]: No configs to choose from.\n");
       return false;
    }
 
@@ -622,8 +529,7 @@ bool egl_init_context_common(
    if (!_egl_choose_config(egl->dpy, attrib_ptr,
             configs, *count, &matched) || !matched)
    {
-      RARCH_ERR("[EGL] No EGL configs with appropriate attributes.\n");
-      free(configs);
+      RARCH_ERR("[EGL]: No EGL configs with appropriate attributes.\n");
       return false;
    }
 
@@ -640,7 +546,7 @@ bool egl_init_context_common(
 
    if (i == *count)
    {
-      RARCH_ERR("[EGL] No EGL config found which satisfies requirements.\n");
+      RARCH_ERR("[EGL]: No EGL config found which satifies requirements.\n");
       return false;
    }
 
@@ -658,17 +564,11 @@ bool egl_init_context(egl_ctx_data_t *egl,
       EGLint *count, const EGLint *attrib_ptr,
       egl_accept_config_cb_t cb)
 {
-#ifdef HAVE_DYLIB
-   bool gles3_attrib_found = false;
-   bool gles2_attrib_found = false;
-   bool gl_attrib_found = false;
-#endif
-
-   EGLDisplay dpy = get_egl_display(platform, display_data);
+   EGLDisplay dpy     = get_egl_display(platform, display_data);
 
    if (dpy == EGL_NO_DISPLAY)
    {
-      RARCH_ERR("[EGL] Couldn't get EGL display.\n");
+      RARCH_ERR("[EGL]: Couldn't get EGL display.\n");
       return false;
    }
 
@@ -677,32 +577,10 @@ bool egl_init_context(egl_ctx_data_t *egl,
    if (!egl_initialize(egl->dpy, major, minor))
       return false;
 
-   RARCH_LOG("[EGL] EGL version: %d.%d.\n", *major, *minor);
+   RARCH_LOG("[EGL]: EGL version: %d.%d\n", *major, *minor);
 
-   if (!egl_init_context_common(egl, count, attrib_ptr, cb,
-         display_data))
-      return false;
-
-#ifdef HAVE_DYLIB
-   for (; *attrib_ptr != EGL_NONE; ++attrib_ptr)
-   {
-      if (*attrib_ptr == EGL_OPENGL_ES3_BIT_KHR)
-         gles3_attrib_found = true;
-      else if (*attrib_ptr == EGL_OPENGL_ES2_BIT)
-         gles2_attrib_found = true;
-      else if (*attrib_ptr == EGL_OPENGL_BIT)
-         gl_attrib_found = true;
-   }
-
-   if (gles3_attrib_found)
-      g_egl_gl_dll_version = EGL_OPENGL_ES3_BIT_KHR;
-   else if (gles2_attrib_found)
-      g_egl_gl_dll_version = EGL_OPENGL_ES2_BIT;
-   else if (gl_attrib_found)
-      g_egl_gl_dll_version = EGL_OPENGL_BIT;
-#endif
-
-   return true;
+   return egl_init_context_common(egl, count, attrib_ptr, cb,
+         display_data);
 }
 
 bool egl_create_context(egl_ctx_data_t *egl, const EGLint *egl_attribs)
@@ -720,7 +598,7 @@ bool egl_create_context(egl_ctx_data_t *egl, const EGLint *egl_attribs)
    {
       egl->hw_ctx = _egl_create_context(egl->dpy, egl->config, egl->ctx,
             egl_attribs);
-      RARCH_LOG("[EGL] Created shared context: %p.\n", (void*)egl->hw_ctx);
+      RARCH_LOG("[EGL]: Created shared context: %p.\n", (void*)egl->hw_ctx);
 
       if (egl->hw_ctx == EGL_NO_CONTEXT)
          return false;
@@ -729,42 +607,12 @@ bool egl_create_context(egl_ctx_data_t *egl, const EGLint *egl_attribs)
    return true;
 }
 
-#ifndef EGL_PRESENT_OPAQUE_EXT
-#define EGL_PRESENT_OPAQUE_EXT 0x31DF
-#endif
-
-/* Set by a context whose config has alpha it does not mean as
- * transparency: the next window surface is presented opaque. */
-static bool egl_surface_opaque = false;
-
-void egl_set_surface_opaque(bool opaque)
-{
-   egl_surface_opaque = opaque;
-}
-
-static bool egl_display_has_extension(EGLDisplay dpy, const char *ext)
-{
-   const char *exts = _egl_query_string(dpy, EGL_EXTENSIONS);
-   return exts && strstr(exts, ext);
-}
-
 bool egl_create_surface(egl_ctx_data_t *egl, void *native_window)
 {
    EGLint window_attribs[] = {
 	   EGL_RENDER_BUFFER, EGL_BACK_BUFFER,
-	   EGL_NONE, EGL_NONE,
 	   EGL_NONE,
    };
-
-   if (!egl_destroy_surface(egl))
-      return false;
-
-   if (     egl_surface_opaque
-         && egl_display_has_extension(egl->dpy, "EGL_EXT_present_opaque"))
-   {
-      window_attribs[2] = EGL_PRESENT_OPAQUE_EXT;
-      window_attribs[3] = EGL_TRUE;
-   }
 
    egl->surf = _egl_create_window_surface(egl->dpy, egl->config, (NativeWindowType)native_window, window_attribs);
 
@@ -773,175 +621,19 @@ bool egl_create_surface(egl_ctx_data_t *egl, void *native_window)
 
    /* Connect the context to the surface. */
    if (!_egl_make_current(egl->dpy, egl->surf, egl->surf, egl->ctx))
+      return false;
+
+   RARCH_LOG("[EGL]: Current context: %p.\n", (void*)_egl_get_current_context());
+
+   return true;
+}
+
+bool egl_has_config(egl_ctx_data_t *egl)
+{
+   if (!egl->config)
    {
-      _egl_destroy_surface(egl->dpy, egl->surf);
-      egl->surf = EGL_NO_SURFACE;
+      RARCH_ERR("[EGL]: No EGL configurations available.\n");
       return false;
    }
-
-   RARCH_LOG("[EGL] Current context: %p.\n", (void*)_egl_get_current_context());
-
    return true;
-}
-
-bool egl_destroy_surface(egl_ctx_data_t *egl)
-{
-   if (egl->surf == EGL_NO_SURFACE)
-      return true;
-
-   if (!_egl_make_current(egl->dpy, EGL_NO_SURFACE, EGL_NO_SURFACE, EGL_NO_CONTEXT))
-      return false;
-
-   if (!_egl_destroy_surface(egl->dpy, egl->surf))
-      return false;
-
-   egl->surf = EGL_NO_SURFACE;
-   return true;
-}
-
-#ifndef EGL_COLOR_COMPONENT_TYPE_EXT
-#define EGL_COLOR_COMPONENT_TYPE_EXT       0x3339
-#endif
-#ifndef EGL_COLOR_COMPONENT_TYPE_FLOAT_EXT
-#define EGL_COLOR_COMPONENT_TYPE_FLOAT_EXT 0x333B
-#endif
-
-bool egl_choose_scrgb_config(egl_ctx_data_t *egl, bool apply)
-{
-   static const EGLint attribs[] = {
-      EGL_SURFACE_TYPE,             EGL_WINDOW_BIT,
-      EGL_RENDERABLE_TYPE,          EGL_OPENGL_BIT,
-      EGL_COLOR_COMPONENT_TYPE_EXT, EGL_COLOR_COMPONENT_TYPE_FLOAT_EXT,
-      EGL_RED_SIZE,                 16,
-      EGL_GREEN_SIZE,               16,
-      EGL_BLUE_SIZE,                16,
-      EGL_ALPHA_SIZE,               16,
-      EGL_NONE
-   };
-   EGLConfig config;
-   EGLint n         = 0;
-   const char *exts = NULL;
-
-   if (!egl || !egl->dpy)
-      return false;
-   exts = _egl_query_string(egl->dpy, EGL_EXTENSIONS);
-   /* An RGBA16F surface carries alpha a compositor blends by; without a
-    * way to present it opaque, what the frame leaves undrawn shows
-    * whatever is behind the window. */
-   if (     !exts
-         || !strstr(exts, "EGL_EXT_pixel_format_float")
-         || !strstr(exts, "EGL_EXT_present_opaque"))
-      return false;
-   if (     !_egl_choose_config(egl->dpy, attribs, &config, 1, &n)
-         || n < 1)
-      return false;
-   if (apply)
-      egl->config = config;
-   return true;
-}
-
-/* EGL devices, as the GL GPU index lists them: index 0 is the
- * implementation's own choice, the rest the hardware devices
- * EGL_EXT_device_enumeration reports - under glvnd, every vendor's. */
-#define EGL_GPU_MAX 16
-static void    *egl_gpu_devices[EGL_GPU_MAX];
-static char     egl_gpu_files[EGL_GPU_MAX][64];
-static unsigned egl_gpu_count;
-
-struct string_list *egl_gpu_list_new(void)
-{
-#if defined(EGL_VERSION_1_5)
-   typedef EGLBoolean (EGLAPIENTRY *pfn_query_devices)(EGLint max,
-         void **devices, EGLint *num);
-   typedef const char *(EGLAPIENTRY *pfn_query_device_string)(
-         void *device, EGLint name);
-   void *found[EGL_GPU_MAX];
-   union string_list_elem_attr attr;
-   EGLint i, n                  = 0;
-   struct string_list *list     = NULL;
-   pfn_query_devices query      = NULL;
-   pfn_query_device_string qstr = NULL;
-
-   egl_gpu_count = 0;
-   attr.i        = 0;
-   if (     !check_egl_client_extension("EGL_EXT_device_enumeration",
-               (sizeof("EGL_EXT_device_enumeration")-1))
-         || !check_egl_client_extension("EGL_EXT_explicit_device",
-               (sizeof("EGL_EXT_explicit_device")-1)))
-      return NULL;
-   query = (pfn_query_devices)_egl_get_proc_address("eglQueryDevicesEXT");
-   qstr  = (pfn_query_device_string)_egl_get_proc_address(
-         "eglQueryDeviceStringEXT");
-   if (     !query || !qstr
-         || !query(EGL_GPU_MAX, found, &n) || n <= 0
-         || !(list = string_list_new()))
-      return NULL;
-
-   egl_gpu_devices[0]  = NULL;
-   egl_gpu_files[0][0] = '\0';
-   egl_gpu_count       = 1;
-   string_list_append(list, "System default", attr);
-
-   for (i = 0; i < n && egl_gpu_count < EGL_GPU_MAX; i++)
-   {
-      char label[256];
-      const char *exts = qstr(found[i], EGL_EXTENSIONS);
-      const char *file = NULL;
-
-      /* A software rasteriser is not a GPU to choose */
-      if (exts && strstr(exts, "EGL_MESA_device_software"))
-         continue;
-
-      label[0] = '\0';
-      if (exts && strstr(exts, "EGL_EXT_device_query_name"))
-      {
-         const char *vendor   = qstr(found[i], EGL_VENDOR);
-         const char *renderer = qstr(found[i], EGL_RENDERER_EXT);
-         /* NVIDIA's renderer string already starts with the vendor */
-         if (     vendor && renderer
-               && !strncmp(renderer, vendor, strlen(vendor)))
-            vendor = NULL;
-         snprintf(label, sizeof(label), "%s%s%s",
-               vendor   ? vendor   : "",
-               vendor && renderer ? " " : "",
-               renderer ? renderer : "");
-      }
-      if (exts && strstr(exts, "EGL_EXT_device_drm"))
-         file = qstr(found[i], EGL_DRM_DEVICE_FILE_EXT);
-      if (file)
-      {
-         size_t _len = strlen(label);
-         snprintf(label + _len, sizeof(label) - _len, "%s(%s)",
-               _len ? " " : "", file);
-      }
-      if (!label[0])
-         snprintf(label, sizeof(label), "EGL device %d", (int)i);
-
-      if (file)
-         strlcpy(egl_gpu_files[egl_gpu_count], file,
-               sizeof(egl_gpu_files[egl_gpu_count]));
-      else
-         egl_gpu_files[egl_gpu_count][0] = '\0';
-      egl_gpu_devices[egl_gpu_count++] = found[i];
-      string_list_append(list, label, attr);
-   }
-   return list;
-#else
-   return NULL;
-#endif
-}
-
-void *egl_gpu_device_at(int index)
-{
-   if (index <= 0 || (unsigned)index >= egl_gpu_count)
-      return NULL;
-   return egl_gpu_devices[index];
-}
-
-const char *egl_gpu_device_file(int index)
-{
-   if (     index <= 0 || (unsigned)index >= egl_gpu_count
-         || !egl_gpu_files[index][0])
-      return NULL;
-   return egl_gpu_files[index];
 }

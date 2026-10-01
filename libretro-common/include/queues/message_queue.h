@@ -43,15 +43,20 @@ enum message_queue_category
    MESSAGE_QUEUE_CATEGORY_SUCCESS
 };
 
-/* A node of the queue: one block holding the node and its strings,
- * owned and freed by the queue alone. Defined in message_queue.c. */
-struct queue_elem;
+typedef struct queue_elem
+{
+   char *msg;
+   char *title;
+   unsigned duration;
+   unsigned prio;
+   enum message_queue_icon icon;
+   enum message_queue_category category;
+} queue_elem_t;
 
 typedef struct msg_queue
 {
-   struct queue_elem *tmp;             /* the last node pull() removed, kept whole
-                                          for the message it returned */
-   struct queue_elem **elems;
+   char *tmp_msg;
+   queue_elem_t **elems;
    size_t ptr;
    size_t size;
 } msg_queue_t;
@@ -68,16 +73,16 @@ typedef struct
 
 /**
  * msg_queue_new:
- * @len               : maximum size of message
+ * @size              : maximum size of message
  *
  * Creates a message queue with maximum size different messages.
  *
  * Returns: NULL if allocation error, pointer to a message queue
  * if successful. Has to be freed manually.
  **/
-msg_queue_t *msg_queue_new(size_t len);
+msg_queue_t *msg_queue_new(size_t size);
 
-bool msg_queue_initialize(msg_queue_t *queue, size_t len);
+bool msg_queue_initialize(msg_queue_t *queue, size_t size);
 
 /**
  * msg_queue_push:
@@ -90,14 +95,6 @@ bool msg_queue_initialize(msg_queue_t *queue, size_t len);
  *
  * Push a new message onto the queue.
  **/
-/* As msg_queue_push(), and says whether the message went in: false
- * when the queue is full or an allocation failed, and then the queue
- * is as it was. */
-bool msg_queue_try_push(msg_queue_t *queue, const char *msg,
-      unsigned prio, unsigned duration,
-      const char *title,
-      enum message_queue_icon icon, enum message_queue_category category);
-
 void msg_queue_push(msg_queue_t *queue, const char *msg,
       unsigned prio, unsigned duration,
       char *title,

@@ -1,3 +1,5 @@
+[![Build Status](https://travis-ci.org/libretro/RetroArch.svg?branch=master)](https://travis-ci.org/libretro/RetroArch)
+[![Coverity Scan Build Status](https://scan.coverity.com/projects/8936/badge.svg)](https://scan.coverity.com/projects/retroarch)
 [![Crowdin](https://badges.crowdin.net/retroarch/localized.svg)](https://crowdin.com/project/retroarch)
 
 # RetroArch
@@ -32,7 +34,7 @@ Latest binaries are currently hosted on the [buildbot](http://buildbot.libretro.
 
 ## Support
 
-To reach developers, either make an issue here on GitHub, make a thread on the [forum](https://www.libretro.com/forums/), chat on [Discord](https://discord.gg/C4amCeV). You could create a post in [Reddit](https://www.reddit.com/r/RetroArch/) with *Technical Support* flair.
+To reach developers, either make an issue here on GitHub, make a thread on the [forum](https://www.libretro.com/forums/), chat on [discord](https://discord.gg/C4amCeV), or visit our IRC channel: #retroarch @ irc.freenode.org. You could create a post in [Reddit](https://www.reddit.com/r/RetroArch/) with *Technical Support* flair.
 
 ## Documentation
 
@@ -62,54 +64,33 @@ RetroArch also emphasizes being easy to integrate into various launcher frontend
 ## Platforms
 
 RetroArch has been ported to the following platforms:
-   - Android (2.x to most recent version)
-   - Apple iOS
-   - Apple macOS (PPC, x86-32 and x86-64)
-   - Apple tvOS
-   - Blackberry
+
    - DOS
+   - Windows
+   - Linux
    - Emscripten (WebAssembly and JavaScript)
    - FreeBSD
-   - Haiku
-   - LG webOS
-   - Linux
-   - Original Microsoft Xbox
-   - Microsoft Xbox 360 (Libxenon/XeXDK)
-   - Microsoft Xbox One
-   - Microsoft Xbox Series S/X
-   - Miyoo
    - NetBSD
-   - Nintendo NES/SNES Classic Edition
-   - Nintendo GameCube
-   - Nintendo Wii
-   - Nintendo Switch
-   - Nintendo Wii U
-   - Nintendo 3DS/2DS
    - OpenBSD
-   - OpenDingux
-   - PlayStation2
-   - PlayStation3
-   - PlayStation4
+   - Haiku
+   - Solaris
+   - macOS (PPC, x86-32 and x86-64)
+   - PlayStation 2
+   - PlayStation 3
    - PlayStation Portable
    - PlayStation Vita
+   - Original Microsoft Xbox
+   - Microsoft Xbox 360 (Libxenon/XeXDK)
+   - Nintendo GameCube
+   - Nintendo Wii
+   - Nintendo Wii U
+   - Nintendo 3DS/2DS
+   - Nintendo Switch
+   - Nintendo NES/SNES Classic Edition
    - Raspberry Pi
-   - ReactOS
-   - Redox OS
-   - RetroFW
-   - RS90
-   - SerenityOS
-   - Solaris
-   - Windows NT 3.5
-   - Windows 95
-   - Windows 98
-   - Windows 2000
-   - Windows XP
-   - Windows Millennium
-   - Windows Vista
-   - Windows 7
-   - Windows 8
-   - Windows 10
-   - Windows 11
+   - Android
+   - iOS
+   - Blackberry
 
 ## Dependencies (PC)
 
@@ -123,7 +104,7 @@ following dependencies come as recommended:
    - GL headers / Vulkan headers
    - X11 headers and libs, or EGL/KMS/GBM
 
-OSX port of RetroArch requires latest versions of Xcode to build.
+OSX port of RetroArch requires latest versions of XCode to build.
 
 RetroArch can utilize these libraries if enabled:
 
@@ -140,7 +121,6 @@ RetroArch needs at least one of these audio driver libraries:
    - JACK
    - SDL
    - PulseAudio
-   - PipeWire
    - XAudio2 (Win32, Xbox 360)
    - DirectSound (Win32, Xbox 1)
    - CoreAudio (OSX, iOS)
@@ -153,47 +133,6 @@ dynamically, it's not required at build time.
 Console ports have their own dependencies, but generally do not require
 anything other than what the respective SDKs provide.
 
-## Requirements
-
-### OpenGL1 ###
-Your videocard needs to at least support the OpenGL 1.1 spec.
-
-***Shaders***: N/A
-
-**Menu driver support**: MaterialUI, XMB, Ozone and RGUI should all work correctly.
-XMB won't have shader pipeline effects because of the aforementioned lack of shader
-support.
-
-### OpenGL2 ###
-Your videocard needs to at least support the OpenGL 2.1 spec.
-
-***Shaders:*** You can choose between either NVIDIA Cg shaders (deprecated, requires separate runtime
-to be installed on your system), or GLSL shaders.
-
-***Menu driver support:*** MaterialUI, XMB, Ozone and RGUI should all work correctly.
-
-### OpenGL3 ###
-Your videocard needs to at least support the OpenGL 3.2 core feature spec.
-
-***Shaders:*** You will be able to use modern Slang shaders with this driver.
-
-***Menu driver support:*** MaterialUI, XMB, Ozone and RGUI should all work correctly.
-
-### Direct3D 11 ###
-Your videocard needs to at least support the Direct3D11 11.0 spec. The card
-also needs to support at least the Shader Model 4.0.
-
-***Shaders:*** You will be able to use modern Slang shaders with this driver.
-
-***Menu driver support:*** MaterialUI, XMB, Ozone and RGUI should all work correctly.
-
-### Vulkan ###
-Your videocard needs to at least support the Vulkan 1.0 spec.
-
-***Shaders:*** You will be able to use modern Slang shaders with this driver.
-
-***Menu driver support:*** MaterialUI, XMB, Ozone and RGUI should all work correctly.
-
 ## Configuring
 
 The default configuration is defined in `config.def.h`.
@@ -204,7 +143,7 @@ A sample configuration file is installed to `/etc/retroarch.cfg`. This is the sy
 RetroArch will on startup create a config file in `$XDG\_CONFIG\_HOME/retroarch/retroarch.cfg` if it does not exist.
 Users only need to configure a certain option if the desired value deviates from the value defined in config.def.h.
 
-To configure joypads, use the built-in menu or manually configure them in `retroarch.cfg`.
+To configure joypads, use the built-in menu or the `retroarch-joyconfig` command-line tool.
 
 ## Compiling and installing
 
@@ -331,11 +270,13 @@ The links below belong to our official channels. Links other than this may have 
 - [Facebook](https://www.facebook.com/libretro)
 - [Twitter](https://twitter.com/libretro)
 - [Reddit](https://www.reddit.com/r/RetroArch/)
-- [YouTube](https://www.youtube.com/@Libretro)
+- [YouTube](https://www.youtube.com/Libretro)
+- [Google Post](https://posts.google.com/share/55Nhs2jG)
 - [Steam](https://store.steampowered.com/app/1118310/RetroArch/)
-- [YouTube Topic](https://www.youtube.com/channel/UCyXchL2xdEpHNzqE52w8XYw)
+- [YouTube Topic](https://www.youtube.com/channel/UC5q007PYyQPgin0HHbzF0zQ)
 - [Patreon](https://www.patreon.com/libretro)
-- [Discord](https://discord.gg/C4amCeV)
+- [BOUNTYSOURCE](https://www.bountysource.com/teams/libretro/issues)
+- [Discord](https://discord.gg/27Xxm2h)
 - [Teespring](https://teespring.com/stores/retroarch)
 - [Documentation](https://docs.libretro.com/)
 - [Forum](https://forums.libretro.com/)

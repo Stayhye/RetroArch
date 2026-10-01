@@ -5,7 +5,6 @@
 ; Schema: 0
                OpCapability Shader
                OpCapability StorageInputOutput16
-               OpCapability Float16
                OpExtension "SPV_KHR_16bit_storage"
           %1 = OpExtInstImport "GLSL.std.450"
                OpMemoryModel Logical GLSL450

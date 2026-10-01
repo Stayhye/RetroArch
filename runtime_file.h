@@ -30,9 +30,55 @@
 #include <boolean.h>
 
 #include "playlist.h"
-#include "runtime_file_defines.h"
 
 RETRO_BEGIN_DECLS
+
+/* Enums */
+
+enum playlist_sublabel_last_played_style_type
+{
+   PLAYLIST_LAST_PLAYED_STYLE_YMD_HMS = 0,
+   PLAYLIST_LAST_PLAYED_STYLE_YMD_HM,
+   PLAYLIST_LAST_PLAYED_STYLE_YMD,
+   PLAYLIST_LAST_PLAYED_STYLE_YM,
+   PLAYLIST_LAST_PLAYED_STYLE_MDYYYY_HMS,
+   PLAYLIST_LAST_PLAYED_STYLE_MDYYYY_HM,
+   PLAYLIST_LAST_PLAYED_STYLE_MD_HM,
+   PLAYLIST_LAST_PLAYED_STYLE_MDYYYY,
+   PLAYLIST_LAST_PLAYED_STYLE_MD,
+   PLAYLIST_LAST_PLAYED_STYLE_DDMMYYYY_HMS,
+   PLAYLIST_LAST_PLAYED_STYLE_DDMMYYYY_HM,
+   PLAYLIST_LAST_PLAYED_STYLE_DDMM_HM,
+   PLAYLIST_LAST_PLAYED_STYLE_DDMMYYYY,
+   PLAYLIST_LAST_PLAYED_STYLE_DDMM,
+   PLAYLIST_LAST_PLAYED_STYLE_YMD_HMS_AMPM,
+   PLAYLIST_LAST_PLAYED_STYLE_YMD_HM_AMPM,
+   PLAYLIST_LAST_PLAYED_STYLE_MDYYYY_HMS_AMPM,
+   PLAYLIST_LAST_PLAYED_STYLE_MDYYYY_HM_AMPM,
+   PLAYLIST_LAST_PLAYED_STYLE_MD_HM_AMPM,
+   PLAYLIST_LAST_PLAYED_STYLE_DDMMYYYY_HMS_AMPM,
+   PLAYLIST_LAST_PLAYED_STYLE_DDMMYYYY_HM_AMPM,
+   PLAYLIST_LAST_PLAYED_STYLE_DDMM_HM_AMPM,
+   PLAYLIST_LAST_PLAYED_STYLE_LAST
+};
+
+/* Note: These must be kept synchronised with
+ * 'enum menu_timedate_date_separator_type' in
+ * 'menu_defines.h' */
+enum playlist_sublabel_last_played_date_separator_type
+{
+   PLAYLIST_LAST_PLAYED_DATE_SEPARATOR_HYPHEN = 0,
+   PLAYLIST_LAST_PLAYED_DATE_SEPARATOR_SLASH,
+   PLAYLIST_LAST_PLAYED_DATE_SEPARATOR_PERIOD,
+   PLAYLIST_LAST_PLAYED_DATE_SEPARATOR_LAST
+};
+
+enum playlist_sublabel_runtime
+{
+   PLAYLIST_RUNTIME_PER_CORE = 0,
+   PLAYLIST_RUNTIME_AGGREGATE,
+   PLAYLIST_RUNTIME_LAST
+};
 
 /* Structs */
 
@@ -57,8 +103,6 @@ typedef struct
 {
    rtl_runtime_t runtime;           /* unsigned alignment */
    rtl_last_played_t last_played;   /* unsigned alignment */
-   unsigned play_count;
-   unsigned state_slot;
    char path[PATH_MAX_LENGTH];
 } runtime_log_t;
 
@@ -77,6 +121,15 @@ runtime_log_t *runtime_log_init(
       bool log_per_core);
 
 /* Setters */
+
+/* Set runtime to specified hours, minutes, seconds value */
+void runtime_log_set_runtime_hms(runtime_log_t *runtime_log, unsigned hours, unsigned minutes, unsigned seconds);
+
+/* Set runtime to specified microseconds value */
+void runtime_log_set_runtime_usec(runtime_log_t *runtime_log, retro_time_t usec);
+
+/* Adds specified hours, minutes, seconds value to current runtime */
+void runtime_log_add_runtime_hms(runtime_log_t *runtime_log, unsigned hours, unsigned minutes, unsigned seconds);
 
 /* Adds specified microseconds value to current runtime */
 void runtime_log_add_runtime_usec(runtime_log_t *runtime_log, retro_time_t usec);
@@ -97,13 +150,23 @@ void runtime_log_reset(runtime_log_t *runtime_log);
  * from runtime_log directly - but perhaps it is logically
  * cleaner to have a symmetrical set/get interface) */
 
+/* Gets runtime in hours, minutes, seconds */
+void runtime_log_get_runtime_hms(runtime_log_t *runtime_log, unsigned *hours, unsigned *minutes, unsigned *seconds);
+
+/* Gets runtime in microseconds */
+void runtime_log_get_runtime_usec(runtime_log_t *runtime_log, retro_time_t *usec);
+
 /* Gets runtime as a pre-formatted string */
-size_t runtime_log_get_runtime_str(runtime_log_t *runtime_log, char *s, size_t len);
+void runtime_log_get_runtime_str(runtime_log_t *runtime_log, char *str, size_t len);
 
 /* Gets last played entry values */
 void runtime_log_get_last_played(runtime_log_t *runtime_log,
       unsigned *year, unsigned *month, unsigned *day,
       unsigned *hour, unsigned *minute, unsigned *second);
+
+/* Gets last played entry values as a struct tm 'object'
+ * (e.g. for printing with strftime()) */
+void runtime_log_get_last_played_time(runtime_log_t *runtime_log, struct tm *time_info);
 
 /* Gets last played entry value as a pre-formatted string */
 void runtime_log_get_last_played_str(runtime_log_t *runtime_log,
@@ -116,12 +179,18 @@ void runtime_log_get_last_played_str(runtime_log_t *runtime_log,
 /* Returns true if log has a non-zero runtime entry */
 bool runtime_log_has_runtime(runtime_log_t *runtime_log);
 
+/* Returns true if log has a non-zero last played entry */
+bool runtime_log_has_last_played(runtime_log_t *runtime_log);
+
 /* Saving */
 
 /* Saves specified runtime log to disk */
 void runtime_log_save(runtime_log_t *runtime_log);
 
 /* Utility functions */
+
+/* Convert from hours, minutes, seconds to microseconds */
+void runtime_log_convert_hms2usec(unsigned hours, unsigned minutes, unsigned seconds, retro_time_t *usec);
 
 /* Convert from microseconds to hours, minutes, seconds */
 void runtime_log_convert_usec2hms(retro_time_t usec, unsigned *hours, unsigned *minutes, unsigned *seconds);
@@ -130,7 +199,13 @@ void runtime_log_convert_usec2hms(retro_time_t usec, unsigned *hours, unsigned *
 
 /* Updates specified playlist entry runtime values with
  * contents of associated log file */
-void runtime_update_playlist(playlist_t *playlist, size_t idx);
+void runtime_update_playlist(
+      playlist_t *playlist, size_t idx,
+      const char *dir_runtime_log,
+      const char *dir_playlist,
+      bool log_per_core,
+      enum playlist_sublabel_last_played_style_type timedate_style,
+      enum playlist_sublabel_last_played_date_separator_type date_separator);
 
 #if defined(HAVE_MENU)
 /* Contentless cores manipulation */

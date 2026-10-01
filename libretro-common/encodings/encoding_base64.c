@@ -29,10 +29,10 @@
 #include <stdlib.h>
 #include <encodings/base64.h>
 
-static const char* b64 = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
+const static char* b64 = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
 
 /* maps A=>0,B=>1.. */
-static const unsigned char unb64[]={
+const static unsigned char unb64[]={
   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,
   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,
   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,
@@ -68,17 +68,24 @@ static const unsigned char unb64[]={
 */
 char* base64(const void* binaryData, int len, int *flen)
 {
+   const unsigned char* bin          = (const unsigned char*) binaryData;
    char* res;
+  
+   int rc = 0; /* result counter */
    int byteNo; /* I need this after the loop */
-   const unsigned char* bin = (const unsigned char*) binaryData;
-   int rc                   = 0; /* result counter */
-   int modulusLen           = len % 3 ;
-   /* 2 gives 1 and 1 gives 2, but 0 gives 0. */
-   int pad                  = ((modulusLen&1)<<1) + ((modulusLen&2)>>1);
+  
+   int modulusLen = len % 3 ;
 
-   *flen                    = 4*(len + pad)/3;
-   if (!(res = (char*) malloc(*flen + 1))) /* and one for the NULL */
+   /* 2 gives 1 and 1 gives 2, but 0 gives 0. */
+   int pad = ((modulusLen&1)<<1) + ((modulusLen&2)>>1);
+
+   *flen = 4*(len + pad)/3;
+   res = (char*) malloc(*flen + 1); /* and one for the null */
+   if (!res)
+   {
+      /* ERROR: base64 could not allocate enough memory. */
       return 0;
+   }
   
    for (byteNo=0; byteNo <= len-3; byteNo+=3)
    {
@@ -113,29 +120,34 @@ char* base64(const void* binaryData, int len, int *flen)
 
 unsigned char* unbase64(const char* ascii, int len, int *flen)
 {
-   int charNo;
-   unsigned char *bin;
    const unsigned char *safeAsciiPtr = (const unsigned char*) ascii;
+   unsigned char *bin;
    int cb                            = 0;
+   int charNo;
    int pad                           = 0;
 
-   /* Valid base64 has length that is a non-zero multiple of 4.
-    * Shorter or misaligned inputs are malformed and have historically
-    * caused 1-byte heap overflows when pad > 0 (e.g. "AB="). */
-   if (len < 4 || (len & 3) != 0)
-   {
+   if (len < 2) { /* 2 accesses below would be OOB. */
+      /* catch empty string, return NULL as result. */
+
+      /* ERROR: You passed an invalid base64 string (too short). 
+       * You get NULL back. */
       *flen = 0;
       return 0;
    }
 
-   if (safeAsciiPtr[len-1]=='=')
+   if(safeAsciiPtr[len-1]=='=')
       ++pad;
-   if (safeAsciiPtr[len-2]=='=')
+   if(safeAsciiPtr[len-2]=='=')
       ++pad;
   
    *flen = 3*len/4 - pad;
-   if (!(bin = (unsigned char*)malloc(*flen)))
+   bin = (unsigned char*)malloc(*flen);
+
+   if (!bin)
+   {
+      /* ERROR: unbase64 could not allocate enough memory. */
       return 0;
+   }
   
    for (charNo=0; charNo <= len-4-pad; charNo+=4)
    {

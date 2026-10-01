@@ -84,8 +84,6 @@
  * - B:      SDLK_LCTRL
  * - Y:      SDLK_SPACE
  * - Menu:   SDLK_RCTRL
- * - L3:     SDLK_RALT
- * - R3:     SDLK_RSHIFT
  */
 #if defined(MIYOO)
 #define SDL_DINGUX_SDLK_X      SDLK_LSHIFT
@@ -104,13 +102,8 @@
 #define SDL_DINGUX_SDLK_R2     SDLK_PAGEDOWN
 #define SDL_DINGUX_SDLK_SELECT SDLK_ESCAPE
 #define SDL_DINGUX_SDLK_START  SDLK_RETURN
-#if defined(MIYOO)
-#define SDL_DINGUX_SDLK_L3     SDLK_RALT
-#define SDL_DINGUX_SDLK_R3     SDLK_RSHIFT
-#else
 #define SDL_DINGUX_SDLK_L3     SDLK_KP_DIVIDE
 #define SDL_DINGUX_SDLK_R3     SDLK_KP_PERIOD
-#endif
 #define SDL_DINGUX_SDLK_UP     SDLK_UP
 #define SDL_DINGUX_SDLK_RIGHT  SDLK_RIGHT
 #define SDL_DINGUX_SDLK_DOWN   SDLK_DOWN
@@ -194,8 +187,8 @@ static bool sdl_dingux_rumble_init(dingux_joypad_rumble_t *rumble)
 
    /* Check whether shake device has the required
     * feature set */
-   if (   !Shake_QueryEffectSupport(rumble->device, SHAKE_EFFECT_PERIODIC)
-       || !Shake_QueryWaveformSupport(rumble->device, SHAKE_PERIODIC_SINE))
+   if (!Shake_QueryEffectSupport(rumble->device, SHAKE_EFFECT_PERIODIC) ||
+       !Shake_QueryWaveformSupport(rumble->device, SHAKE_PERIODIC_SINE))
       goto error;
 
    /* In most cases it is recommended to use SHAKE_EFFECT_PERIODIC
@@ -237,7 +230,7 @@ static bool sdl_dingux_rumble_init(dingux_joypad_rumble_t *rumble)
    return true;
 
 error:
-   RARCH_WARN("[libShake] Input device does not support rumble effects.\n");
+   RARCH_WARN("[libShake]: Input device does not support rumble effects.\n");
 
    if (rumble->device)
    {
@@ -263,9 +256,13 @@ static bool sdl_dingux_rumble_update(Shake_Device *device,
    {
       if (effect->active)
       {
-         if (Shake_Stop(device, effect->id) != SHAKE_OK)
+         if (Shake_Stop(device, effect->id) == SHAKE_OK)
+         {
+            effect->active = false;
+            return true;
+         }
+         else
             return false;
-         effect->active = false;
       }
 
       return true;
@@ -290,9 +287,13 @@ static bool sdl_dingux_rumble_update(Shake_Device *device,
    /* If effect is currently idle, activate it */
    if (!effect->active)
    {
-      if (Shake_Play(device, effect->id) != SHAKE_OK)
+      if (Shake_Play(device, effect->id) == SHAKE_OK)
+      {
+         effect->active = true;
+         return true;
+      }
+      else
          return false;
-      effect->active = true;
    }
 
    return true;
@@ -303,7 +304,8 @@ static bool sdl_dingux_joypad_set_rumble(unsigned pad,
 {
    dingux_joypad_t *joypad = (dingux_joypad_t*)&dingux_joypad;
 
-   if ((pad != 0) || !joypad->rumble.device)
+   if ((pad != 0) ||
+       !joypad->rumble.device)
       return false;
 
    switch (effect)
@@ -327,7 +329,8 @@ static bool sdl_dingux_joypad_set_rumble_gain(unsigned pad, unsigned gain)
 {
    dingux_joypad_t *joypad = (dingux_joypad_t*)&dingux_joypad;
 
-   if ((pad != 0) || !joypad->rumble.device)
+   if ((pad != 0) ||
+       !joypad->rumble.device)
       return false;
 
    /* Gain is automatically capped by Shake_SetGain(),
@@ -377,7 +380,7 @@ static void sdl_dingux_joypad_connect(void)
     * autoconfig task */
    input_autoconfigure_connect(
          sdl_dingux_joypad_name(0), /* name */
-         NULL, NULL,                /* display_names */
+         NULL,                      /* display_name */
          sdl_dingux_joypad.ident,   /* driver */
          0,                         /* port */
          0,                         /* vid */
@@ -507,48 +510,49 @@ static void sdl_dingux_joypad_get_buttons(unsigned port, input_bits_t *state)
 static int16_t sdl_dingux_joypad_axis_state(unsigned port, uint32_t joyaxis)
 {
 #if defined(SDL_DINGUX_HAS_ANALOG)
-   if (port == 0)
+   dingux_joypad_t *joypad = (dingux_joypad_t*)&dingux_joypad;
+   int val                 = 0;
+   int axis                = -1;
+   bool is_neg             = false;
+   bool is_pos             = false;
+
+   if (port != 0)
+      return 0;
+
+   if (AXIS_NEG_GET(joyaxis) < 4)
    {
-      dingux_joypad_t *joypad = (dingux_joypad_t*)&dingux_joypad;
-      if (AXIS_NEG_GET(joyaxis) < 4)
-      {
-         int16_t val  = 0;
-         int16_t axis = AXIS_NEG_GET(joyaxis);
-         switch (axis)
-         {
-            case 0:
-            case 1:
-               val = joypad->analog_state[0][axis];
-               break;
-            case 2:
-            case 3:
-               val = joypad->analog_state[1][axis - 2];
-               break;
-         }
-         if (val < 0)
-            return val;
-      }
-      else if (AXIS_POS_GET(joyaxis) < 4)
-      {
-         int16_t val  = 0;
-         int16_t axis = AXIS_POS_GET(joyaxis);
-         switch (axis)
-         {
-            case 0:
-            case 1:
-               val = joypad->analog_state[0][axis];
-               break;
-            case 2:
-            case 3:
-               val = joypad->analog_state[1][axis - 2];
-               break;
-         }
-         if (val > 0)
-            return val;
-      }
+      axis   = AXIS_NEG_GET(joyaxis);
+      is_neg = true;
    }
-#endif
+   else if (AXIS_POS_GET(joyaxis) < 4)
+   {
+      axis   = AXIS_POS_GET(joyaxis);
+      is_pos = true;
+   }
+   else
+      return 0;
+
+   switch (axis)
+   {
+      case 0:
+      case 1:
+         val = joypad->analog_state[0][axis];
+         break;
+      case 2:
+      case 3:
+         val = joypad->analog_state[1][axis - 2];
+         break;
+   }
+
+   if (is_neg && val > 0)
+      return 0;
+   else if (is_pos && val < 0)
+      return 0;
+
+   return val;
+#else
    return 0;
+#endif
 }
 
 static int16_t sdl_dingux_joypad_axis(unsigned port, uint32_t joyaxis)
@@ -798,8 +802,6 @@ input_device_driver_t sdl_dingux_joypad = {
    NULL,
    NULL,
 #endif
-   NULL, /* set_sensor_state */
-   NULL, /* get_sensor_input */
    sdl_dingux_joypad_name,
    "sdl_dingux",
 };

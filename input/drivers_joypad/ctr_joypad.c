@@ -41,7 +41,7 @@ static void ctr_joypad_autodetect_add(unsigned autoconf_pad)
 {
    input_autoconfigure_connect(
          ctr_joypad_name(autoconf_pad),
-         NULL, NULL,
+         NULL,
          ctr_joypad.ident,
          autoconf_pad,
          0,
@@ -64,53 +64,51 @@ static int32_t ctr_joypad_button(unsigned port_num, uint16_t joykey)
 
 static void ctr_joypad_get_buttons(unsigned port_num, input_bits_t *state)
 {
-   if (port_num < DEFAULT_MAX_PADS)
+	if (port_num < DEFAULT_MAX_PADS)
    {
-      BITS_COPY16_PTR( state, pad_state );
-   }
+		BITS_COPY16_PTR( state, pad_state );
+	}
    else
-      BIT256_CLEAR_ALL_PTR(state);
+		BIT256_CLEAR_ALL_PTR(state);
 }
 
 static int16_t ctr_joypad_axis_state(unsigned port_num, uint32_t joyaxis)
 {
+   int    val  = 0;
+   int    axis = -1;
+   bool is_neg = false;
+   bool is_pos = false;
+
    if (AXIS_NEG_GET(joyaxis) < 4)
    {
-      int val  = 0;
-      int axis = AXIS_NEG_GET(joyaxis);
-      switch (axis)
-      {
-         case 0:
-         case 1:
-            val = analog_state[port_num][0][axis];
-            break;
-         case 2:
-         case 3:
-            val = analog_state[port_num][1][axis - 2];
-            break;
-      }
-      if (val < 0)
-         return val;
+      axis   = AXIS_NEG_GET(joyaxis);
+      is_neg = true;
    }
    else if (AXIS_POS_GET(joyaxis) < 4)
    {
-      int val  = 0;
-      int axis = AXIS_POS_GET(joyaxis);
-      switch (axis)
-      {
-         case 0:
-         case 1:
-            val = analog_state[port_num][0][axis];
-            break;
-         case 2:
-         case 3:
-            val = analog_state[port_num][1][axis - 2];
-            break;
-      }
-      if (val > 0)
-         return val;
+      axis   = AXIS_POS_GET(joyaxis);
+      is_pos = true;
    }
-   return 0;
+   else
+      return 0;
+
+   switch (axis)
+   {
+      case 0:
+      case 1:
+         val = analog_state[port_num][0][axis];
+         break;
+      case 2:
+      case 3:
+         val = analog_state[port_num][1][axis - 2];
+         break;
+   }
+
+   if (is_neg && val > 0)
+      return 0;
+   else if (is_pos && val < 0)
+      return 0;
+   return val;
 }
 
 static int16_t ctr_joypad_axis(unsigned port_num, uint32_t joyaxis)
@@ -125,7 +123,7 @@ static int16_t ctr_joypad_state(
       const struct retro_keybind *binds,
       unsigned port)
 {
-   int i;
+   unsigned i;
    int16_t ret                          = 0;
    uint16_t port_idx                    = joypad_info->joy_idx;
 
@@ -139,12 +137,12 @@ static int16_t ctr_joypad_state(
          ? binds[i].joykey  : joypad_info->auto_binds[i].joykey;
       const uint32_t joyaxis = (binds[i].joyaxis != AXIS_NONE)
          ? binds[i].joyaxis : joypad_info->auto_binds[i].joyaxis;
-
-      if ((uint16_t)joykey != NO_BTN &&
+      
+      if ((uint16_t)joykey != NO_BTN && 
             (pad_state & (1 << (uint16_t)joykey)))
          ret |= ( 1 << i);
       else if (joyaxis != AXIS_NONE &&
-            ((float)abs(ctr_joypad_axis_state(port_idx, joyaxis))
+            ((float)abs(ctr_joypad_axis_state(port_idx, joyaxis)) 
              / 0x8000) > joypad_info->axis_threshold)
          ret |= (1 << i);
    }
@@ -154,7 +152,7 @@ static int16_t ctr_joypad_state(
 
 static int16_t ctr_joypad_fix_range(int16_t val)
 {
-   val = (val > 127) ? 127 : (val < -127) ? -127 : val;
+   val = (val > 127)? 127: (val < -127)? -127: val;
    return val * 256;
 }
 
@@ -191,6 +189,14 @@ static void ctr_joypad_poll(void)
    analog_state[0][RETRO_DEVICE_INDEX_ANALOG_LEFT] [RETRO_DEVICE_ID_ANALOG_Y]  = -ctr_joypad_fix_range(state_tmp_left_analog.dy);
    analog_state[0][RETRO_DEVICE_INDEX_ANALOG_RIGHT] [RETRO_DEVICE_ID_ANALOG_X] =  ctr_joypad_fix_range(state_tmp_right_analog.dx);
    analog_state[0][RETRO_DEVICE_INDEX_ANALOG_RIGHT] [RETRO_DEVICE_ID_ANALOG_Y] = -ctr_joypad_fix_range(state_tmp_right_analog.dy);
+
+   /* panic button */
+   if((state_tmp & KEY_START) &&
+         (state_tmp & KEY_SELECT) &&
+         (state_tmp & KEY_L) &&
+         (state_tmp & KEY_R))
+      command_event(CMD_EVENT_QUIT, NULL);
+
 }
 
 static bool ctr_joypad_query_pad(unsigned pad)
@@ -199,7 +205,9 @@ static bool ctr_joypad_query_pad(unsigned pad)
    return pad < MAX_USERS && pad_state;
 }
 
-static void ctr_joypad_destroy(void) { }
+static void ctr_joypad_destroy(void)
+{
+}
 
 input_device_driver_t ctr_joypad = {
    ctr_joypad_init,
@@ -210,10 +218,8 @@ input_device_driver_t ctr_joypad = {
    ctr_joypad_get_buttons,
    ctr_joypad_axis,
    ctr_joypad_poll,
-   NULL, /* set_rumble */
-   NULL, /* set_rumble_gain */
-   NULL, /* set_sensor_state */
-   NULL, /* get_sensor_input */
+   NULL,
+   NULL,
    ctr_joypad_name,
    "ctr",
 };

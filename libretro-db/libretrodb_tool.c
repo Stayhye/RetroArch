@@ -35,7 +35,7 @@ int main(int argc, char ** argv)
    const char *command                            = NULL;
    const char *path                               = NULL;
    const char *query_exp                          = NULL;
-   const char *err                                = NULL;
+   const char *error                              = NULL;
    libretrodb_t *db                               = NULL;
    libretrodb_cursor_t *cur                       = NULL;
    libretrodb_query_t *q                          = NULL;
@@ -60,16 +60,16 @@ int main(int argc, char ** argv)
    if (!db || !cur)
       goto error;
 
-   if ((rv = libretrodb_open(path, db, true)) != 0)
+   if ((rv = libretrodb_open(path, db)) != 0)
    {
-      printf("Could not open db file '%s'\n", path);
+      printf("Could not open db file '%s': %s\n", path, strerror(-rv));
       goto error;
    }
    else if (memcmp(command, "list", 4) == 0)
    {
       if ((rv = libretrodb_cursor_open(db, cur, NULL)) != 0)
       {
-         printf("Could not open cursor\n");
+         printf("Could not open cursor: %s\n", strerror(-rv));
          goto error;
       }
 
@@ -95,18 +95,18 @@ int main(int argc, char ** argv)
       }
 
       query_exp = argv[3];
-      err = NULL;
-      q   = libretrodb_query_compile(db, query_exp, strlen(query_exp), &err);
+      error = NULL;
+      q = libretrodb_query_compile(db, query_exp, strlen(query_exp), &error);
 
-      if (err)
+      if (error)
       {
-         printf("%s\n", err);
+         printf("%s\n", error);
          goto error;
       }
 
       if ((rv = libretrodb_cursor_open(db, cur, q)) != 0)
       {
-         printf("Could not open cursor\n");
+         printf("Could not open cursor: %s\n", strerror(-rv));
          goto error;
       }
 
@@ -126,18 +126,18 @@ int main(int argc, char ** argv)
       }
 
       query_exp = argv[3];
-      err       = NULL;
-      q = libretrodb_query_compile(db, query_exp, strlen(query_exp), &err);
+      error = NULL;
+      q = libretrodb_query_compile(db, query_exp, strlen(query_exp), &error);
 
-      if (err)
+      if (error)
       {
-         printf("%s\n", err);
+         printf("%s\n", error);
          goto error;
       }
 
       if ((rv = libretrodb_cursor_open(db, cur, q)) != 0)
       {
-         printf("Could not open cursor\n");
+         printf("Could not open cursor: %s\n", strerror(-rv));
          goto error;
       }
 

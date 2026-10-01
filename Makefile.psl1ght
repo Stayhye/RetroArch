@@ -6,7 +6,7 @@
 ifeq ($(strip $(PSL1GHT)),)
 $(error "Please set PSL1GHT in your environment. export PSL1GHT=<path>")
 endif
-
+ 
 include $(PSL1GHT)/ppu_rules
 
 include version.all
@@ -23,24 +23,17 @@ APPID                   = SSNE10001
 TITLE                   = Retroarch PSL1GHT
 PACKAGE_BASENAME := retroarch_psl1ght
 
-ELF_TARGET  := retroarch_psl1ght.elf
+ELF_TARGET := retroarch_psl1ght.elf
 SELF_TARGET := $(ELF_TARGET:.elf=.self)
-CORE_PATH    = pkg/psl1ght/pkg/USRDIR/cores/CORE.SELF
+CORE_PATH		= pkg/psl1ght/pkg/USRDIR/cores/CORE.SELF
 
-INCLUDE += -I. -Ideps -Ilibretro-common/include $(LIBPSL1GHT_INC) -Iinclude -Idefines -I$(PORTLIBS)/include
-LIBDIRS += -L. -L$(PORTLIBS)/lib
-
-ifeq ($(HAVE_STATIC_DUMMY),1)
-   DEFINES += -DHAVE_STATIC_DUMMY
-   LIBS :=
-else
-   LIBS := -lretro_psl1ght
-endif
+INCLUDE += -I. -Ips3/gcmgl/include/export -Ips3/include -Ideps -Ideps/stb -Ilibretro-common/include/compat/zlib -Ilibretro-common/include $(LIBPSL1GHT_INC) -Iinclude -Idefines
+LIBDIRS += -L.
 
 MACHDEP := -D__PSL1GHT__ -D__PS3__ -mcpu=cell
-CFLAGS += -Wall $(DEFINES) $(MACHDEP) $(INCLUDE)
+CFLAGS += -Wall $(MACHDEP) $(INCLUDE)
 LDFLAGS := $(MACHDEP)
-LIBS += -lrt -laudio -lrsx -lgcm_sys -lnet -lio -lsysutil -lsysmodule -lm -llv2 -lnet -lnetctl -lsysfs -lcamera -lgem -lspurs
+LIBS := -lretro_psl1ght -laudio -lrsx -lgcm_sys -lnet -lio -lsysutil -lsysmodule -lm -ljpgdec -lpngdec -llv2 -lnet -lnetctl -lsysfs -lfreetype -lcamera -lgem -lspurs
 
 # system platform
 system_platform = unix
@@ -60,15 +53,11 @@ else
 GIT			= git.exe
 endif
 
-SHADER_OBJS = gfx/drivers/rsx_shaders/modern_opaque.vpo.o \
-              gfx/drivers/rsx_shaders/modern_opaque.fpo.o \
-              gfx/drivers/rsx_shaders/modern_alpha_blend.vpo.o \
-              gfx/drivers/rsx_shaders/modern_alpha_blend.fpo.o
+SHADER_OBJS = gfx/drivers/rsx_shaders/vpshader_basic.vpo.o \
+              gfx/drivers/rsx_shaders/fpshader_basic.fpo.o
 
 LIBCO_OBJ = libretro-common/libco/ps3.o
 
-# memmap.o is not listed here: griffin.c includes memmap.c, so
-# building it separately as well would define every symbol twice.
 OBJ = $(SHADER_OBJS) $(LIBCO_OBJ) griffin/griffin.o
 
 ifeq ($(HAVE_LOGGER), 1)
@@ -79,23 +68,24 @@ ifeq ($(HAVE_FILE_LOGGER), 1)
 CFLAGS		+= -DHAVE_FILE_LOGGER
 endif
 
-SHARED_FLAGS := -DHAVE_GCM \
-		-DHAVE_MENU \
+SHARED_FLAGS :=
+
+SHARED_FLAGS += -DHAVE_VIDEO_LAYOUT
+SHARED_FLAGS += -DHAVE_MENU \
 		-DHAVE_CONFIGFILE \
 		-DHAVE_PATCH \
 		-DHAVE_CHEATS \
 		-DRARCH_CONSOLE \
 		-DHAVE_OVERLAY \
 		-DHAVE_HEADSET \
+		-DHAVE_CG \
+		-DHAVE_CG_RUNTIME_COMPILER \
 		-DHAVE_SYSMODULES \
 		-DHAVE_SYSUTILS \
 		-DHAVE_RARCH_EXEC \
 		-DHAVE_MOUSE \
-		-DHAVE_LIGHTGUN \
+		-DHAVE_ZLIB \
 		-DHAVE_RPNG \
-		-DHAVE_RWEBP \
-		-DHAVE_RDDS \
-		-DHAVE_THREADS \
 		-DHAVE_GRIFFIN=1 \
 		-DHAVE_NETWORKING=1 \
 		-DHAVE_SOCKET_LEGACY=1 \
@@ -109,13 +99,8 @@ SHARED_FLAGS := -DHAVE_GCM \
 		-DHAVE_MULTIMAN \
 		-DHAVE_MEMINFO \
 		-DHAVE_RGUI \
-		-DHAVE_XMB \
-		-DHAVE_OZONE \
-		-DHAVE_GFX_WIDGETS \
-		-DHAVE_MENU_BUFFER \
-		-DHAVE_CORE_INFO_CACHE \
-		-DHAVE_7ZIP \
-
+		-DHAVE_FREETYPE \
+		-DHAVE_CORE_INFO_CACHE
 CFLAGS += -std=gnu99 $(SHARED_FLAGS)
 CXXFLAGS += $(SHARED_FLAGS)
 
@@ -126,32 +111,13 @@ else
    CXXFLAGS += -03 -g
 endif
 
-ifneq ($(V),1)
-	Q := @
-endif
-
 all: $(SELF_TARGET)
 
-define INFO
-CXX: $(CXX)
-LDFLAGS: $(LDFLAGS)
-LIBDIRS: $(LIBDIRS)
-LIBS: $(LIBS)
-OBJ: $(OBJ)
-endef
-export INFO
-
-info:
-ifneq ($(V),1)
-	@echo "$$INFO"
-endif
-
 $(ELF_TARGET): $(OBJ)
-	@$(if $(Q), $(shell echo echo CXX $<),)
-	$(Q)$(CXX) -o $@ $(LDFLAGS) $(LIBDIRS) $(OBJ) $(LIBS)
+	$(CXX) -o $@ $(LDFLAGS) $(LIBDIRS) $(OBJ) $(LIBS)
 
 create-core: $(SELF_TARGET)
-	cp $(SELF_TARGET) $(CORE_PATH)
+	cp $(SELF_TARGET) $(CORE_PATH) 
 
 pkg: create-core
 	$(PKG) --contentid $(CONTENTID) pkg/psl1ght/pkg/ $(PACKAGE_BASENAME).pkg
@@ -159,8 +125,7 @@ pkg: create-core
 #	$(PACKAGE_FINALIZE) $(PACKAGE_BASENAME).gnpdrm.pkg
 
 clean:
-	@$(if $(Q), echo $@,)
-	$(Q)rm -f $(ELF_TARGET)
-	$(Q)rm -f $(OBJ)
+	rm -f $(ELF_TARGET)
+	rm -f $(OBJ)
 
 .PHONY: clean

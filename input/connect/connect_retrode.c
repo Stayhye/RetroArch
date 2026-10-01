@@ -92,7 +92,7 @@ static void hidpad_retrode_get_buttons(void *pad_data, input_bits_t *state)
     retrode_pad_data_t *pad = (retrode_pad_data_t *)pad_data;
     if (pad)
     {
-       if (pad->datatype == RETRODE_TYPE_PAD)
+       if(pad->datatype == RETRODE_TYPE_PAD)
        {
           BITS_COPY16_PTR(state, pad->buttons);
        }
@@ -111,16 +111,16 @@ static void hidpad_retrode_get_buttons(void *pad_data, input_bits_t *state)
 static int16_t hidpad_retrode_get_axis(void *pad_data, unsigned axis)
 {
    int val;
-   retrode_pad_data_t       *pad = (retrode_pad_data_t *)pad_data;
+   retrode_pad_data_t *pad = (retrode_pad_data_t *)pad_data;
    retrode_device_data_t *device = (retrode_device_data_t *)pad_data;
 
    if (!pad || axis >= 2)
       return 0;
 
-   if (pad->datatype == RETRODE_TYPE_PAD)
-      val = pad->data[1 + axis];
+   if(pad->datatype == RETRODE_TYPE_PAD)
+      val = pad->data[2 + axis];
    else
-      val = device->pad_data[0].data[1 + axis];
+      val = device->pad_data[0].data[2 + axis];
 
    /* map Retrode values to a known gamepad (VID=0x0079, PID=0x0011) */
    if (val == 0x9C)
@@ -156,7 +156,7 @@ static void retrode_update_button_state(retrode_pad_data_t *pad)
    if (!pad)
       return;
 
-   pressed_keys = pad->data[3];
+   pressed_keys = pad->data[4];
    pad->buttons = 0;
 
    for (i = 0; i < 8; i ++)
@@ -164,30 +164,30 @@ static void retrode_update_button_state(retrode_pad_data_t *pad)
           pad->buttons |= (pressed_keys & (1 << i)) ? (1 << button_mapping[i]) : 0;
 }
 
-static void hidpad_retrode_pad_packet_handler(retrode_pad_data_t *pad, uint8_t *packet, size_t len)
+static void hidpad_retrode_pad_packet_handler(retrode_pad_data_t *pad, uint8_t *packet, size_t size)
 {
-   memcpy(pad->data, packet, len);
+   memcpy(pad->data, packet, size);
    retrode_update_button_state(pad);
 }
 
-static void hidpad_retrode_packet_handler(void *device_data, uint8_t *packet, uint16_t len)
+static void hidpad_retrode_packet_handler(void *device_data, uint8_t *packet, uint16_t size)
 {
    retrode_device_data_t *device = (retrode_device_data_t *)device_data;
 
    if (!device)
       return;
 
-   memcpy(device->data, packet, len);
+   memcpy(device->data, packet, size);
 
    /*
-    * packet[0] contains Retrode port number
+    * packet[1] contains Retrode port number
     * 1 = left SNES
     * 2 = right SNES
     * 3 = left Genesis/MD
     * 4 = right Genesis/MD
     */
 
-   hidpad_retrode_pad_packet_handler(&device->pad_data[packet[0] - 1], &device->data[0], len);
+   hidpad_retrode_pad_packet_handler(&device->pad_data[packet[1] - 1], &device->data[0], size);
 }
 
 static void hidpad_retrode_set_rumble(void *data,
@@ -228,7 +228,7 @@ static void *hidpad_retrode_pad_init(void *device_data, int pad_index, joypad_co
 {
    retrode_device_data_t *device = (retrode_device_data_t *)device_data;
 
-   if (!device || pad_index < 0 || pad_index >= RETRODE_MAX_PAD || !joypad || device->pad_data[pad_index].joypad)
+   if(!device || pad_index < 0 || pad_index >= RETRODE_MAX_PAD || !joypad || device->pad_data[pad_index].joypad)
       return NULL;
 
    device->pad_data[pad_index].joypad = joypad;
@@ -238,8 +238,11 @@ static void *hidpad_retrode_pad_init(void *device_data, int pad_index, joypad_co
 static void hidpad_retrode_pad_deinit(void *pad_data)
 {
    retrode_pad_data_t *pad = (retrode_pad_data_t *)pad_data;
-   if (pad)
-      pad->joypad = NULL;
+
+   if(!pad)
+      return;
+
+   pad->joypad = NULL;
 }
 
 static int8_t hidpad_retrode_status(void *device_data, int pad_index)
@@ -247,7 +250,7 @@ static int8_t hidpad_retrode_status(void *device_data, int pad_index)
    retrode_device_data_t *device = (retrode_device_data_t *)device_data;
    int8_t result = 0;
 
-   if (!device || pad_index < 0 || pad_index >= RETRODE_MAX_PAD)
+   if(!device || pad_index < 0 || pad_index >= RETRODE_MAX_PAD)
       return 0;
 
   result |= PAD_CONNECT_READY;
@@ -262,7 +265,7 @@ static joypad_connection_t *hidpad_retrode_joypad(void *device_data, int pad_ind
 {
    retrode_device_data_t *device = (retrode_device_data_t *)device_data;
 
-   if (!device || pad_index < 0 || pad_index >= RETRODE_MAX_PAD)
+   if(!device || pad_index < 0 || pad_index >= RETRODE_MAX_PAD)
       return 0;
    return device->pad_data[pad_index].joypad;
 }

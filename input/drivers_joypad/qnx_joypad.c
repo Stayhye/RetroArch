@@ -32,7 +32,7 @@ static void *qnx_joypad_init(void *data)
    for (autoconf_pad = 0; autoconf_pad < MAX_USERS; autoconf_pad++)
       input_autoconfigure_connect(
             qnx_joypad_name(autoconf_pad),
-            NULL, NULL,
+            NULL,
             qnx_joypad.ident,
             autoconf_pad,
             0,
@@ -63,43 +63,39 @@ static int16_t qnx_joypad_axis_state(
       qnx_input_device_t *controller,
       unsigned port, uint32_t joyaxis)
 {
+   int val             = 0;
+   int axis            = -1;
+   bool is_neg         = false;
+   bool is_pos         = false;
+
    if (AXIS_NEG_GET(joyaxis) < 4)
    {
-      int16_t val   = 0;
-      int16_t axis  = AXIS_NEG_GET(joyaxis);
-      switch (axis)
-      {
-         case 0:
-         case 1:
-            val = controller->analog0[axis];
-            break;
-         case 2:
-         case 3:
-            val = controller->analog1[axis - 2];
-            break;
-      }
-      if (val < 0)
-         return val;
+      axis   = AXIS_NEG_GET(joyaxis);
+      is_neg = true;
    }
    else if (AXIS_POS_GET(joyaxis) < 4)
    {
-      int16_t val   = 0;
-      int16_t axis  = AXIS_POS_GET(joyaxis);
-      switch (axis)
-      {
-         case 0:
-         case 1:
-            val = controller->analog0[axis];
-            break;
-         case 2:
-         case 3:
-            val = controller->analog1[axis - 2];
-            break;
-      }
-      if (val > 0)
-         return val;
+      axis   = AXIS_POS_GET(joyaxis);
+      is_pos = true;
    }
-   return 0;
+
+   switch (axis)
+   {
+      case 0:
+      case 1:
+         val = controller->analog0[axis];
+         break;
+      case 2:
+      case 3:
+         val = controller->analog1[axis-2];
+         break;
+   }
+
+   if (is_neg && val > 0)
+      return 0;
+   else if (is_pos && val < 0)
+      return 0;
+   return val;
 }
 
 static int16_t qnx_joypad_axis(unsigned port, uint32_t joyaxis)
@@ -118,7 +114,7 @@ static int16_t qnx_joypad_state(
       const struct retro_keybind *binds,
       unsigned port)
 {
-   int i;
+   unsigned i;
    int16_t ret                    = 0;
    qnx_input_t *qnx               =
       (qnx_input_t*)input_state_get_ptr()->current_data;
@@ -137,13 +133,13 @@ static int16_t qnx_joypad_state(
       const uint32_t joyaxis = (binds[i].joyaxis != AXIS_NONE)
          ? binds[i].joyaxis : joypad_info->auto_binds[i].joyaxis;
       if (
-               (uint16_t)joykey != NO_BTN
+               (uint16_t)joykey != NO_BTN 
             && (joykey <= 19)
             && ((controller->buttons & (1 << (uint16_t)joykey)) != 0)
          )
          ret |= ( 1 << i);
       else if (joyaxis != AXIS_NONE &&
-            ((float)abs(qnx_joypad_axis_state(qnx, controller, port_idx, joyaxis))
+            ((float)abs(qnx_joypad_axis_state(qnx, controller, port_idx, joyaxis)) 
              / 0x8000) > joypad_info->axis_threshold)
          ret |= (1 << i);
    }
@@ -169,10 +165,8 @@ input_device_driver_t qnx_joypad = {
    NULL,
    qnx_joypad_axis,
    qnx_joypad_poll,
-   NULL, /* set_rumble */
-   NULL, /* set_rumble_gain */
-   NULL, /* set_sensor_state */
-   NULL, /* get_sensor_input */
+   NULL,
+   NULL,
    qnx_joypad_name,
    "qnx",
 };

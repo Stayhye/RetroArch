@@ -1,6 +1,6 @@
 /*  RetroArch - A frontend for libretro.
  *  Copyright (C) 2015-2018 - Andre Leiradella
- *  Copyright (C) 2019-2026 - Brian Weiss
+ *  Copyright (C) 2019-2021 - Brian Weiss
  *
  *  RetroArch is free software: you can redistribute it and/or modify it under the terms
  *  of the GNU General Public License as published by the Free Software Found-
@@ -17,16 +17,14 @@
 #ifndef __RARCH_CHEEVOS_LOCALS_H
 #define __RARCH_CHEEVOS_LOCALS_H
 
-#include "../deps/rcheevos/include/rc_client.h"
 #include "../deps/rcheevos/include/rc_runtime.h"
-#include "../deps/rcheevos/src/rc_libretro.h"
+#include "../deps/rcheevos/src/rcheevos/rc_libretro.h"
 
 #include <boolean.h>
 #include <queues/task_queue.h>
 
 #ifdef HAVE_THREADS
 #include <rthreads/rthreads.h>
-#include <retro_atomic.h>
 #endif
 
 #include <retro_common_api.h>
@@ -43,7 +41,7 @@ RETRO_BEGIN_DECLS
 /* Define this macro to get extra-verbose log for cheevos. */
 #define CHEEVOS_VERBOSE
 
-#define RCHEEVOS_TAG "[RCHEEVOS] "
+#define RCHEEVOS_TAG "[RCHEEVOS]: "
 #define CHEEVOS_FREE(p) do { void* q = (void*)p; if (q) free(q); } while (0)
 
 #ifdef CHEEVOS_VERBOSE
@@ -59,70 +57,113 @@ RETRO_BEGIN_DECLS
  * State                                                                *
  ************************************************************************/
 
-enum rcheevos_summary_notif
+enum
 {
-   RCHEEVOS_SUMMARY_ALLGAMES = 0,
-   RCHEEVOS_SUMMARY_HASCHEEVOS,
-   RCHEEVOS_SUMMARY_OFF,
-   RCHEEVOS_SUMMARY_LAST
+   RCHEEVOS_ACTIVE_SOFTCORE = 1 << 0,
+   RCHEEVOS_ACTIVE_HARDCORE = 1 << 1,
+   RCHEEVOS_ACTIVE_UNOFFICIAL = 1 << 2,
+   RCHEEVOS_ACTIVE_UNSUPPORTED = 1 << 3
 };
+
+typedef struct rcheevos_racheevo_t
+{
+  const char* title;
+  const char* description;
+  const char* badge;
+  const char* memaddr;
+  unsigned id;
+  unsigned points;
+
+  retro_time_t unlock_time;
+  uint8_t active;
+
+#ifdef HAVE_MENU
+  uint8_t menu_bucket;
+  uint8_t menu_progress;
+  uint8_t menu_badge_grayscale;
+  uintptr_t menu_badge_texture;
+#endif
+
+} rcheevos_racheevo_t;
+
+typedef struct rcheevos_ralboard_t
+{
+  const char* title;
+  const char* description;
+  const char* mem;
+  unsigned id;
+  unsigned format;
+} rcheevos_ralboard_t;
+
+
+enum rcheevos_load_state
+{
+   RCHEEVOS_LOAD_STATE_NONE,
+   RCHEEVOS_LOAD_STATE_IDENTIFYING_GAME,
+   RCHEEVOS_LOAD_STATE_FETCHING_GAME_DATA,
+   RCHEEVOS_LOAD_STATE_STARTING_SESSION,
+   RCHEEVOS_LOAD_STATE_FETCHING_BADGES,
+   RCHEEVOS_LOAD_STATE_DONE,
+   RCHEEVOS_LOAD_STATE_UNKNOWN_GAME,
+   RCHEEVOS_LOAD_STATE_NETWORK_ERROR,
+   RCHEEVOS_LOAD_STATE_LOGIN_FAILED,
+   RCHEEVOS_LOAD_STATE_ABORTED
+};
+
+typedef struct rcheevos_load_info_t
+{
+   enum rcheevos_load_state state;
+   int  hashes_tried;
+   int  outstanding_requests;
+#ifdef HAVE_THREADS
+   slock_t* request_lock;
+#endif
+} rcheevos_load_info_t;
+
+typedef struct rcheevos_game_info_t
+{
+   int   id;
+   int   console_id;
+   char* title;
+   char  badge_name[16];
+   const char* hash;
+   bool  mastery_placard_shown;
+
+   rc_libretro_hash_set_t hashes;
+
+   rcheevos_racheevo_t* achievements;
+   rcheevos_ralboard_t* leaderboards;
+
+   unsigned achievement_count;
+   unsigned leaderboard_count;
+
+} rcheevos_game_info_t;
 
 #ifdef HAVE_MENU
 
 typedef struct rcheevos_menuitem_t
 {
-   union rcheevos_menuitem_source_t {
-      struct rcheevos_menuitem_text_t {
-         const char* label;
-         const char* sublabel;
-      } text;
-      struct rcheevos_menuitem_achievement_t {
-         const rc_client_achievement_t* achievement;
-      } achievement;
-      struct rcheevos_menuitem_action_t {
-         int type; /* enum msg_hash_enums */
-         int label; /* enum msg_hash_enums */
-         int sublabel; /* enum msg_hash_enums */
-         int action; /* enum menu_settings_type */
-      } action;
-   } source;
-   uintptr_t menu_badge_texture;
-   uint32_t subset_id;
-   int state_label_idx; /* enum msg_hash_enums */
-   uint8_t menu_badge_grayscale;
-   uint8_t type;
+   rcheevos_racheevo_t* cheevo;
+   enum msg_hash_enums state_label_idx;
 } rcheevos_menuitem_t;
+
+void rcheevos_menu_reset_badges(void);
 
 #endif
 
 typedef struct rcheevos_locals_t
 {
-   rc_client_t* client;               /* rcheevos client state */
+   rc_runtime_t runtime;              /* rcheevos runtime state */
+   rcheevos_game_info_t game;         /* information about the current game */
    rc_libretro_memory_regions_t memory;/* achievement addresses to core memory mappings */
 
 #ifdef HAVE_THREADS
-   /* Action queued by a background thread (e.g. the rcheevos
-    * client's HTTP completion thread) to be dispatched on the
-    * main thread by rcheevos_test. Atomic because writers can
-    * be on a worker thread while the main-thread reader is
-    * polling per frame; plain enum access would be a data race
-    * with no memory barrier. */
-   retro_atomic_int_t queued_command;
-
-   /* Bumped on every load lifecycle reset (rcheevos_load and
-    * rcheevos_unload). Captured at rc_client_begin_identify_and_load_game
-    * time and passed through the callback's userdata; the
-    * background callback compares its captured value against the
-    * current value at completion and drops stale completions
-    * whose target rcheevos_locals state has been reset out from
-    * under them. Without this, a load for game A that completes
-    * after the user has closed content and started loading game B
-    * would write FINALIZE_LOAD into queued_command and cause the
-    * main thread to apply game A's finalization to game B's
-    * memory map. */
-   retro_atomic_int_t load_generation;
+   enum event_command queued_command; /* action queued by background thread to be run on main thread */
 #endif
 
+   char displayname[32];              /* name to display in messages */
+   char username[32];                 /* case-corrected username */
+   char token[32];                    /* user's session token */
    char user_agent_prefix[128];       /* RetroArch/OS version information */
    char user_agent_core[256];         /* RetroArch/OS/Core version information */
 
@@ -130,24 +171,32 @@ typedef struct rcheevos_locals_t
    rcheevos_menuitem_t* menuitems;    /* array of items for the achievements quick menu */
    unsigned menuitem_capacity;        /* maximum number of items in the menuitems array */
    unsigned menuitem_count;           /* current number of items in the menuitems array */
-   uint32_t menuitem_info_type;       /* current submenu */
-   uint32_t menuitem_submenu_type;    /* current submenu */
-   uint32_t menuitem_submenu_id;      /* current submenu */
 #endif
 
-   const char* hash_error;            /* message to display if an error occurred identifying the game */
+   rcheevos_load_info_t load_info;    /* load info */
 
-   bool hardcore_allowed;             /* prevents enabling hardcore if illegal settings detected */
-   bool hardcore_requires_reload;     /* prevents enabling hardcore until the core is reloaded */
-   bool hardcore_being_enabled;       /* allows callers to detect hardcore mode while it's being enabled */
-
+   bool hardcore_active;              /* hardcore functionality is active */
+   bool loaded;                       /* load task has completed */
    bool core_supports;                /* false if core explicitly disables achievements */
-   bool has_unsupported_achievements; /* true if unsupported achievements were detected */
-   bool badges_loaded;                /* true once all badges have been loaded */
-   bool badges_loading;               /* true if the download queue is running */
+   bool leaderboards_enabled;         /* leaderboards are enabled */
+   bool leaderboard_notifications;    /* leaderboard notifications are enabled */
+   bool leaderboard_trackers;         /* leaderboard trackers are enabled */
 } rcheevos_locals_t;
 
 rcheevos_locals_t* get_rcheevos_locals(void);
+void rcheevos_begin_load_state(enum rcheevos_load_state state);
+int rcheevos_end_load_state(void);
+bool rcheevos_load_aborted(void);
+
+void rcheevos_show_mastery_placard(void);
+
+#ifdef HAVE_THREADS
+ #define CHEEVOS_LOCK(l)   do { slock_lock(l); } while (0)
+ #define CHEEVOS_UNLOCK(l) do { slock_unlock(l); } while (0)
+#else
+ #define CHEEVOS_LOCK(l)
+ #define CHEEVOS_UNLOCK(l)
+#endif
 
 RETRO_END_DECLS
 

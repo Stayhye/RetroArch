@@ -13,8 +13,7 @@
 #ifndef __HUFFMAN_H__
 #define __HUFFMAN_H__
 
-#include <libchdr/bitstream.h>
-
+#include "bitstream.h"
 
 /***************************************************************************
  *  CONSTANTS
@@ -62,6 +61,12 @@ struct huffman_decoder
 	lookup_value *  	lookup;               /* pointer to the lookup table */
 	struct node_t *     huffnode;             /* array of nodes */
 	uint32_t *      	datahisto;            /* histogram of data values */
+
+	/* array versions of the info we need */
+#if 0
+	node_t*			huffnode_array; /* [_NumCodes]; */
+	lookup_value*	lookup_array; /* [1 << _MaxBits]; */
+#endif
 };
 
 /* ======================> huffman_decoder */

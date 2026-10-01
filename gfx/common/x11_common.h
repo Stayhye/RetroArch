@@ -20,8 +20,6 @@
 #include <X11/Xutil.h>
 
 #include <boolean.h>
-#include <retro_atomic.h>
-#include <retro_inline.h>
 
 #include "../../retroarch.h"
 
@@ -30,62 +28,34 @@ extern Display *g_x11_dpy;
 extern Colormap g_x11_cmap;
 extern unsigned g_x11_screen;
 
-/* The refresh rate the X display server read through g_x11_dpy, kept
- * until the display changes. The display server selects RandR screen,
- * crtc and output changes on the root window and publishes the
- * extension's event base in g_x11_randr_state; the event pump marks it
- * X11_RANDR_PUMPED the first time it drains that connection, and only
- * from then on is the rate kept, since only then does a change reach
- * it. The rate is the bits of a float, or X11_REFRESH_NONE. Stored in
- * dispserv_x11.c. */
-#define X11_RANDR_BASE_MASK   0xff
-#define X11_RANDR_PUMPED      0x100
-#define X11_RANDR_UNAVAILABLE 0x200
-#define X11_REFRESH_NONE      (-1)
-
-extern retro_atomic_int_t g_x11_randr_state;
-extern retro_atomic_int_t g_x11_refresh_serial;
-extern retro_atomic_int_t g_x11_refresh_bits;
-
-/* The change is counted before the kept rate is dropped: a reader that
- * read the old mode keeps its rate only if the count did not move. */
-static INLINE void x11_refresh_invalidate(void)
-{
-   retro_atomic_inc_int(&g_x11_refresh_serial);
-   retro_atomic_store_release_int(&g_x11_refresh_bits, X11_REFRESH_NONE);
-}
-
-void x11_show_mouse(void *data, bool state);
+void x11_show_mouse(Display *dpy, Window win, bool state);
 void x11_set_net_wm_fullscreen(Display *dpy, Window win);
-void x11_set_net_wm_fullscreen_hint(Display *dpy, Window win);
-bool x11_suspend_screensaver(void *data, bool enable);
+void x11_suspend_screensaver(Window win, bool enable);
+bool x11_enter_fullscreen(Display *dpy, unsigned width, unsigned height);
 
+void x11_exit_fullscreen(Display *dpy);
 void x11_move_window(Display *dpy, Window win,
       int x, int y, unsigned width, unsigned height);
 
 /* Set icon, class, default stuff. */
 void x11_set_window_attr(Display *dpy, Window win);
 
+bool x11_create_input_context(Display *dpy, Window win, XIM *xim, XIC *xic);
+void x11_destroy_input_context(XIM *xim, XIC *xic);
 
-#ifdef HAVE_XF86VM
+bool x11_get_metrics(void *data,
+      enum display_metric_types type, float *value);
+
 float x11_get_refresh_rate(void *data);
 
-bool x11_enter_fullscreen(Display *dpy, unsigned width, unsigned height);
-
-void x11_exit_fullscreen(Display *dpy);
-#endif
-
 void x11_check_window(void *data, bool *quit,
-   bool *resize, unsigned *dims);
+   bool *resize, unsigned *width, unsigned *height);
 
-void x11_get_video_size(void *data, unsigned *dims);
+void x11_get_video_size(void *data, unsigned *width, unsigned *height);
 
 bool x11_has_focus(void *data);
 
 bool x11_has_focus_internal(void *data);
-
-/* False while the window is unmapped; see gfx_ctx_driver_t::presentable. */
-bool x11_presentable(void *data);
 
 bool x11_alive(void *data);
 

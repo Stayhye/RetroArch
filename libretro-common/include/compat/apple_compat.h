@@ -22,13 +22,9 @@
 
 #ifndef __APPLE_COMPAT_H
 #define __APPLE_COMPAT_H
-#ifdef __MACH__
-#include <TargetConditionals.h>
-#endif
 
 #ifdef __APPLE__
 #include <AvailabilityMacros.h>
-#include <CoreFoundation/CoreFoundation.h>
 #endif
 
 #ifdef __OBJC__
@@ -67,7 +63,7 @@ NS_INLINE CF_RETURNS_RETAINED CFTypeRef CFBridgingRetainCompat(id X)
 
 #endif
 
-#if TARGET_OS_IPHONE
+#ifdef IOS
 #ifndef __IPHONE_5_0
 #warning "This project uses features only available in iOS SDK 5.0 and later."
 #endif

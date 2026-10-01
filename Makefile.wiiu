@@ -5,10 +5,8 @@ BUILD_RPX                  = 1
 DEBUG                      = 0
 GRIFFIN_BUILD              = 0
 SALAMANDER_BUILD           = 0
-HAVE_STATIC_DUMMY ?= 0
 WHOLE_ARCHIVE_LINK         = 0
 WIIU_HID                   = 1
-HAVE_THREADS               = 1
 HAVE_HID                   = 1
 HAVE_RUNAHEAD              = 1
 WIIU_LOG_RPX               = 0
@@ -62,15 +60,12 @@ ifeq ($(SALAMANDER_BUILD),1)
    OBJ += libretro-common/compat/fopen_utf8.o
    OBJ += libretro-common/file/file_path.o
    OBJ += libretro-common/file/file_path_io.o
-   OBJ += libretro-common/string/rstrtod.o
    OBJ += libretro-common/string/stdstring.o
    OBJ += libretro-common/lists/string_list.o
    OBJ += libretro-common/lists/dir_list.o
    OBJ += libretro-common/file/retro_dirent.o
    OBJ += libretro-common/compat/compat_strl.o
-   OBJ += libretro-common/compat/compat_strldup.o
    OBJ += libretro-common/file/config_file.o
-   OBJ += libretro-common/file/config_file_io.o
    OBJ += libretro-common/streams/file_stream.o
    OBJ += libretro-common/vfs/vfs_implementation.o
    OBJ += libretro-common/hash/lrc_hash.o
@@ -85,7 +80,6 @@ else
    DEFINES += -DHAVE_ONLINE_UPDATER
    DEFINES += -DHAVE_UPDATE_ASSETS
    DEFINES += -DHAVE_UPDATE_CORES
-   DEFINES += -DHAVE_UPDATE_CORE_INFO
    DEFINES += -DHAVE_FILTERS_BUILTIN
    DEFINES += -DHAVE_SLANG
    DEFINES += -DHAVE_SHADERPIPELINE
@@ -111,7 +105,7 @@ endif
    ifeq ($(GRIFFIN_BUILD), 1)
       OBJ += griffin/griffin.o griffin/griffin_cpp.o
 
-      INCDIRS +=
+      INCDIRS += -Ilibretro-common/include/compat/zlib
       # for stb, libfat, iosuhax
       INCDIRS += -Ideps -Ideps/libfat/include -Ideps/libiosuhax/include
       # pad_functions uses wiiu/input.h
@@ -121,13 +115,14 @@ endif
       DEFINES += -DHAVE_AUDIOMIXER
       DEFINES += -DHAVE_RWAV
       DEFINES += -DHAVE_GRIFFIN=1 -DHAVE_MENU -DHAVE_GFX_WIDGETS -DHAVE_CONFIGFILE -DHAVE_PATCH -DHAVE_CHEATS -DHAVE_RGUI -DHAVE_LIBRETRODB
-      DEFINES += -DHAVE_REWIND
-      DEFINES += -DHAVE_RPNG -DHAVE_RWEBP -DHAVE_RDDS -DHAVE_RJPEG -DHAVE_RBMP -DHAVE_RTGA -DHAVE_CC_RESAMPLER
+		DEFINES += -DHAVE_REWIND
+      DEFINES += -DHAVE_ZLIB -DHAVE_RPNG -DHAVE_RJPEG -DHAVE_RBMP -DHAVE_RTGA -DHAVE_CC_RESAMPLER
       DEFINES += -DHAVE_SPIRV_CROSS -DHAVE_SLANG
-      DEFINES += -DHAVE_RVORBIS -DHAVE_LANGEXTRA -DHAVE_LIBRETRODB -DHAVE_NETWORKING -DHAVE_IFINFO -DHAVE_NETPLAYDISCOVERY
+      DEFINES += -DHAVE_STB_FONT -DHAVE_STB_VORBIS -DHAVE_LANGEXTRA -DHAVE_LIBRETRODB -DHAVE_NETWORKING -DHAVE_NETPLAYDISCOVERY
+      #DEFINES += -DWANT_IFADDRS
+      #DEFINES += -DHAVE_FREETYPE
       DEFINES += -DHAVE_XMB -DHAVE_MATERIALUI
       DEFINES += -DHAVE_HID
-      DEFINES += -DHAVE_THREADS
       DEFINES += -DWANT_LIBFAT -DHAVE_LIBFAT -DWANT_IOSUHAX -DHAVE_IOSUHAX
       DEFINES += -DHAVE_CORE_INFO_CACHE
       DEFINES += -DSPIRV_CROSS_EXCEPTIONS_TO_ASSERTIONS
@@ -141,36 +136,32 @@ endif
       HAVE_GFX_WIDGETS = 1
       HAVE_RTGA = 1
       HAVE_RPNG = 1
-      HAVE_RWEBP = 1
-      HAVE_RDDS = 1
       HAVE_RJPEG = 1
       HAVE_RBMP = 1
       HAVE_CONFIGFILE = 1
       HAVE_PATCH      = 1
-      HAVE_XDELTA     = 0 # disabled because <lzma.h> isn't available (or we haven't figured out how to install it)
       HAVE_REWIND     = 1
       HAVE_CHEATS     = 1
       HAVE_MENU = 1
       HAVE_RGUI = 1
       HAVE_7ZIP = 1
-      HAVE_RZSTD = 1
+      HAVE_ZLIB = 1
+      HAVE_BUILTINZLIB = 0
       HAVE_LIBRETRODB = 1
       HAVE_MATERIALUI = 1
       HAVE_XMB = 1
+      HAVE_STB_FONT = 1
       #HAVE_FREETYPE = 1
       HAVE_LANGEXTRA = 1
       HAVE_LIBRETRODB = 1
       HAVE_NETWORKING = 1
-      # the built-in NFS client (nfs://); it needs no crypto
-      HAVE_RETRONFS = 1
-      HAVE_IFINFO = 1
       HAVE_NETPLAYDISCOVERY = 1
       HAVE_CHEEVOS = 1
       #WANT_IFADDRS = 1
       HAVE_OVERLAY = 1
       HAVE_SPIRV_CROSS = 1
-      HAVE_BUILTINSPIRV_CROSS = 1
       HAVE_SLANG = 1
+      HAVE_VIDEO_LAYOUT = 0
       HAVE_DSP_FILTER = 1
       HAVE_VIDEO_FILTER = 1
       HAVE_STATIC_VIDEO_FILTERS = 1
@@ -208,7 +199,7 @@ INCDIRS += -Iwiiu
 INCDIRS += -Iwiiu/include
 
 CFLAGS  := -mcpu=750 -meabi -mhard-float
-CFLAGS  += -Werror=implicit-function-declaration
+CFLAGS  += -ffast-math -Werror=implicit-function-declaration
 CFLAGS  += -ffunction-sections -fdata-sections
 #CFLAGS += -fomit-frame-pointer -mword-relocations
 CFLAGS += -Wall
@@ -232,17 +223,17 @@ ifeq ($(WHOLE_ARCHIVE_LINK), 1)
    WHOLE_END := -Wl,--no-whole-archive
 endif
 
-LIB_CORE :=
+LIBS := $(WHOLE_START) -lretro_wiiu $(WHOLE_END) -lm
 
-ifeq ($(HAVE_STATIC_DUMMY),1)
-  DEFINES += -DHAVE_STATIC_DUMMY
-else
-  LIB_CORE += -lretro_wiiu
+# Use portlibs zlib if deps/ isn't being used
+ifeq ($(HAVE_ZLIB),1)
+ifeq ($(HAVE_BUILTINZLIB),0)
+   INCDIRS += -I$(DEVKITPRO)/portlibs/ppc/include
+   LIBDIRS += -L$(DEVKITPRO)/portlibs/ppc/lib
+   # Bonus: libpng for cores that need it
+   LIBS += -lpng -lz
 endif
-
-
-LIBS := $(WHOLE_START) $(LIB_CORE) $(WHOLE_END) -lm
-
+endif
 
 LDFLAGS += -Wl,--gc-sections
 
@@ -299,37 +290,6 @@ endif
 DEPFLAGS    = -MT $@ -MMD -MP -MF $(BUILD_DIR)/$*.depend
 
 all: $(TARGETS)
-
-define INFO
-AR: $(AR)
-ASFLAGS: $(ASFLAGS)
-BUILD_DIR: $(BUILD_DIR)
-CC: $(CC)
-CFLAGS: $(CFLAGS)
-CXX: $(CXX)
-CXXFLAGS: $(CXXFLAGS)
-DEFINES: $(DEFINES)
-DEPFLAGS: $(DEPFLAGS)
-ELF2RPL: $(ELF2RPL)
-HBL_ELF_LDFLAGS: $(HBL_ELF_LDFLAGS)
-HBL_ELF_OBJ: $(HBL_ELF_OBJ)
-INCDIRS: $(INCDIRS)
-LD: $(LD)
-LDFLAGS: $(LDFLAGS)
-LIBDIRS: $(LIBDIRS)
-LIBS: $(LIBS)
-MAKE: $(MAKE)
-OBJ: $(OBJ)
-RPX_LDFLAGS: $(RPX_LDFLAGS)
-RPX_OBJ: $(RPX_OBJ)
-TARGET: $(TARGET)
-endef
-export INFO
-
-info:
-ifneq ($(V),1)
-	@echo "$$INFO"
-endif
 
 %: $(BUILD_DIR)/%
 	cp $< $@

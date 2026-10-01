@@ -1,7 +1,4 @@
 #version 450
-#ifdef GL_ARB_shader_draw_parameters
-#extension GL_ARB_shader_draw_parameters : enable
-#endif
 
 struct InstanceData
 {
@@ -15,11 +12,7 @@ layout(binding = 0, std430) readonly buffer gInstanceData
 } gInstanceData_1;
 
 layout(location = 0) in vec3 PosL;
-#ifdef GL_ARB_shader_draw_parameters
-#define SPIRV_Cross_BaseInstance gl_BaseInstanceARB
-#else
 uniform int SPIRV_Cross_BaseInstance;
-#endif
 layout(location = 0) out vec4 _entryPointOutput_Color;
 
 void main()

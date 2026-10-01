@@ -19,12 +19,13 @@
 
 #include <stdlib.h>
 #include <string.h>
-#include <memcpy_nt.h>
 
 #include <SDL/SDL.h>
 #include <SDL/SDL_video.h>
 
+#include <retro_assert.h>
 #include <gfx/video_frame.h>
+#include <retro_assert.h>
 #include <string/stdstring.h>
 #include <encodings/utf.h>
 #include <features/features_cpu.h>
@@ -40,7 +41,7 @@
 #include "../../dingux/dingux_utils.h"
 
 #include "../../verbosity.h"
-#include "../bitmapfont.h"
+#include "../../gfx/drivers_font_renderer/bitmap.h"
 #include "../../configuration.h"
 #include "../../retroarch.h"
 #if defined(DINGUX_BETA)
@@ -70,8 +71,6 @@
 typedef struct sdl_rs90_video sdl_rs90_video_t;
 struct sdl_rs90_video
 {
-   retro_time_t last_frame_time;
-   retro_time_t ff_frame_time_min;
    SDL_Surface *screen;
    void (*scale_frame16)(sdl_rs90_video_t *vid,
          uint16_t *src, unsigned width, unsigned height,
@@ -79,7 +78,6 @@ struct sdl_rs90_video
    void (*scale_frame32)(sdl_rs90_video_t *vid,
          uint32_t *src, unsigned width, unsigned height,
          unsigned src_pitch);
-   bitmapfont_lut_t *osd_font;
    /* Scaling/padding/cropping parameters */
    unsigned content_width;
    unsigned content_height;
@@ -89,30 +87,24 @@ struct sdl_rs90_video
    unsigned frame_padding_y;
    unsigned frame_crop_x;
    unsigned frame_crop_y;
-   enum dingux_rs90_softfilter_type softfilter_type;
-#if defined(DINGUX_BETA)
-   enum dingux_refresh_rate refresh_rate;
-#endif
-   uint32_t font_colour32;
-   uint16_t font_colour16;
-   uint16_t menu_texture[SDL_RS90_WIDTH * SDL_RS90_HEIGHT];
-   bool vsync;
-   bool keep_aspect;
-   bool scale_integer;
-   bool quitting;
    bool rgb32;
    bool menu_active;
    bool was_in_menu;
    bool mode_valid;
-   /* What the last frame said the softfilter should be: set_filtering()
-    * runs on the video thread under the threaded wrapper, and reading
-    * the setting there races the menu writing it. */
-   unsigned frame_softfilter_type;
-   /* What the last frame said these should be: apply_state_changes()
-    * is run by the video thread from thread_update_driver_state(), and
-    * reading the settings there races the menu writing them. */
-   bool frame_ipu_keep_aspect;
-   bool frame_integer_scaling;
+   retro_time_t last_frame_time;
+   retro_time_t ff_frame_time_min;
+   enum dingux_rs90_softfilter_type softfilter_type;
+#if defined(DINGUX_BETA)
+   enum dingux_refresh_rate refresh_rate;
+#endif
+   bool vsync;
+   bool keep_aspect;
+   bool scale_integer;
+   bool quitting;
+   bitmapfont_lut_t *osd_font;
+   uint32_t font_colour32;
+   uint16_t font_colour16;
+   uint16_t menu_texture[SDL_RS90_WIDTH * SDL_RS90_HEIGHT];
 };
 
 /* Image interpolation START */
@@ -131,13 +123,16 @@ static void sdl_rs90_scale_frame16_integer(sdl_rs90_video_t *vid,
    uint16_t *out_ptr = (uint16_t*)(vid->screen->pixels) + vid->frame_padding_x +
          out_stride * vid->frame_padding_y;
 
-   /* Streaming stores: the surface is written once here and next
-    * touched by the display engine, so allocating the whole padded
-    * rectangle into the cache every frame evicts the core's working
-    * set for nothing.  Not memcpy_nt per line - one scanline is well
-    * under its threshold and would fall back to memcpy. */
-   memcpy_nt_2d(out_ptr, vid->screen->pitch, in_ptr, src_pitch,
-         vid->frame_width * sizeof(uint16_t), vid->frame_height);
+   size_t y          = vid->frame_height;
+
+   /* TODO/FIXME: Optimize this loop */
+   do
+   {
+      memcpy(out_ptr, in_ptr, vid->frame_width * sizeof(uint16_t));
+      in_ptr  += in_stride;
+      out_ptr += out_stride;
+   }
+   while (--y);
 }
 
 static void sdl_rs90_scale_frame32_integer(sdl_rs90_video_t *vid,
@@ -154,9 +149,16 @@ static void sdl_rs90_scale_frame32_integer(sdl_rs90_video_t *vid,
    uint32_t *out_ptr = (uint32_t*)(vid->screen->pixels) + vid->frame_padding_x +
          out_stride * vid->frame_padding_y;
 
-   /* Streaming stores; see the 16-bit path above. */
-   memcpy_nt_2d(out_ptr, vid->screen->pitch, in_ptr, src_pitch,
-         vid->frame_width * sizeof(uint32_t), vid->frame_height);
+   size_t y          = vid->frame_height;
+
+   /* TODO/FIXME: Optimize this loop */
+   do
+   {
+      memcpy(out_ptr, in_ptr, vid->frame_width * sizeof(uint32_t));
+      in_ptr  += in_stride;
+      out_ptr += out_stride;
+   }
+   while (--y);
 }
 
 /* Approximate nearest-neighbour scaling using
@@ -531,7 +533,7 @@ static void sdl_rs90_blit_text16(
          screen_height - vid->frame_padding_y)
       return;
 
-   while (str && *str)
+   while (!string_is_empty(str))
    {
       /* Check for out of bounds x coordinates */
       if (x_pos + FONT_WIDTH_STRIDE + 1 >=
@@ -614,7 +616,7 @@ static void sdl_rs90_blit_text32(
          screen_height - vid->frame_padding_y)
       return;
 
-   while (str && *str)
+   while (!string_is_empty(str))
    {
       /* Check for out of bounds x coordinates */
       if (x_pos + FONT_WIDTH_STRIDE + 1 >=
@@ -669,9 +671,9 @@ static void sdl_rs90_blit_text32(
    }
 }
 
-static void sdl_rs90_blit_video_mode_err_msg(sdl_rs90_video_t *vid)
+static void sdl_rs90_blit_video_mode_error_msg(sdl_rs90_video_t *vid)
 {
-   const char *err_msg = msg_hash_to_str(MSG_UNSUPPORTED_VIDEO_MODE);
+   const char *error_msg = msg_hash_to_str(MSG_UNSUPPORTED_VIDEO_MODE);
    char display_mode[64];
 
    display_mode[0] = '\0';
@@ -690,7 +692,7 @@ static void sdl_rs90_blit_video_mode_err_msg(sdl_rs90_video_t *vid)
    {
       sdl_rs90_blit_text32(vid,
             FONT_WIDTH_STRIDE, FONT_WIDTH_STRIDE,
-            err_msg);
+            error_msg);
 
       sdl_rs90_blit_text32(vid,
             FONT_WIDTH_STRIDE, FONT_WIDTH_STRIDE + FONT_HEIGHT_STRIDE,
@@ -700,7 +702,7 @@ static void sdl_rs90_blit_video_mode_err_msg(sdl_rs90_video_t *vid)
    {
       sdl_rs90_blit_text16(vid,
             FONT_WIDTH_STRIDE, FONT_WIDTH_STRIDE,
-            err_msg);
+            error_msg);
 
       sdl_rs90_blit_text16(vid,
             FONT_WIDTH_STRIDE, FONT_WIDTH_STRIDE + FONT_HEIGHT_STRIDE,
@@ -722,7 +724,7 @@ static void sdl_rs90_gfx_free(void *data)
 }
 
 static void sdl_rs90_input_driver_init(
-      const char *input_drv_name, const char *joypad_drv_name,
+      const char *input_driver_name, const char *joypad_driver_name,
       input_driver_t **input, void **input_data)
 {
    /* Sanity check */
@@ -734,13 +736,13 @@ static void sdl_rs90_input_driver_init(
 
    /* If input driver name is empty, cannot
     * initialise anything... */
-   if (!input_drv_name || !*input_drv_name)
+   if (string_is_empty(input_driver_name))
       return;
 
-   if (string_is_equal(input_drv_name, "sdl_dingux"))
+   if (string_is_equal(input_driver_name, "sdl_dingux"))
    {
       *input_data = input_driver_init_wrap(&input_sdl_dingux,
-            joypad_drv_name);
+            joypad_driver_name);
 
       if (*input_data)
          *input = &input_sdl_dingux;
@@ -749,28 +751,23 @@ static void sdl_rs90_input_driver_init(
    }
 
 #if defined(HAVE_SDL) || defined(HAVE_SDL2)
-   if (string_is_equal(input_drv_name, "sdl"))
+   if (string_is_equal(input_driver_name, "sdl"))
    {
-#ifdef HAVE_SDL2
-      input_driver_t *sdl_drv = &input_sdl2;
-#else
-      input_driver_t *sdl_drv = &input_sdl1;
-#endif
-      *input_data = input_driver_init_wrap(sdl_drv,
-            joypad_drv_name);
+      *input_data = input_driver_init_wrap(&input_sdl,
+            joypad_driver_name);
 
       if (*input_data)
-         *input = sdl_drv;
+         *input = &input_sdl;
 
       return;
    }
 #endif
 
 #if defined(HAVE_UDEV)
-   if (string_is_equal(input_drv_name, "udev"))
+   if (string_is_equal(input_driver_name, "udev"))
    {
       *input_data = input_driver_init_wrap(&input_udev,
-            joypad_drv_name);
+            joypad_driver_name);
 
       if (*input_data)
          *input = &input_udev;
@@ -780,10 +777,10 @@ static void sdl_rs90_input_driver_init(
 #endif
 
 #if defined(__linux__)
-   if (string_is_equal(input_drv_name, "linuxraw"))
+   if (string_is_equal(input_driver_name, "linuxraw"))
    {
       *input_data = input_driver_init_wrap(&input_linuxraw,
-            joypad_drv_name);
+            joypad_driver_name);
 
       if (*input_data)
          *input = &input_linuxraw;
@@ -806,8 +803,8 @@ static void *sdl_rs90_gfx_init(const video_info_t *video,
    bool refresh_rate_valid                       = false;
    float hw_refresh_rate                         = 0.0f;
 #endif
-   const char *input_drv_name                    = settings->arrays.input_driver;
-   const char *joypad_drv_name                   = settings->arrays.input_joypad_driver;
+   const char *input_driver_name                 = settings->arrays.input_driver;
+   const char *joypad_driver_name                = settings->arrays.input_joypad_driver;
    uint32_t surface_flags                        = (video->vsync) ?
          SDL_RS90_SURFACE_FLAGS_VSYNC_ON :
          SDL_RS90_SURFACE_FLAGS_VSYNC_OFF;
@@ -853,7 +850,7 @@ static void *sdl_rs90_gfx_init(const video_info_t *video,
 
    if (hw_refresh_rate == 0.0f)
    {
-      RARCH_ERR("[SDL1] Failed to set video refresh rate.\n");
+      RARCH_ERR("[SDL1]: Failed to set video refresh rate\n");
       goto error;
    }
 
@@ -880,7 +877,7 @@ static void *sdl_rs90_gfx_init(const video_info_t *video,
 
    if (!vid->screen)
    {
-      RARCH_ERR("[SDL1] Failed to init SDL surface: %s.\n", SDL_GetError());
+      RARCH_ERR("[SDL1]: Failed to init SDL surface: %s\n", SDL_GetError());
       goto error;
    }
 
@@ -902,8 +899,8 @@ static void *sdl_rs90_gfx_init(const video_info_t *video,
 
    SDL_ShowCursor(SDL_DISABLE);
 
-   sdl_rs90_input_driver_init(input_drv_name,
-         joypad_drv_name, input, input_data);
+   sdl_rs90_input_driver_init(input_driver_name,
+         joypad_driver_name, input, input_data);
 
    /* Initialise OSD font */
    sdl_rs90_init_font_color(vid);
@@ -914,7 +911,7 @@ static void *sdl_rs90_gfx_init(const video_info_t *video,
        vid->osd_font->glyph_max <
             (SDL_RS90_NUM_FONT_GLYPHS - 1))
    {
-      RARCH_ERR("[SDL1] Failed to init OSD font.\n");
+      RARCH_ERR("[SDL1]: Failed to init OSD font\n");
       goto error;
    }
 
@@ -1014,7 +1011,7 @@ static void sdl_rs90_set_output(
    /* Check whether selected display mode is valid */
    if (unlikely(!vid->screen))
    {
-      RARCH_ERR("[SDL1] Failed to init SDL surface: %s.\n", SDL_GetError());
+      RARCH_ERR("[SDL1]: Failed to init SDL surface: %s\n", SDL_GetError());
       vid->mode_valid = false;
    }
    else
@@ -1049,7 +1046,7 @@ static void sdl_rs90_blit_frame16(sdl_rs90_video_t *vid,
     * GBA content */
    if (src_pitch == vid->screen->pitch &&
        height == SDL_RS90_HEIGHT)
-      memcpy_nt(vid->screen->pixels, src, src_pitch * SDL_RS90_HEIGHT);
+      memcpy(vid->screen->pixels, src, src_pitch * SDL_RS90_HEIGHT);
    else
       vid->scale_frame16(vid, src, width, height, src_pitch);
 }
@@ -1064,21 +1061,16 @@ static void sdl_rs90_blit_frame32(sdl_rs90_video_t *vid,
     * GBA content */
    if ((src_pitch == vid->screen->pitch) &&
        (height == SDL_RS90_HEIGHT))
-      memcpy_nt(vid->screen->pixels, src, src_pitch * SDL_RS90_HEIGHT);
+      memcpy(vid->screen->pixels, src, src_pitch * SDL_RS90_HEIGHT);
    else
       vid->scale_frame32(vid, src, width, height, src_pitch);
 }
 
 static bool sdl_rs90_gfx_frame(void *data, const void *frame,
-      unsigned dims, uint64_t frame_count,
+      unsigned width, unsigned height, uint64_t frame_count,
       unsigned pitch, const char *msg, video_frame_info_t *video_info)
 {
-   unsigned width = VIDEO_SCALE_W(dims);
-   unsigned height = VIDEO_SCALE_H(dims);
    sdl_rs90_video_t* vid = (sdl_rs90_video_t*)data;
-#ifdef HAVE_MENU
-   bool menu_is_alive    = (video_info->menu_st_flags & MENU_ST_FLAG_ALIVE) ? true : false;
-#endif
 
    /* Return early if:
     * - Input sdl_rs90_video_t struct is NULL
@@ -1088,13 +1080,6 @@ static bool sdl_rs90_gfx_frame(void *data, const void *frame,
     *   core skips a frame) */
    if (unlikely(!vid || (!frame && !vid->menu_active)))
       return true;
-
-   /* Travels with the frame, for set_filtering() and
-    * apply_state_changes() to read rather than the settings the menu
-    * writes: both are run by the video thread. */
-   vid->frame_softfilter_type = video_info->dingux_rs90_softfilter_type;
-   vid->frame_ipu_keep_aspect = video_info->dingux_ipu_keep_aspect;
-   vid->frame_integer_scaling = video_info->scale_integer;
 
    /* If fast forward is currently active, we may
     * push frames at an 'unlimited' rate. Since the
@@ -1117,7 +1102,7 @@ static bool sdl_rs90_gfx_frame(void *data, const void *frame,
    }
 
 #ifdef HAVE_MENU
-   menu_driver_frame(menu_is_alive, video_info);
+   menu_driver_frame(video_info->menu_is_alive, video_info);
 #endif
 
    if (likely(!vid->menu_active))
@@ -1137,21 +1122,18 @@ static bool sdl_rs90_gfx_frame(void *data, const void *frame,
 
       if (likely(vid->mode_valid))
       {
-         if (likely(frame))
-         {
-            /* Blit frame to SDL surface */
-            if (vid->rgb32)
-               sdl_rs90_blit_frame32(vid, (uint32_t*)frame,
-                     width, height, pitch);
-            else
-               sdl_rs90_blit_frame16(vid, (uint16_t*)frame,
-                     width, height, pitch);
-         }
+         /* Blit frame to SDL surface */
+         if (vid->rgb32)
+            sdl_rs90_blit_frame32(vid, (uint32_t*)frame,
+                  width, height, pitch);
+         else
+            sdl_rs90_blit_frame16(vid, (uint16_t*)frame,
+                  width, height, pitch);
       }
       /* If current display mode is invalid,
        * just display an error message */
       else
-         sdl_rs90_blit_video_mode_err_msg(vid);
+         sdl_rs90_blit_video_mode_error_msg(vid);
 
       vid->was_in_menu = false;
    }
@@ -1210,18 +1192,18 @@ static void sdl_rs90_set_texture_enable(void *data, bool state, bool full_screen
 }
 
 static void sdl_rs90_set_texture_frame(void *data, const void *frame, bool rgb32,
-      unsigned dims, float alpha)
+      unsigned width, unsigned height, float alpha)
 {
    sdl_rs90_video_t *vid = (sdl_rs90_video_t*)data;
 
    if (unlikely(
          !vid ||
          rgb32 ||
-         (VIDEO_SCALE_W(dims) > SDL_RS90_WIDTH) ||
-         (VIDEO_SCALE_H(dims) > SDL_RS90_HEIGHT)))
+         (width > SDL_RS90_WIDTH) ||
+         (height > SDL_RS90_HEIGHT)))
       return;
 
-   memcpy(vid->menu_texture, frame, VIDEO_SCALE_AREA(dims) * sizeof(uint16_t));
+   memcpy(vid->menu_texture, frame, width * height * sizeof(uint16_t));
 }
 
 static void sdl_rs90_gfx_set_nonblock_state(void *data, bool toggle,
@@ -1322,9 +1304,10 @@ static void sdl_rs90_gfx_viewport_info(void *data, struct video_viewport *vp)
    if (unlikely(!vid))
       return;
 
-   vp->pos    = VIDEO_POS_PACK(0, 0);
-   vp->dims   = vp->full_dims   = VIDEO_SCALE_PACK(vid->frame_width,
-         vid->frame_height);
+   vp->x      = 0;
+   vp->y      = 0;
+   vp->width  = vp->full_width  = vid->frame_width;
+   vp->height = vp->full_height = vid->frame_height;
 }
 
 static float sdl_rs90_get_refresh_rate(void *data)
@@ -1350,13 +1333,12 @@ static float sdl_rs90_get_refresh_rate(void *data)
 static void sdl_rs90_set_filtering(void *data, unsigned index, bool smooth, bool ctx_scaling)
 {
    sdl_rs90_video_t *vid                            = (sdl_rs90_video_t*)data;
-   /* What the last frame carried, not what the setting says now: this
-    * runs on the video thread under the threaded wrapper. */
-   enum dingux_rs90_softfilter_type softfilter_type = (vid) ?
-         (enum dingux_rs90_softfilter_type)vid->frame_softfilter_type :
+   settings_t *settings                             = config_get_ptr();
+   enum dingux_rs90_softfilter_type softfilter_type = (settings) ?
+         (enum dingux_rs90_softfilter_type)settings->uints.video_dingux_rs90_softfilter_type :
                DINGUX_RS90_SOFTFILTER_POINT;
 
-   if (!vid)
+   if (!vid || !settings)
       return;
 
    /* Update software filter setting, if required */
@@ -1370,12 +1352,11 @@ static void sdl_rs90_set_filtering(void *data, unsigned index, bool smooth, bool
 static void sdl_rs90_apply_state_changes(void *data)
 {
    sdl_rs90_video_t *vid  = (sdl_rs90_video_t*)data;
-   /* What the last frame carried, not what the settings say now: the
-    * video thread runs this from thread_update_driver_state(). */
-   bool keep_aspect       = (vid) ? vid->frame_ipu_keep_aspect : true;
-   bool integer_scaling   = (vid) ? vid->frame_integer_scaling : false;
+   settings_t *settings   = config_get_ptr();
+   bool keep_aspect       = (settings) ? settings->bools.video_dingux_ipu_keep_aspect : true;
+   bool integer_scaling   = (settings) ? settings->bools.video_scale_integer : false;
 
-   if (!vid)
+   if (!vid || !settings)
       return;
 
    if ((vid->keep_aspect != keep_aspect) ||
@@ -1405,9 +1386,9 @@ static uint32_t sdl_rs90_get_flags(void *data)
 
 static const video_poke_interface_t sdl_rs90_poke_interface = {
    sdl_rs90_get_flags,
-   NULL, /* load_texture */
-   NULL, /* unload_texture */
-   NULL, /* set_video_mode */
+   NULL,
+   NULL,
+   NULL,
    sdl_rs90_get_refresh_rate,
    sdl_rs90_set_filtering,
    NULL, /* get_video_output_size */
@@ -1415,21 +1396,20 @@ static const video_poke_interface_t sdl_rs90_poke_interface = {
    NULL, /* get_video_output_next */
    NULL, /* get_current_framebuffer */
    NULL, /* get_proc_address */
-   NULL, /* set_aspect_ratio */
+   NULL,
    sdl_rs90_apply_state_changes,
    sdl_rs90_set_texture_frame,
    sdl_rs90_set_texture_enable,
-   NULL, /* set_osd_msg */
-   NULL, /* show_mouse */
-   NULL, /* grab_mouse_toggle */
+   NULL,
+   NULL, /* sdl_show_mouse */
+   NULL, /* sdl_grab_mouse_toggle */
    NULL, /* get_current_shader */
    NULL, /* get_current_software_framebuffer */
    NULL, /* get_hw_render_interface */
-   NULL, /* set_hdr_menu_nits */
+   NULL, /* set_hdr_max_nits */
    NULL, /* set_hdr_paper_white_nits */
-   NULL, /* set_hdr_expand_gamut */
-   NULL, /* set_hdr_scanlines */
-   NULL  /* set_hdr_subpixel_layout */
+   NULL, /* set_hdr_contrast */
+   NULL  /* set_hdr_expand_gamut */
 };
 
 static void sdl_rs90_get_poke_interface(void *data, const video_poke_interface_t **iface)
@@ -1454,18 +1434,16 @@ video_driver_t video_sdl_rs90 = {
    sdl_rs90_gfx_set_shader,
    sdl_rs90_gfx_free,
    "sdl_rs90",
-   NULL, /* set_viewport */
+   NULL,
    NULL, /* set_rotation */
    sdl_rs90_gfx_viewport_info,
    NULL, /* read_viewport  */
+   NULL, /* read_frame_raw */
 #ifdef HAVE_OVERLAY
-   NULL, /* get_overlay_interface */
+   NULL,
 #endif
-   sdl_rs90_get_poke_interface,
-   NULL, /* wrap_type_to_enum */
-   NULL, /* shader_load_begin */
-   NULL, /* shader_load_step */
-#ifdef HAVE_GFX_WIDGETS
-   NULL  /* gfx_widgets_enabled */
+#ifdef HAVE_VIDEO_LAYOUT
+  NULL,
 #endif
+   sdl_rs90_get_poke_interface
 };

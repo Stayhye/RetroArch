@@ -29,87 +29,34 @@
 
 RETRO_BEGIN_DECLS
 
-/* Bit positions for the driver masks below.  These are shift counts,
- * not masks: the only valid use is as the right-hand operand of a
- * shift.  The DRIVER_BIT_ prefix exists to stop them being mistaken
- * for masks in a `flags & X` test, which compiles silently and picks
- * out whichever unrelated drivers happen to share bits with the
- * position's numeric value. */
 enum
 {
-   DRIVER_BIT_AUDIO = 0,
-   DRIVER_BIT_VIDEO,
-   DRIVER_BIT_INPUT,
-   DRIVER_BIT_CAMERA,
-   DRIVER_BIT_LOCATION,
-   DRIVER_BIT_MENU,
-   DRIVER_BIT_BLUETOOTH,
-   DRIVER_BIT_WIFI,
-   DRIVER_BIT_LED,
-   DRIVER_BIT_MIDI,
-   DRIVER_BIT_MICROPHONE
+   DRIVER_AUDIO = 0,
+   DRIVER_VIDEO,
+   DRIVER_INPUT,
+   DRIVER_CAMERA,
+   DRIVER_LOCATION,
+   DRIVER_MENU,
+   DRIVERS_VIDEO_INPUT,
+   DRIVER_BLUETOOTH,
+   DRIVER_WIFI,
+   DRIVER_LED,
+   DRIVER_MIDI
 };
 
 enum
 {
-   DRIVER_AUDIO_MASK        = 1 << DRIVER_BIT_AUDIO,
-   DRIVER_VIDEO_MASK        = 1 << DRIVER_BIT_VIDEO,
-   DRIVER_INPUT_MASK        = 1 << DRIVER_BIT_INPUT,
-   DRIVER_CAMERA_MASK       = 1 << DRIVER_BIT_CAMERA,
-   DRIVER_LOCATION_MASK     = 1 << DRIVER_BIT_LOCATION,
-   DRIVER_MENU_MASK         = 1 << DRIVER_BIT_MENU,
-   DRIVER_BLUETOOTH_MASK    = 1 << DRIVER_BIT_BLUETOOTH,
-   DRIVER_WIFI_MASK         = 1 << DRIVER_BIT_WIFI,
-   DRIVER_LED_MASK          = 1 << DRIVER_BIT_LED,
-   DRIVER_MIDI_MASK         = 1 << DRIVER_BIT_MIDI,
-   DRIVER_MICROPHONE_MASK   = 1 << DRIVER_BIT_MICROPHONE
-};
-
-/* Video and input are a single unit: input is initialised inside
- * video_driver_init_internal(), and several video drivers hand back
- * the input driver and its data through their init() out-params.
- * Neither can be reinitialised without the other, so requests naming
- * one are widened to both. */
-#define DRIVER_VIDEO_AND_INPUT_MASK (DRIVER_VIDEO_MASK | DRIVER_INPUT_MASK)
-
-#define DRIVER_FLAGS_NORMALIZE(flags) \
-   do \
-   { \
-      if ((flags) & DRIVER_VIDEO_AND_INPUT_MASK) \
-         (flags) |= DRIVER_VIDEO_AND_INPUT_MASK; \
-   } while (0)
-
-/**
- * These flags indicate special requirements or requests
- * of a driver's setup or teardown process.
- *
- * They are passed to \c drivers_init and \c driver_deinit.
- * Not all drivers will need them.
- *
- * @see drivers_init
- * @see driver_deinit
- */
-enum driver_lifetime_flags
-{
-   /**
-    * Indicates that the driver is being reset.
-    * When passed \c driver_deinit, indicates that the targeted drivers
-    * are about to be reinitialized.
-    * When passed to \c driver_init, indicates that the targeted drivers
-    * are in the middle of being reinitialized.
-    *
-    * This is useful for drivers that provide core-accessible resource handles,
-    * such as the microphone driver.
-    * When closed by normal means, such drivers will de-allocate the resources
-    * that their opened handles represent.
-    * If the game isn't being exited, then these resources would effectively
-    * be closed while the core might still be using them.
-    *
-    * This flag can be used to ensure that existing core-accessible handles
-    * are reinitialized with valid resources
-    * before the core notices that anything's wrong.
-    */
-   DRIVER_LIFETIME_RESET = 1 << 0
+   DRIVER_AUDIO_MASK        = 1 << DRIVER_AUDIO,
+   DRIVER_VIDEO_MASK        = 1 << DRIVER_VIDEO,
+   DRIVER_INPUT_MASK        = 1 << DRIVER_INPUT,
+   DRIVER_CAMERA_MASK       = 1 << DRIVER_CAMERA,
+   DRIVER_LOCATION_MASK     = 1 << DRIVER_LOCATION,
+   DRIVER_MENU_MASK         = 1 << DRIVER_MENU,
+   DRIVERS_VIDEO_INPUT_MASK = 1 << DRIVERS_VIDEO_INPUT,
+   DRIVER_BLUETOOTH_MASK    = 1 << DRIVER_BLUETOOTH,
+   DRIVER_WIFI_MASK         = 1 << DRIVER_WIFI,
+   DRIVER_LED_MASK          = 1 << DRIVER_LED,
+   DRIVER_MIDI_MASK         = 1 << DRIVER_MIDI
 };
 
 enum driver_ctl_state
@@ -165,7 +112,7 @@ void driver_set_nonblock_state(void);
  * @flags determines which drivers get initialized.
  **/
 void drivers_init(settings_t *settings, int flags,
-      enum driver_lifetime_flags lifetime_flags, bool verbosity_enabled);
+      bool verbosity_enabled);
 
 /**
  * Driver ownership - set this to true if the platform in
@@ -182,9 +129,11 @@ void drivers_init(settings_t *settings, int flags,
  * Typically, if a driver intends to make use of this, it should
  * set this to true at the end of its 'init' function.
  **/
-void driver_uninit(int flags, enum driver_lifetime_flags lifetime_flags);
+void driver_uninit(int flags);
 
 void retro_input_poll_null(void);
+
+void retroarch_deinit_drivers(struct retro_callbacks *cbs);
 
 RETRO_END_DECLS
 

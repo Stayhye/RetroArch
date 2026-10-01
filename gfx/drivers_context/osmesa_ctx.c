@@ -30,8 +30,6 @@
 #include <GL/osmesa.h>
 
 #include "../../configuration.h"
-#include "../../input/input_driver.h"
-#include "../../retroarch.h"
 #include "../../verbosity.h"
 
 #if (OSMESA_MAJOR_VERSION * 1000 + OSMESA_MINOR_VERSION) >= 11002
@@ -54,17 +52,18 @@ static int            g_osmesa_minor   = 1;
 typedef struct gfx_osmesa_ctx_data
 {
    uint8_t *screen;
-   OSMesaContext ctx;
    int  width;
    int  height;
    int  pixsize;
+
+   OSMesaContext ctx;
    int socket;
    int client;
 } gfx_ctx_osmesa_data_t;
 
 static void osmesa_fifo_open(gfx_ctx_osmesa_data_t *osmesa)
 {
-   struct sockaddr_un saun;
+   struct sockaddr_un saun, fsaun;
 
    osmesa->socket = socket(AF_UNIX, SOCK_STREAM, 0);
    osmesa->client = -1;
@@ -81,8 +80,8 @@ static void osmesa_fifo_open(gfx_ctx_osmesa_data_t *osmesa)
 
    unlink(OSMESA_FIFO_PATH);
 
-   if (bind(osmesa->socket, (struct sockaddr*)&saun,
-            sizeof(saun.sun_family) + sizeof(saun.sun_path)) < 0)
+   if (bind(osmesa->socket,
+            &saun, sizeof(saun.sun_family) + sizeof(saun.sun_path)) < 0)
    {
       perror("[osmesa] bind()");
       close(osmesa->socket);
@@ -96,9 +95,9 @@ static void osmesa_fifo_open(gfx_ctx_osmesa_data_t *osmesa)
       return;
    }
 
-   RARCH_ERR("[OSMesa] Frame size is %ix%ix%i.\n",
+   RARCH_ERR("[osmesa] Frame size is %ix%ix%i\n",
          osmesa->width, osmesa->height, osmesa->pixsize);
-   RARCH_ERR("[OSMesa] Please connect to unix:%s.\n",
+   RARCH_ERR("[osmesa] Please connect to unix:%s\n",
          OSMESA_FIFO_PATH);
 }
 
@@ -106,36 +105,38 @@ static void osmesa_fifo_accept(gfx_ctx_osmesa_data_t *osmesa)
 {
    int res;
    struct pollfd fds;
-   fds.fd     = osmesa->socket;
+   fds.fd = osmesa->socket;
    fds.events = POLLIN;
 
    if (osmesa->client >= 0)
       return;
 
-   if ((res = poll(&fds, 1, 0)) < 0)
+   res = poll(&fds, 1, 0);
+
+   if (res < 0)
       perror("[osmesa] poll() error");
    else if (res > 0)
    {
       osmesa->client = accept(osmesa->socket, NULL, NULL);
-      RARCH_LOG("[OSMesa] Client %i connected.\n", osmesa->client);
+      RARCH_LOG("[osmesa] Client %i connected.\n", osmesa->client);
    }
 }
 
 static void osmesa_fifo_write(gfx_ctx_osmesa_data_t *osmesa)
 {
    int i;
-   size_t _len = osmesa->width * osmesa->pixsize;
+   size_t len = osmesa->width * osmesa->pixsize;
 
    if (osmesa->client < 0)
       return;
 
    for (i = osmesa->height -1; i >= 0; --i)
    {
-      int res = send(osmesa->client, osmesa->screen + i * _len, _len, MSG_NOSIGNAL);
+      int res = send(osmesa->client, osmesa->screen + i * len, len, MSG_NOSIGNAL);
 
       if (res < 0)
       {
-         RARCH_LOG("[OSMesa] Lost connection to %i: %s.\n", osmesa->client, strerror(errno));
+         RARCH_LOG("[osmesa] Lost connection to %i: %s\n", osmesa->client, strerror(errno));
          close(osmesa->client);
          osmesa->client = -1;
          break;
@@ -146,7 +147,7 @@ static void osmesa_fifo_write(gfx_ctx_osmesa_data_t *osmesa)
 static void *osmesa_ctx_init(void *video_driver)
 {
 #ifdef HAVE_OSMESA_CREATE_CONTEXT_ATTRIBS
-   const int attribs[]           = {
+   const int attribs[] = {
       OSMESA_FORMAT, OSMESA_DEFAULT_FORMAT,
       OSMESA_DEPTH_BITS, 0,
       OSMESA_STENCIL_BITS, 0,
@@ -161,10 +162,10 @@ static void *osmesa_ctx_init(void *video_driver)
       calloc(1, sizeof(gfx_ctx_osmesa_data_t));
 
    if (!osmesa)
-      return NULL;
+      goto error;
 
 #ifdef HAVE_OSMESA_CREATE_CONTEXT_ATTRIBS
-   osmesa->ctx                   = OSMesaCreateContextAttribs(attribs, NULL);
+   osmesa->ctx = OSMesaCreateContextAttribs(attribs, NULL);
 #endif
 
 #ifdef HAVE_OSMESA_CREATE_CONTEXT_EXT
@@ -175,20 +176,23 @@ static void *osmesa_ctx_init(void *video_driver)
    if (!osmesa->ctx)
    {
 #if defined(HAVE_OSMESA_CREATE_CONTEXT_ATTRIBS) || defined(HAVE_OSMESA_CREATE_CONTEXT_EXT)
-      RARCH_WARN("[OSMesa] Falling back to standard context creation.\n");
+      RARCH_WARN("[osmesa]: Falling back to standard context creation.\n");
 #endif
       osmesa->ctx = OSMesaCreateContext(OSMESA_DEFAULT_FORMAT, NULL);
    }
 
    if (!osmesa->ctx)
-   {
-      free(osmesa);
-      return NULL;
-   }
+      goto error;
 
    osmesa->pixsize = OSMESA_BPP;
 
    return osmesa;
+
+error:
+   if (osmesa)
+      free(osmesa);
+   RARCH_WARN("[omesa]: Failed to initialize the context driver.\n");
+   return NULL;
 }
 
 static void osmesa_ctx_destroy(void *data)
@@ -235,20 +239,22 @@ static bool osmesa_ctx_bind_api(void *data,
    return true;
 }
 
-static void osmesa_ctx_swap_interval(void *data, int interval) { }
+static void osmesa_ctx_swap_interval(void *data, int interval)
+{
+   (void)data;
+   (void)interval;
+}
 
 static bool osmesa_ctx_set_video_mode(void *data,
-      unsigned dims,
+      unsigned width, unsigned height,
       bool fullscreen)
 {
-   unsigned width  = VIDEO_SCALE_W(dims);
-   unsigned height = VIDEO_SCALE_H(dims);
    gfx_ctx_osmesa_data_t *osmesa = (gfx_ctx_osmesa_data_t*)data;
    uint8_t               *screen = osmesa->screen;
    bool             size_changed = (width * height) != (osmesa->width * osmesa->height);
 
    if (!osmesa->screen || size_changed)
-      screen                     = (uint8_t*)calloc(1, (width * height) * osmesa->pixsize);
+      screen = (uint8_t*)calloc(1, (width * height) * osmesa->pixsize);
 
    if (!screen)
       return false;
@@ -276,23 +282,27 @@ static bool osmesa_ctx_set_video_mode(void *data,
 }
 
 static void osmesa_ctx_get_video_size(void *data,
-      unsigned *dims)
+      unsigned *width, unsigned *height)
 {
    gfx_ctx_osmesa_data_t *osmesa = (gfx_ctx_osmesa_data_t*)data;
 
    if (!osmesa)
       return;
 
-   *dims = VIDEO_SCALE_PACK(osmesa->width, osmesa->height);
+   *width  = osmesa->width;
+   *height = osmesa->height;
 }
 
 static void osmesa_ctx_check_window(void *data, bool *quit,
-      bool *resize,unsigned *dims)
+      bool *resize,unsigned *width,
+      unsigned *height)
 {
    gfx_ctx_osmesa_data_t *osmesa = (gfx_ctx_osmesa_data_t*)data;
-   *dims                        = VIDEO_SCALE_PACK(osmesa->width, osmesa->height);
-   *resize                       = false;
-   *quit                         = false;
+
+   *width              = osmesa->width;
+   *height             = osmesa->height;
+   *resize             = false;
+   *quit               = false;
 }
 
 static bool osmesa_ctx_has_focus(void *data) { return true; }
@@ -304,6 +314,10 @@ static void osmesa_ctx_swap_buffers(void *data)
    gfx_ctx_osmesa_data_t *osmesa = (gfx_ctx_osmesa_data_t*)data;
    osmesa_fifo_accept(osmesa);
    osmesa_fifo_write(osmesa);
+
+#if 0
+   write(osmesa->socket, osmesa->screen, osmesa->width * osmesa->height * osmesa->pixsize);
+#endif
 }
 
 static void osmesa_ctx_input_driver(void *data,
@@ -363,7 +377,5 @@ const gfx_ctx_driver_t gfx_ctx_osmesa =
    osmesa_ctx_set_flags,
    NULL, /* bind_hw_render */
    NULL,
-   NULL,
-   NULL, /* create_surface */
-   NULL  /* destroy_surface */
+   NULL
 };

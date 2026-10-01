@@ -16,6 +16,7 @@ ifeq ($(DEBUG), 1)
 	DEFINES += -DDEBUG
 else
    OPTIMIZE_LV	:= -O3
+	# LDFLAGS :=  -s
 endif
 
 ifeq ($(MUTE_WARNINGS), 1)
@@ -54,7 +55,6 @@ else
 	HAVE_MENU = 1
 	HAVE_CONFIGFILE = 1
 	HAVE_PATCH = 1
-	HAVE_PATCH = 0 # disabled because <lzma.h> isn't available (or we haven't figured out how to install it)
 	HAVE_CHEATS = 1
 	HAVE_RGUI = 1
 	HAVE_MATERIALUI = 0
@@ -83,19 +83,29 @@ ifeq ($(strip $(PS2SDK)),)
 $(error "Please set PS2SDK in your environment. export PS2SDK=<path to>ps2sdk")
 endif
 
-ifneq ($(V),1)
-        Q := @
-endif
-
 INCDIR = -I$(PS2DEV)/gsKit/include -I$(PS2SDK)/ports/include
-INCDIR += -Ilibretro-common/include -Ideps -Ideps/stb -Ideps/7zip
+INCDIR += -Ips2/include -Ilibretro-common/include -Ideps -Ideps/stb -Ideps/7zip
 
 LDFLAGS += -L$(PS2DEV)/gsKit/lib -L$(PS2SDK)/ports/lib -L.
 # Lib cdvd is needed to get proper time
-LIBS += -lpatches -lgskit -ldmakit -lps2_drivers -lz -lelf-loader
+LIBS += -lpatches -lgskit -ldmakit -laudsrv -lmtap -lpadx -lz -lcdvd -lelf-loader -lfileXio -lpoweroff
 
-CFLAGS = $(OPTIMIZE_LV) $(DISABLE_WARNINGS) $(DEFINES) -DPS2 -fsingle-precision-constant -ffast-math
+
+CFLAGS = $(OPTIMIZE_LV) $(DISABLE_WARNINGS) $(DEFINES) -DPS2 -ffast-math -fsingle-precision-constant
 ASFLAGS = $(CFLAGS)
+
+# IRX libs
+IRX_FILES += sio2man.irx iomanX.irx fileXio.irx
+IRX_FILES += mcman.irx mcserv.irx
+IRX_FILES += usbd.irx bdm.irx bdmfs_vfat.irx usbmass_bd.irx
+IRX_FILES += libsd.irx audsrv.irx
+IRX_FILES += cdfs.irx
+IRX_FILES += ps2dev9.irx ps2atad.irx ps2hdd.irx ps2fs.irx poweroff.irx
+IRX_FILES += mtapman.irx padman.irx
+EE_OBJS += $(IRX_FILES:.irx=_irx.o)
+
+# Missing objecst on the PS2SDK
+EE_OBJS += ps2/compat_files/ps2_devices.o
 
 EE_OBJS += $(OBJ)
 
@@ -108,27 +118,11 @@ EE_INCS = $(INCDIR)
 EE_BIN = $(TARGET).elf
 EE_GPVAL = $(GPVAL)
 
+
 all: $(EE_BIN)
 
-define INFO
-EE_BIN: $(EE_BIN)
-EE_CC: $(EE_CC)
-EE_CFLAGS: $(EE_CFLAGS)
-EE_CXX: $(EE_CXX)
-EE_CXXFLAGS: $(EE_CXXFLAGS)
-EE_INCS: $(EE_INCS)
-EE_OBJS: $(EE_OBJS)
-endef
-export INFO
-
-info:
-ifneq ($(V),1)
-	@echo "$$INFO"
-endif
-
 clean:
-	@$(if $(Q), $(shell echo echo RM $<),)
-	$(Q)rm -f $(EE_BIN) $(EE_OBJS)
+	rm -f $(EE_BIN) $(EE_OBJS)
 
 prepare:
 	ps2client -h $(PS2_IP) reset
@@ -138,30 +132,17 @@ run:
 	ps2client -h $(PS2_IP) execee host:$(EE_BIN)
 
 sim:
-ifeq ($(shell uname), Darwin)
-	/Applications/PCSX2.app/Contents/MacOS/PCSX2 -elf $(PWD)/$(EE_BIN)
-else
-	PCSX2 -elf $(PWD)/$(EE_BIN) -nogui
-endif
+	PCSX2 --elf=$(PWD)/$(EE_BIN) --nogui
 
 debug: clean all run
 
 release: all
-	mips64r5900el-ps2-elf-strip -s $(EE_BIN)
-	cp $(EE_BIN) $(TARGET_RELEASE)
+	ps2-packer $(EE_BIN) $(TARGET_RELEASE)
+
+# IRX files
+%_irx.c:
+	$(PS2SDK)/bin/bin2c $(PS2SDK)/iop/irx/$*.irx $@ $*_irx
 
 #Include preferences
 include $(PS2SDK)/samples/Makefile.pref
 include $(PS2SDK)/samples/Makefile.eeglobal_cpp
-
-%.o: %.c
-	@$(if $(Q), $(shell echo echo CC $<),)
-	$(Q)$(EE_CC) $(EE_CFLAGS) $(EE_INCS) -c $< -o $@
-
-%.o: %.cc
-	@$(if $(Q), $(shell echo echo CXX $<),)
-	$(Q)$(EE_CXX) $(EE_CXXFLAGS) $(EE_INCS) -c $< -o $@
-
-%.o: %.cpp
-	@$(if $(Q), $(shell echo echo CXX $<),)
-	$(Q)$(EE_CXX) $(EE_CXXFLAGS) $(EE_INCS) -c $< -o $@

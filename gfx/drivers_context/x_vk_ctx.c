@@ -27,8 +27,6 @@
 #include <compat/strcasestr.h>
 #include <retro_timers.h>
 #include <X11/Xatom.h>
-#include <X11/Xlib-xcb.h>
-#include <xcb/xcb.h>
 
 #include "../../configuration.h"
 #include "../../frontend/frontend_driver.h"
@@ -44,17 +42,12 @@
 
 typedef struct gfx_ctx_x_vk_data
 {
-#ifdef HAVE_XF86VM
    bool should_reset_mode;
-#endif
    bool is_fullscreen;
 
    int interval;
 
    gfx_ctx_vulkan_data_t vk;
-   /* The swapchain's own connection to the server, see
-    * gfx_ctx_x_vk_wsi_connection(). */
-   xcb_connection_t *wsi_conn;
 } gfx_ctx_x_vk_data_t;
 
 typedef struct Hints
@@ -90,33 +83,6 @@ static const unsigned long retroarch_icon_vk_data[] = {
 
 static int x_vk_nul_handler(Display *dpy, XErrorEvent *event) { return 0; }
 
-/* The swapchain presents through a connection of its own. A software
- * WSI writes each frame into its connection as image data, and every
- * request the frontend makes on a shared connection - the input
- * driver's keymap and pointer queries, the event pump - would wait
- * behind that frame. Nothing the frontend asks the server then queues
- * behind a present, whichever thread presents. The window is the
- * frontend's; the server does not care which client draws to it. The
- * frontend's own connection is used only if a second one cannot be
- * opened. */
-static xcb_connection_t *gfx_ctx_x_vk_wsi_connection(
-      gfx_ctx_x_vk_data_t *x)
-{
-   if (!x->wsi_conn)
-   {
-      xcb_connection_t *conn = xcb_connect(DisplayString(g_x11_dpy), NULL);
-      if (xcb_connection_has_error(conn))
-      {
-         xcb_disconnect(conn);
-         RARCH_WARN("[Vulkan] No second X connection for the swapchain,"
-               " presenting on the frontend's.\n");
-         return XGetXCBConnection(g_x11_dpy);
-      }
-      x->wsi_conn = conn;
-   }
-   return x->wsi_conn;
-}
-
 static void gfx_ctx_x_vk_destroy_resources(gfx_ctx_x_vk_data_t *x)
 {
    x11_input_ctx_destroy();
@@ -124,14 +90,6 @@ static void gfx_ctx_x_vk_destroy_resources(gfx_ctx_x_vk_data_t *x)
    if (g_x11_dpy)
    {
       vulkan_context_destroy(&x->vk, g_x11_win != 0);
-   }
-
-   /* After the swapchain and surface: the server frees what the
-    * swapchain made on this connection when it closes. */
-   if (x->wsi_conn)
-   {
-      xcb_disconnect(x->wsi_conn);
-      x->wsi_conn = NULL;
    }
 
    if (g_x11_win && g_x11_dpy)
@@ -145,7 +103,6 @@ static void gfx_ctx_x_vk_destroy_resources(gfx_ctx_x_vk_data_t *x)
 
    x11_colormap_destroy();
 
-#ifdef HAVE_XF86VM
    if (g_x11_dpy)
    {
       if (x->should_reset_mode)
@@ -154,7 +111,6 @@ static void gfx_ctx_x_vk_destroy_resources(gfx_ctx_x_vk_data_t *x)
          x->should_reset_mode = false;
       }
    }
-#endif
 }
 
 static void gfx_ctx_x_vk_destroy(void *data)
@@ -179,50 +135,41 @@ static void gfx_ctx_x_vk_swap_interval(void *data, int interval)
 
    if (x->interval != interval)
    {
-      x->interval     = interval;
+      x->interval = interval;
       if (x->vk.swapchain)
-         x->vk.flags |= VK_DATA_FLAG_NEED_NEW_SWAPCHAIN;
+         x->vk.need_new_swapchain = true;
    }
-}
-
-static bool gfx_ctx_x_vk_presentable(void *data)
-{
-   gfx_ctx_x_vk_data_t *x = (gfx_ctx_x_vk_data_t*)data;
-   /* Unmapped is asked of X directly; the swapchain check covers the
-    * moment before it has been torn down or rebuilt. */
-   if (!x11_presentable(data))
-      return false;
-   return x && x->vk.swapchain != VK_NULL_HANDLE;
 }
 
 static void gfx_ctx_x_vk_swap_buffers(void *data)
 {
    gfx_ctx_x_vk_data_t *x = (gfx_ctx_x_vk_data_t*)data;
 
-   if (x->vk.context.flags & VK_CTX_FLAG_HAS_ACQUIRED_SWAPCHAIN)
+   if (x->vk.context.has_acquired_swapchain)
    {
-      x->vk.context.flags &= ~VK_CTX_FLAG_HAS_ACQUIRED_SWAPCHAIN;
-      /* No swapchain - the window is minimised or zero-sized, and
-       * the create is retried in vulkan_acquire_next_image() below,
-       * which throttles that path itself. Nothing to present and
-       * nothing to wait for here. */
-      if (x->vk.swapchain != VK_NULL_HANDLE)
+      x->vk.context.has_acquired_swapchain = false;
+      if (x->vk.swapchain == VK_NULL_HANDLE)
+      {
+         retro_sleep(10);
+      }
+      else
          vulkan_present(&x->vk, x->vk.context.current_swapchain_index);
    }
    vulkan_acquire_next_image(&x->vk);
 }
 
 static void gfx_ctx_x_vk_check_window(void *data, bool *quit,
-      bool *resize, unsigned *dims)
+      bool *resize, unsigned *width, unsigned *height)
 {
    gfx_ctx_x_vk_data_t *x = (gfx_ctx_x_vk_data_t*)data;
-   x11_check_window(data, quit, resize, dims);
+   x11_check_window(data, quit, resize, width, height);
 
-   if (x->vk.flags & VK_DATA_FLAG_NEED_NEW_SWAPCHAIN)
+   if (x->vk.need_new_swapchain)
       *resize = true;
 }
 
-static bool gfx_ctx_x_vk_set_resize(void *data, unsigned dims)
+static bool gfx_ctx_x_vk_set_resize(void *data,
+      unsigned width, unsigned height)
 {
    gfx_ctx_x_vk_data_t *x = (gfx_ctx_x_vk_data_t*)data;
 
@@ -233,28 +180,24 @@ static bool gfx_ctx_x_vk_set_resize(void *data, unsigned dims)
     * X11 loses focus on monitor/resolution swap and exits fullscreen.
     * Set window on top again to maintain both fullscreen and resolution.
     */
-   if (x->is_fullscreen)
-   {
+   if (x->is_fullscreen) {
       XMapRaised(g_x11_dpy, g_x11_win);
-      RARCH_LOG("[Vulkan] Resized fullscreen resolution to %ux%u.\n",
-            VIDEO_SCALE_W(dims), VIDEO_SCALE_H(dims));
+      RARCH_LOG("[X/Vulkan]: Resized fullscreen resolution to %dx%d.\n", width, height);
    }
 
    /* FIXME/TODO - threading error here */
 
-   if (!vulkan_create_swapchain(&x->vk, dims, x->interval))
+   if (!vulkan_create_swapchain(&x->vk, width, height, x->interval))
    {
-      RARCH_ERR("[Vulkan] Failed to update swapchain.\n");
-      x->vk.swapchain              = VK_NULL_HANDLE;
+      RARCH_ERR("[X/Vulkan]: Failed to update swapchain.\n");
+      x->vk.swapchain = VK_NULL_HANDLE;
       return false;
    }
 
-   if (x->vk.flags & VK_DATA_FLAG_CREATED_NEW_SWAPCHAIN)
-   {
+   if (x->vk.created_new_swapchain)
       vulkan_acquire_next_image(&x->vk);
-      x->vk.context.flags         |=  VK_CTX_FLAG_INVALID_SWAPCHAIN;
-   }
-   x->vk.flags                    &= ~VK_DATA_FLAG_NEED_NEW_SWAPCHAIN;
+   x->vk.context.invalid_swapchain = true;
+   x->vk.need_new_swapchain        = false;
    return true;
 }
 
@@ -263,7 +206,7 @@ static void *gfx_ctx_x_vk_init(void *data)
    int nelements           = 0;
    int major               = 0;
    int minor               = 0;
-   gfx_ctx_x_vk_data_t *x  = (gfx_ctx_x_vk_data_t*)
+   gfx_ctx_x_vk_data_t *x = (gfx_ctx_x_vk_data_t*)
       calloc(1, sizeof(gfx_ctx_x_vk_data_t));
 
    if (!x)
@@ -292,20 +235,17 @@ error:
 }
 
 static bool gfx_ctx_x_vk_set_video_mode(void *data,
-      unsigned dims,
+      unsigned width, unsigned height,
       bool fullscreen)
 {
-   unsigned width  = VIDEO_SCALE_W(dims);
-   unsigned height = VIDEO_SCALE_H(dims);
    XEvent event;
-#ifdef HAVE_XF86VM
    bool true_full            = false;
-#endif
    int val                   = 0;
    int x_off                 = 0;
    int y_off                 = 0;
    XVisualInfo *vi           = NULL;
    XSetWindowAttributes swa  = {0};
+   char *wm_name             = NULL;
    int (*old_handler)(Display*, XErrorEvent*) = NULL;
    gfx_ctx_x_vk_data_t *x    = (gfx_ctx_x_vk_data_t*)data;
    Atom net_wm_icon          = XInternAtom(g_x11_dpy, "_NET_WM_ICON", False);
@@ -330,52 +270,45 @@ static bool gfx_ctx_x_vk_set_video_mode(void *data,
 
       memset(&vi_template, 0, sizeof(vi_template));
       vi_template.screen = DefaultScreen(g_x11_dpy);
-      vi                 = XGetVisualInfo(g_x11_dpy, VisualScreenMask, &vi_template, &nvisuals);
+      vi = XGetVisualInfo(g_x11_dpy, VisualScreenMask, &vi_template, &nvisuals);
       if (!vi || nvisuals < 1)
          goto error;
    }
 
    swa.colormap = g_x11_cmap = XCreateColormap(g_x11_dpy,
          RootWindow(g_x11_dpy, vi->screen), vi->visual, AllocNone);
-   swa.event_mask            = StructureNotifyMask 
-	                     | KeyPressMask 
-			     | KeyReleaseMask
-                             | LeaveWindowMask 
-			     | EnterWindowMask
-                             | ButtonReleaseMask 
-			     | ButtonPressMask
-                             | FocusChangeMask;
-   swa.override_redirect     = False;
+   swa.event_mask = StructureNotifyMask | KeyPressMask | KeyReleaseMask |
+      LeaveWindowMask | EnterWindowMask |
+      ButtonReleaseMask | ButtonPressMask;
+   swa.override_redirect = False;
 
-   x->is_fullscreen          = fullscreen;
+   x->is_fullscreen = fullscreen;
 
-#ifdef HAVE_XF86VM
    if (fullscreen && !windowed_full)
    {
       if (x11_enter_fullscreen(g_x11_dpy, width, height))
       {
-         char *wm_name           = x11_get_wm_name(g_x11_dpy);
-         x->should_reset_mode    = true;
-         true_full               = true;
-
-         if (wm_name)
-         {
-            RARCH_LOG("[Vulkan] Window manager is %s.\n", wm_name);
-
-            if (compat_strcasestr(wm_name, "xfwm"))
-            {
-               RARCH_LOG("[Vulkan] Using override-redirect workaround.\n");
-               swa.override_redirect = True;
-            }
-            free(wm_name);
-         }
-         if (!x11_has_net_wm_fullscreen(g_x11_dpy))
-            swa.override_redirect = True;
+         x->should_reset_mode = true;
+         true_full = true;
       }
       else
-         RARCH_ERR("[Vulkan] Entering true fullscreen failed. Will attempt windowed mode.\n");
+         RARCH_ERR("[X/Vulkan]: Entering true fullscreen failed. Will attempt windowed mode.\n");
    }
-#endif
+
+   wm_name = x11_get_wm_name(g_x11_dpy);
+   if (wm_name)
+   {
+      RARCH_LOG("[X/Vulkan]: Window manager is %s.\n", wm_name);
+
+      if (true_full && strcasestr(wm_name, "xfwm"))
+      {
+         RARCH_LOG("[X/Vulkan]: Using override-redirect workaround.\n");
+         swa.override_redirect = True;
+      }
+      free(wm_name);
+   }
+   if (!x11_has_net_wm_fullscreen(g_x11_dpy) && true_full)
+      swa.override_redirect = True;
 
    if (video_monitor_index)
       g_x11_screen = video_monitor_index - 1;
@@ -388,9 +321,9 @@ static bool gfx_ctx_x_vk_set_video_mode(void *data,
 
       if (xinerama_get_coord(g_x11_dpy, g_x11_screen,
                &x_off, &y_off, &new_width, &new_height))
-         RARCH_LOG("[Vulkan] Using Xinerama on screen #%u.\n", g_x11_screen);
+         RARCH_LOG("[X/Vulkan]: Using Xinerama on screen #%u.\n", g_x11_screen);
       else
-         RARCH_LOG("[Vulkan] Xinerama is not active on screen.\n");
+         RARCH_LOG("[X/Vulkan]: Xinerama is not active on screen.\n");
 
       if (fullscreen)
       {
@@ -400,7 +333,7 @@ static bool gfx_ctx_x_vk_set_video_mode(void *data,
    }
 #endif
 
-   RARCH_DBG("[Vulkan] X = %d, Y = %d, W = %u, H = %u.\n",
+   RARCH_LOG("[X/Vulkan]: X = %d, Y = %d, W = %u, H = %u.\n",
          x_off, y_off, width, height);
 
    g_x11_win = XCreateWindow(g_x11_dpy, RootWindow(g_x11_dpy, vi->screen),
@@ -417,7 +350,7 @@ static bool gfx_ctx_x_vk_set_video_mode(void *data,
       uint32_t                value = 1;
       Atom net_wm_bypass_compositor = XInternAtom(g_x11_dpy, "_NET_WM_BYPASS_COMPOSITOR", False);
 
-      RARCH_LOG("[Vulkan] Requesting compositor bypass.\n");
+      RARCH_LOG("[X/Vulkan]: Requesting compositor bypass.\n");
       XChangeProperty(g_x11_dpy, g_x11_win, net_wm_bypass_compositor, cardinal, 32, PropModeReplace, (const unsigned char*)&value, 1);
    }
 
@@ -445,31 +378,21 @@ static bool gfx_ctx_x_vk_set_video_mode(void *data,
    x11_update_title(NULL);
 
    if (fullscreen)
-   {
-      /* Give the window a fullscreen hint before it is shown.
-       * This helps GNOME + X11 enter fullscreen properly */
-      x11_set_net_wm_fullscreen_hint(g_x11_dpy, g_x11_win);
-   }
+      x11_show_mouse(g_x11_dpy, g_x11_win, false);
 
-   if (fullscreen)
-      x11_show_mouse(data, false);
-
-#ifdef HAVE_XF86VM
    if (true_full)
    {
-      RARCH_LOG("[Vulkan] Using true fullscreen.\n");
+      RARCH_LOG("[X/Vulkan]: Using true fullscreen.\n");
       XMapRaised(g_x11_dpy, g_x11_win);
       x11_set_net_wm_fullscreen(g_x11_dpy, g_x11_win);
    }
-   else
-#endif
-   if (fullscreen)
+   else if (fullscreen)
    {
       /* We attempted true fullscreen, but failed.
        * Attempt using windowed fullscreen. */
 
       XMapRaised(g_x11_dpy, g_x11_win);
-      RARCH_LOG("[Vulkan] Using windowed fullscreen.\n");
+      RARCH_LOG("[X/Vulkan]: Using windowed fullscreen.\n");
 
       /* We have to move the window to the screen we want
        * to go fullscreen on first.
@@ -491,26 +414,18 @@ static bool gfx_ctx_x_vk_set_video_mode(void *data,
 
    x11_event_queue_check(&event);
 
-   if (fullscreen)
-   {
-      /* Ask for fullscreen again after the window is visible. Some
-       * GNOME + X11 setups ignore the first request if it happens too
-       * early, which causes RetroArch to only maximise the window */
-      x11_set_net_wm_fullscreen(g_x11_dpy, g_x11_win);
-      XFlush(g_x11_dpy);
-   }
-
    {
       bool quit, resize;
-      unsigned dims = 0;
-      x11_check_window(x, &quit, &resize, &dims);
+      unsigned width = 0, height = 0;
+      x11_check_window(x, &quit, &resize, &width, &height);
 
       /* FIXME/TODO - threading error here */
 
-      /* Use XCB surface since it's the most supported WSI. */
+      /* Use XCB surface since it's the most supported WSI.
+       * We can obtain the XCB connection directly from X11. */
       if (!vulkan_surface_create(&x->vk, VULKAN_WSI_XCB,
-               gfx_ctx_x_vk_wsi_connection(x), &g_x11_win,
-               VIDEO_SCALE_PACK(width, height), x->interval))
+               g_x11_dpy, &g_x11_win,
+               width, height, x->interval))
          goto error;
    }
 
@@ -530,13 +445,8 @@ static bool gfx_ctx_x_vk_set_video_mode(void *data,
    XFree(vi);
    vi = NULL;
 
-#ifdef HAVE_XF86VM
    if (!x11_input_ctx_new(true_full))
       goto error;
-#else
-   if (!x11_input_ctx_new(false))
-      goto error;
-#endif
 
    return true;
 
@@ -544,16 +454,10 @@ error:
    if (vi)
       XFree(vi);
 
-   /* Do not destroy `x` here.  The caller in
-    * gfx/drivers/vulkan.c::vulkan_init treats a false return
-    * from set_video_mode as a failure of the in-flight `vk_t`
-    * construction and runs vulkan_free() on it, which calls
-    * ctx_driver->destroy(ctx_data) -- i.e. gfx_ctx_x_vk_destroy()
-    * -- on the very pointer we already freed.  That second call
-    * walks freed memory in gfx_ctx_x_vk_destroy_resources() and
-    * then free()s the same pointer again.  Leave cleanup to the
-    * caller's single normal-path destroy.  Cocoa / Android
-    * already do this; this matches them. */
+   gfx_ctx_x_vk_destroy_resources(x);
+
+   if (x)
+      free(x);
    g_x11_screen = 0;
 
    return false;
@@ -584,15 +488,42 @@ static void gfx_ctx_x_vk_input_driver(void *data,
    *input_data  = x_input;
 }
 
+static bool gfx_ctx_x_vk_suppress_screensaver(void *data, bool enable)
+{
+   if (video_driver_display_type_get() != RARCH_DISPLAY_X11)
+      return false;
+
+   x11_suspend_screensaver(video_driver_window_get(), enable);
+
+   return true;
+}
+
 static enum gfx_ctx_api gfx_ctx_x_vk_get_api(void *data)
 {
    return GFX_CTX_VULKAN_API;
 }
 
 static bool gfx_ctx_x_vk_bind_api(void *data, enum gfx_ctx_api api,
-      unsigned major, unsigned minor) { return (api == GFX_CTX_VULKAN_API); }
+      unsigned major, unsigned minor)
+{
+   if (api == GFX_CTX_VULKAN_API)
+         return true;
 
-static void gfx_ctx_x_vk_bind_hw_render(void *data, bool enable) { }
+   return false;
+}
+
+static void gfx_ctx_x_vk_show_mouse(void *data, bool state)
+{
+   x11_show_mouse(g_x11_dpy, g_x11_win, state);
+}
+
+static void gfx_ctx_x_vk_bind_hw_render(void *data, bool enable)
+{
+   gfx_ctx_x_vk_data_t *x = (gfx_ctx_x_vk_data_t*)data;
+
+   if (!x)
+      return;
+}
 
 static void *gfx_ctx_x_vk_get_context_data(void *data)
 {
@@ -602,14 +533,8 @@ static void *gfx_ctx_x_vk_get_context_data(void *data)
 
 static uint32_t gfx_ctx_x_vk_get_flags(void *data)
 {
-   gfx_ctx_x_vk_data_t *x     = (gfx_ctx_x_vk_data_t*)data;
-   uint32_t flags             = 0;
-
-   /* What the swapchain settled when it was made, rather than a walk of
-    * present_modes while the thread that draws rewrites it */
-   if (retro_atomic_load_acquire_int(
-            &x->vk.context.supports_adaptive_vsync))
-      BIT32_SET(flags, GFX_CTX_FLAGS_ADAPTIVE_VSYNC);
+   uint32_t      flags = 0;
+   gfx_ctx_x_vk_data_t *x = (gfx_ctx_x_vk_data_t*)data;
 
 #if defined(HAVE_SLANG) && defined(HAVE_SPIRV_CROSS)
    BIT32_SET(flags, GFX_CTX_FLAGS_SHADERS_SLANG);
@@ -628,36 +553,29 @@ const gfx_ctx_driver_t gfx_ctx_vk_x = {
    gfx_ctx_x_vk_swap_interval,
    gfx_ctx_x_vk_set_video_mode,
    x11_get_video_size,
-#ifdef HAVE_XF86VM
    x11_get_refresh_rate,
-#else
-   NULL,
-#endif
    NULL, /* get_video_output_size */
    NULL, /* get_video_output_prev */
    NULL, /* get_video_output_next */
-   NULL, /* get_metrics - handled by display server */
+   x11_get_metrics,
    NULL,
    x11_update_title,
    gfx_ctx_x_vk_check_window,
    gfx_ctx_x_vk_set_resize,
    x11_has_focus,
-   x11_suspend_screensaver,
+   gfx_ctx_x_vk_suppress_screensaver,
    true, /* has_windowed */
    gfx_ctx_x_vk_swap_buffers,
    gfx_ctx_x_vk_input_driver,
    NULL, /* get_proc_address */
    NULL,
    NULL,
-   x11_show_mouse,
+   gfx_ctx_x_vk_show_mouse,
    "vk_x",
    gfx_ctx_x_vk_get_flags,
    gfx_ctx_x_vk_set_flags,
 
    gfx_ctx_x_vk_bind_hw_render,
    gfx_ctx_x_vk_get_context_data,
-   NULL, /* make_current */
-   NULL, /* create_surface */
-   NULL  /* destroy_surface */,
-   gfx_ctx_x_vk_presentable
+   NULL /* make_current */
 };

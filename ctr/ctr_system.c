@@ -5,6 +5,7 @@
 #include <unistd.h>
 #include <string.h>
 #include <stdlib.h>
+#include <ctype.h>
 #include "ctr_debug.h"
 
 #define CTR_APPMEMALLOC_PTR ((u32*)0x1FF80040)
@@ -187,12 +188,12 @@ Result APT_ReceiveDeliverArg_(void* param, size_t param_size,
    staticbufs[2]          = saved_threadstorage[2];
 	staticbufs[3]          = saved_threadstorage[3];
 
-   if (R_FAILED(ret))
+   if(R_FAILED(ret))
       return ret;
 
-   if (source_pid)
+   if(source_pid)
       *source_pid         = ((u64*)cmdbuf)[1];
-   if (received)
+   if(received)
       *received           = ((bool*)cmdbuf)[16];
 
 	return cmdbuf[1];
@@ -212,7 +213,7 @@ void __system_initArgv(void)
    u8 hmac[0x20];
    bool received;
 
-   if (!__service_ptr
+   if(!__service_ptr
       && R_SUCCEEDED(APT_ReceiveDeliverArg_(&param, sizeof(param), hmac, sizeof(hmac), NULL, &received))
       && received
       && !memcmp(hmac, __argv_hmac, sizeof(__argv_hmac)))
@@ -231,7 +232,20 @@ void __system_initArgv(void)
       for (i = 1; i < __system_argc; i++)
          __system_argv[i] = __system_argv[i - 1] + strlen(__system_argv[i - 1]) + 1;
 
-      __system_argv[__system_argc] = NULL;
+      i             = __system_argc - 1;
+      __system_argc = 1;
+
+      while (i)
+      {
+         if(__system_argv[i] && isalnum(__system_argv[i][0])
+               && strncmp(__system_argv[i], "3dslink:/", 9))
+         {
+            __system_argv[1] = __system_argv[i];
+            __system_argc = 2;
+            break;
+         }
+         i--;
+      }
    }
    else
    {
@@ -257,7 +271,7 @@ void __attribute__((noreturn)) __ctru_exit(int rc)
 {
    __libc_fini_array();
    __appExit();
-   asm ("mov sp, %[saved_stack] \n\t" : : [saved_stack] "r" (__saved_stack));
+   asm ("mov sp, %[saved_stack] \n\t" : : [saved_stack] "r"  (__saved_stack) : "sp");
    __libctru_exit(rc);
 }
 

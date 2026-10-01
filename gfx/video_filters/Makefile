@@ -1,7 +1,7 @@
 compiler    := gcc
 extra_flags :=
 use_neon    := 0
-build       = release
+release	    := release
 DYLIB	    := so
 PREFIX      := /usr
 INSTALLDIR  := $(PREFIX)/lib/retroarch/filters/video
@@ -105,7 +105,6 @@ asflags += -mfpu=neon
 endif
 
 objects += blargg_ntsc_snes.$(DYLIB) \
-			  dedither.$(DYLIB) \
 			  phosphor2x.$(DYLIB) \
 			  epx.$(DYLIB) \
 			  lq2x.$(DYLIB) \
@@ -119,24 +118,17 @@ objects += blargg_ntsc_snes.$(DYLIB) \
 			  normal2x_width.$(DYLIB) \
 			  normal2x_height.$(DYLIB) \
 			  normal4x.$(DYLIB) \
-			  pixel_art_aa.$(DYLIB) \
 			  scanline2x.$(DYLIB) \
 			  grid2x.$(DYLIB) \
 			  grid3x.$(DYLIB) \
-			  grid4x.$(DYLIB) \
 			  gameboy3x.$(DYLIB) \
 			  gameboy4x.$(DYLIB) \
 			  dot_matrix_3x.$(DYLIB) \
 			  dot_matrix_4x.$(DYLIB) \
 			  upscale_1_5x.$(DYLIB) \
-			  upscale_1_66x_fast.$(DYLIB) \
 			  upscale_256x_320x240.$(DYLIB) \
 			  picoscale_256x_320x240.$(DYLIB) \
-			  upscale_240x160_320x240.$(DYLIB) \
-			  upscale_mix_240x160_320x240.$(DYLIB) \
-			  crop_borders.$(DYLIB) \
-			  ntsc.$(DYLIB) \
-			  ntsc_crt.$(DYLIB)
+			  upscale_240x160_320x240.$(DYLIB)
 
 all: build;
 
@@ -146,10 +138,8 @@ all: build;
 %.o: %.c
 	$(CC) -c -o $@ $(flags) $<
 
-# Libraries go after the objects: with --as-needed, a library named
-# before the objects that use it is dropped from the link.
 %.$(DYLIB): %.o
-	$(CC) -o $@ $(ldflags) $(flags) $^ $(LIBS) -lm
+	$(CC) -o $@ $(ldflags) $(flags) $^
 
 build: $(objects)
 

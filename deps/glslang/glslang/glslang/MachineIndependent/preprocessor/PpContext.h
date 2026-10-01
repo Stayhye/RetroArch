@@ -510,11 +510,6 @@ protected:
         TInputScanner* input;
     };
 
-#if defined(__GNUC__)
-#define TOKENIZABLE_NOINLINE __attribute__((noinline))
-#else
-#define TOKENIZABLE_NOINLINE
-#endif
     // Holds a reference to included file data, as well as a
     // prologue and an epilogue string. This can be scanned using the tInput
     // interface and acts as a single source string.
@@ -556,18 +551,14 @@ protected:
         int getch() override { return stringInput.getch(); }
         void ungetch() override { stringInput.ungetch(); }
 
-        // Kept out of line: this is the only notifyActivated() override,
-        // so GCC speculatively inlines it into every pushInput() call and
-        // then reports bounds warnings against the smaller tInput objects
-        // those calls actually push.
-        TOKENIZABLE_NOINLINE void notifyActivated() override
+        void notifyActivated() override
         {
             prevScanner = pp->_parseContext.getScanner();
             pp->_parseContext.setScanner(&scanner);
             pp->push_include(includedFile_);
         }
 
-        TOKENIZABLE_NOINLINE void notifyDeleted() override
+        void notifyDeleted() override
         {
             pp->_parseContext.setScanner(prevScanner);
             pp->pop_include();

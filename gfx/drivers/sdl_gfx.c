@@ -18,8 +18,10 @@
 #include <stdlib.h>
 #include <string.h>
 
+#include <retro_assert.h>
 #include <gfx/scaler/scaler.h>
 #include <gfx/video_frame.h>
+#include <retro_assert.h>
 #include "../../verbosity.h"
 
 #ifdef HAVE_CONFIG_H
@@ -37,8 +39,6 @@
 #include "SDL.h"
 #include "SDL_syswm.h"
 
-#include <encodings/utf.h>
-
 #include "../font_driver.h"
 
 #include "../../configuration.h"
@@ -46,23 +46,24 @@
 
 typedef struct sdl_menu_frame
 {
+   bool active;
    struct scaler_ctx scaler;
    SDL_Surface *frame;
-   bool active;
 } sdl_menu_frame_t;
 
 typedef struct sdl_video
 {
+   bool quitting;
+   uint8_t font_r;
+   uint8_t font_g;
+   uint8_t font_b;
+
    struct scaler_ctx scaler;
    sdl_menu_frame_t menu;
    SDL_Surface *screen;
 
    void *font;
    const font_renderer_driver_t *font_driver;
-   uint8_t font_r;
-   uint8_t font_g;
-   uint8_t font_b;
-   bool quitting;
 } sdl_video_t;
 
 static void sdl_gfx_free(void *data)
@@ -100,18 +101,10 @@ static void sdl_init_font(sdl_video_t *vid,
    if (!font_renderer_create_default(
             &vid->font_driver, &vid->font,
             *path_font ? path_font : NULL,
-            video_font_size, FONT_ATLAS_FORMAT_A8))
+            video_font_size))
    {
-      RARCH_LOG("[SDL] Could not initialize fonts.\n");
+      RARCH_LOG("[SDL]: Could not initialize fonts.\n");
       return;
-   }
-   /* The atlas may grow when a message needs more glyphs than it holds;
-    * the glyphs are blitted from it in memory, so there is no texture
-    * to make again */
-   {
-      struct font_atlas *grow = vid->font_driver->get_atlas(vid->font);
-      grow->max_width  = 2048;
-      grow->max_height = 2048;
    }
 
    r = msg_color_r * 255;
@@ -154,86 +147,73 @@ static void sdl_render_msg(
    gshift     = fmt->Gshift;
    bshift     = fmt->Bshift;
 
+   for (; *msg; msg++)
    {
-      const struct font_glyph* (*get_glyph)(void*, uint32_t)
-                                             = vid->font_driver->get_glyph;
-      void *font_data                        = vid->font;
-      const struct font_glyph *glyph_q       = get_glyph(font_data, '?');
-      struct font_line_metrics *line_metrics = NULL;
-      size_t msg_len                         = strlen(msg);
-      int line_h                             = 0;
-      int line_x                             = msg_base_x;
-      int line_y                             = msg_base_y;
+      int glyph_width, glyph_height;
+      int base_x, base_y, max_width, max_height;
+      uint32_t             *out      = NULL;
+      const uint8_t             *src = NULL;
+      const struct font_glyph *glyph = vid->font_driver->get_glyph(vid->font, (uint8_t)*msg);
+      if (!glyph)
+         continue;
 
-      vid->font_driver->get_line_metrics(font_data, &line_metrics);
-      if (line_metrics)
-         line_h = (int)line_metrics->height;
+      glyph_width  = glyph->width;
+      glyph_height = glyph->height;
 
-      /* UTF-8, each line one line height below the last */
-#define FONT_LAYOUT_ALIGNED 0
-#define FONT_LAYOUT_LINE(line, line_width, count, bytes) \
-      do \
-      { \
-         (void)(line_width); \
-         (void)(count); \
-         (void)(bytes); \
-         line_x = msg_base_x; \
-         line_y = msg_base_y + (line) * line_h; \
-      } while (0)
-#define FONT_LAYOUT_GLYPH(glyph, pen_x, pen_y) \
-      do \
-      { \
-         int glyph_width, glyph_height; \
-         int base_x, base_y, max_width, max_height; \
-         uint32_t             *out      = NULL; \
-         const uint8_t             *src = NULL; \
-         glyph_width  = glyph->width; \
-         glyph_height = glyph->height; \
-         base_x       = (line_x + (pen_x)) + glyph->draw_offset_x; \
-         base_y       = (line_y + (pen_y)) + glyph->draw_offset_y; \
-         src          = atlas->buffer + glyph->atlas_offset_x \
-            + glyph->atlas_offset_y * atlas->width; \
-         if (base_x < 0) \
-         { \
-            src         -= base_x; \
-            glyph_width += base_x; \
-            base_x       = 0; \
-         } \
-         if (base_y < 0) \
-         { \
-            src          -= base_y * (int)atlas->width; \
-            glyph_height += base_y; \
-            base_y        = 0; \
-         } \
-         max_width  = width - base_x; \
-         max_height = height - base_y; \
-         if (max_width <= 0 || max_height <= 0) \
-            break; \
-         if (glyph_width > max_width) \
-            glyph_width = max_width; \
-         if (glyph_height > max_height) \
-            glyph_height = max_height; \
-         out = (uint32_t*)buffer->pixels + base_y \
-            * (buffer->pitch >> 2) + base_x; \
-         for (y = 0; y < glyph_height; y++, src += atlas->width, out += buffer->pitch >> 2) \
-         { \
-            for (x = 0; x < glyph_width; x++) \
-            { \
-               unsigned blend   = src[x]; \
-               unsigned out_pix = out[x]; \
-               unsigned       r = (out_pix >> rshift) & 0xff; \
-               unsigned       g = (out_pix >> gshift) & 0xff; \
-               unsigned       b = (out_pix >> bshift) & 0xff; \
-               unsigned   out_r = (r * (256 - blend) + vid->font_r * blend) >> 8; \
-               unsigned   out_g = (g * (256 - blend) + vid->font_g * blend) >> 8; \
-               unsigned   out_b = (b * (256 - blend) + vid->font_b * blend) >> 8; \
-               out[x]           = (out_r << rshift) | \
-                                  (out_g << gshift) | \
-                                  (out_b << bshift); \
-            } \
-         } \
-      } while (0)
-#include "../font_layout.h"
+      base_x       = msg_base_x + glyph->draw_offset_x;
+      base_y       = msg_base_y + glyph->draw_offset_y;
+      src          = atlas->buffer + glyph->atlas_offset_x
+         + glyph->atlas_offset_y * atlas->width;
+
+      if (base_x < 0)
+      {
+         src         -= base_x;
+         glyph_width += base_x;
+         base_x       = 0;
+      }
+
+      if (base_y < 0)
+      {
+         src          -= base_y * (int)atlas->width;
+         glyph_height += base_y;
+         base_y        = 0;
+      }
+
+      max_width  = width - base_x;
+      max_height = height - base_y;
+
+      if (max_width <= 0 || max_height <= 0)
+         continue;
+
+      if (glyph_width > max_width)
+         glyph_width = max_width;
+      if (glyph_height > max_height)
+         glyph_height = max_height;
+
+      out = (uint32_t*)buffer->pixels + base_y 
+         * (buffer->pitch >> 2) + base_x;
+
+      for (y = 0; y < glyph_height; y++, src += atlas->width, out += buffer->pitch >> 2)
+      {
+         for (x = 0; x < glyph_width; x++)
+         {
+            unsigned blend   = src[x];
+            unsigned out_pix = out[x];
+            unsigned       r = (out_pix >> rshift) & 0xff;
+            unsigned       g = (out_pix >> gshift) & 0xff;
+            unsigned       b = (out_pix >> bshift) & 0xff;
+
+            unsigned   out_r = (r * (256 - blend) + vid->font_r * blend) >> 8;
+            unsigned   out_g = (g * (256 - blend) + vid->font_g * blend) >> 8;
+            unsigned   out_b = (b * (256 - blend) + vid->font_b * blend) >> 8;
+            out[x]           = (out_r << rshift) | 
+                               (out_g << gshift) |
+                               (out_b << bshift);
+         }
+      }
+
+      msg_base_x += glyph->advance_x;
+      msg_base_y += glyph->advance_y;
    }
 }
 
@@ -290,18 +270,20 @@ static void *sdl_gfx_init(const video_info_t *video,
          return NULL;
    }
 
-   if (!(vid = (sdl_video_t*)calloc(1, sizeof(*vid))))
+   vid = (sdl_video_t*)calloc(1, sizeof(*vid));
+   if (!vid)
       return NULL;
 
    video_info = SDL_GetVideoInfo();
-   full_x     = video_info->current_w;
-   full_y     = video_info->current_h;
-   RARCH_LOG("[SDL] Detecting desktop resolution %ux%u.\n", full_x, full_y);
+   retro_assert(video_info);
+   full_x = video_info->current_w;
+   full_y = video_info->current_h;
+   RARCH_LOG("[SDL]: Detecting desktop resolution %ux%u.\n", full_x, full_y);
 
    if (!video->fullscreen)
-      RARCH_LOG("[SDL] Creating window @ %ux%u.\n", VIDEO_SCALE_W(video->dims), VIDEO_SCALE_H(video->dims));
+      RARCH_LOG("[SDL]: Creating window @ %ux%u\n", video->width, video->height);
 
-   vid->screen = SDL_SetVideoMode(VIDEO_SCALE_W(video->dims), VIDEO_SCALE_H(video->dims), 32,
+   vid->screen = SDL_SetVideoMode(video->width, video->height, 32,
          SDL_HWSURFACE | SDL_HWACCEL | SDL_DOUBLEBUF | (video->fullscreen ? SDL_FULLSCREEN : 0));
 
    /* We assume that SDL chooses ARGB8888.
@@ -310,7 +292,7 @@ static void *sdl_gfx_init(const video_info_t *video,
 
    if (!vid->screen)
    {
-      RARCH_ERR("[SDL] Failed to init SDL surface: %s.\n", SDL_GetError());
+      RARCH_ERR("[SDL1]: Failed to init SDL surface: %s\n", SDL_GetError());
       goto error;
    }
 
@@ -321,12 +303,12 @@ static void *sdl_gfx_init(const video_info_t *video,
 
    if (input && input_data)
    {
-      void *sdl_input = input_driver_init_wrap(&input_sdl1,
+      void *sdl_input = input_driver_init_wrap(&input_sdl,
             settings->arrays.input_joypad_driver);
 
       if (sdl_input)
       {
-         *input = &input_sdl1;
+         *input = &input_sdl;
          *input_data = sdl_input;
       }
       else
@@ -355,7 +337,7 @@ static void *sdl_gfx_init(const video_info_t *video,
 
    if (!vid->menu.frame)
    {
-      RARCH_ERR("[SDL] Failed to init menu surface: %s.\n", SDL_GetError());
+      RARCH_ERR("[SDL1]: Failed to init menu surface: %s\n", SDL_GetError());
       goto error;
    }
 
@@ -381,16 +363,14 @@ static void sdl_gfx_check_window(sdl_video_t *vid)
    }
 }
 
-static bool sdl_gfx_frame(void *data, const void *frame,
-      unsigned dims, uint64_t frame_count,
+static bool sdl_gfx_frame(void *data, const void *frame, unsigned width,
+      unsigned height, uint64_t frame_count,
       unsigned pitch, const char *msg, video_frame_info_t *video_info)
 {
-   unsigned width = VIDEO_SCALE_W(dims);
-   unsigned height = VIDEO_SCALE_H(dims);
    char title[128];
-   sdl_video_t   *vid = (sdl_video_t*)data;
+   sdl_video_t                    *vid = (sdl_video_t*)data;
 #ifdef HAVE_MENU
-   bool menu_is_alive = (video_info->menu_st_flags & MENU_ST_FLAG_ALIVE) ? true : false;
+   bool menu_is_alive                  = video_info->menu_is_alive;
 #endif
 
    if (!frame)
@@ -453,16 +433,29 @@ static bool sdl_gfx_focus(void *data)
    return (SDL_GetAppState() & (SDL_APPINPUTFOCUS | SDL_APPACTIVE)) == (SDL_APPINPUTFOCUS | SDL_APPACTIVE);
 }
 
-static bool sdl_gfx_suspend_screensaver(void *data, bool enable) { return false; }
+static bool sdl_gfx_suppress_screensaver(void *data, bool enable)
+{
+#ifdef HAVE_X11
+   if (video_driver_display_type_get() == RARCH_DISPLAY_X11)
+   {
+      x11_suspend_screensaver(video_driver_window_get(), enable);
+      return true;
+   }
+#endif
+
+   return false;
+}
+
 /* TODO/FIXME - implement */
 static bool sdl_gfx_has_windowed(void *data) { return true; }
 
 static void sdl_gfx_viewport_info(void *data, struct video_viewport *vp)
 {
    sdl_video_t *vid = (sdl_video_t*)data;
-   vp->pos    = VIDEO_POS_PACK(0, 0);
-   vp->dims   = vp->full_dims   = VIDEO_SCALE_PACK(vid->screen->w,
-         vid->screen->h);
+   vp->x      = 0;
+   vp->y      = 0;
+   vp->width  = vp->full_width  = vid->screen->w;
+   vp->height = vp->full_height = vid->screen->h;
 }
 
 static void sdl_set_filtering(void *data, unsigned index, bool smooth, bool ctx_scaling)
@@ -477,7 +470,7 @@ static void sdl_apply_state_changes(void *data)
 }
 
 static void sdl_set_texture_frame(void *data, const void *frame, bool rgb32,
-      unsigned dims, float alpha)
+      unsigned width, unsigned height, float alpha)
 {
    enum scaler_pix_fmt format = rgb32
       ? SCALER_FMT_ARGB8888 : SCALER_FMT_RGBA4444;
@@ -491,9 +484,9 @@ static void sdl_set_texture_frame(void *data, const void *frame, bool rgb32,
          vid->menu.frame->w,
          vid->menu.frame->h,
          vid->menu.frame->pitch,
-         VIDEO_SCALE_W(dims),
-         VIDEO_SCALE_H(dims),
-         VIDEO_SCALE_W(dims) * (rgb32 ? sizeof(uint32_t) : sizeof(uint16_t))
+         width,
+         height,
+         width * (rgb32 ? sizeof(uint32_t) : sizeof(uint16_t))
          );
 
    SDL_SetAlpha(vid->menu.frame, SDL_SRCALPHA, 255.0 * alpha);
@@ -535,9 +528,9 @@ static uint32_t sdl_get_flags(void *data)
 
 static const video_poke_interface_t sdl_poke_interface = {
    sdl_get_flags,
-   NULL, /* load_texture */
-   NULL, /* unload_texture */
-   NULL, /* set_video_mode */
+   NULL,
+   NULL,
+   NULL,
    NULL, /* get_refresh_rate */
    sdl_set_filtering,
    NULL, /* get_video_output_size */
@@ -545,21 +538,20 @@ static const video_poke_interface_t sdl_poke_interface = {
    NULL, /* get_video_output_next */
    NULL, /* get_current_framebuffer */
    NULL, /* get_proc_address */
-   NULL, /* set_aspect_ratio */
+   NULL,
    sdl_apply_state_changes,
    sdl_set_texture_frame,
    sdl_set_texture_enable,
-   NULL, /* set_osd_msg */
+   NULL,
    sdl_show_mouse,
    sdl_grab_mouse_toggle,
-   NULL, /* get_current_shader */
-   NULL, /* get_current_software_framebuffer */
-   NULL, /* get_hw_render_interface */
-   NULL, /* set_hdr_menu_nits */
-   NULL, /* set_hdr_paper_white_nits */
-   NULL, /* set_hdr_expand_gamut */
-   NULL, /* set_hdr_scanlines */
-   NULL  /* set_hdr_subpixel_layout */
+   NULL,                         /* get_current_shader */
+   NULL,                         /* get_current_software_framebuffer */
+   NULL,                         /* get_hw_render_interface */
+   NULL,                         /* set_hdr_max_nits */
+   NULL,                         /* set_hdr_paper_white_nits */
+   NULL,                         /* set_hdr_contrast */
+   NULL                          /* set_hdr_expand_gamut */
 };
 
 static void sdl_get_poke_interface(void *data, const video_poke_interface_t **iface)
@@ -585,27 +577,21 @@ video_driver_t video_sdl = {
    sdl_gfx_set_nonblock_state,
    sdl_gfx_alive,
    sdl_gfx_focus,
-#ifdef HAVE_X11
-   x11_suspend_screensaver,
-#else
-   sdl_gfx_suspend_screensaver,
-#endif
+   sdl_gfx_suppress_screensaver,
    sdl_gfx_has_windowed,
    sdl_gfx_set_shader,
    sdl_gfx_free,
    "sdl",
-   NULL, /* set_viewport */
+   NULL,
    NULL, /* set_rotation */
    sdl_gfx_viewport_info,
    NULL, /* read_viewport  */
+   NULL, /* read_frame_raw */
 #ifdef HAVE_OVERLAY
-   NULL, /* get_overlay_interface */
+   NULL,
 #endif
-   sdl_get_poke_interface,
-   NULL, /* wrap_type_to_enum */
-   NULL, /* shader_load_begin */
-   NULL, /* shader_load_step */
-#ifdef HAVE_GFX_WIDGETS
-   NULL  /* gfx_widgets_enabled */
+#ifdef HAVE_VIDEO_LAYOUT
+  NULL,
 #endif
+   sdl_get_poke_interface
 };

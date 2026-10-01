@@ -107,14 +107,14 @@ typedef enum XAUDIO2_DEVICE_ROLE
 #ifdef _XBOX
 typedef enum XAUDIO2_XBOX_HWTHREAD_SPECIFIER
 {
-   XboxThread0 = 0x01,
-   XboxThread1 = 0x02,
-   XboxThread2 = 0x04,
-   XboxThread3 = 0x08,
-   XboxThread4 = 0x10,
-   XboxThread5 = 0x20,
-   XAUDIO2_ANY_PROCESSOR = XboxThread4,
-   XAUDIO2_DEFAULT_PROCESSOR = XAUDIO2_ANY_PROCESSOR
+	XboxThread0 = 0x01,
+	XboxThread1 = 0x02,
+	XboxThread2 = 0x04,
+	XboxThread3 = 0x08,
+	XboxThread4 = 0x10,
+	XboxThread5 = 0x20,
+	XAUDIO2_ANY_PROCESSOR = XboxThread4,
+	XAUDIO2_DEFAULT_PROCESSOR = XAUDIO2_ANY_PROCESSOR
 } XAUDIO2_XBOX_HWTHREAD_SPECIFIER, XAUDIO2_PROCESSOR;
 #else
 typedef enum XAUDIO2_WINDOWS_PROCESSOR_SPECIFIER
@@ -128,8 +128,7 @@ typedef enum XAUDIO2_WINDOWS_PROCESSOR_SPECIFIER
 } XAUDIO2_WINDOWS_PROCESSOR_SPECIFIER, XAUDIO2_PROCESSOR;
 #endif
 
-typedef enum XAUDIO2_FILTER_TYPE
-{
+typedef enum XAUDIO2_FILTER_TYPE {
    LowPassFilter,
    BandPassFilter,
    HighPassFilter
@@ -163,15 +162,7 @@ typedef OPAQUE XAUDIO2_EFFECT_DESCRIPTOR XAUDIO2_EFFECT_DESCRIPTOR;
 typedef OPAQUE XAUDIO2_EFFECT_CHAIN XAUDIO2_EFFECT_CHAIN;
 typedef OPAQUE XAUDIO2_FILTER_PARAMETERS XAUDIO2_FILTER_PARAMETERS;
 typedef OPAQUE XAUDIO2_BUFFER_WMA XAUDIO2_BUFFER_WMA;
-/* Returned by IXAudio2SourceVoice::GetState; the layout has not changed
- * since 2.7. SamplesPlayed runs on the device's clock and never stops
- * or wraps within a session: the sink rate estimate's count. */
-typedef struct XAUDIO2_VOICE_STATE
-{
-   void  *pCurrentBufferContext;
-   UINT32 BuffersQueued;
-   UINT64 SamplesPlayed;
-} XAUDIO2_VOICE_STATE;
+typedef OPAQUE XAUDIO2_VOICE_STATE XAUDIO2_VOICE_STATE;
 typedef OPAQUE XAUDIO2_PERFORMANCE_DATA XAUDIO2_PERFORMANCE_DATA;
 typedef OPAQUE XAUDIO2_DEBUG_CONFIGURATION XAUDIO2_DEBUG_CONFIGURATION;
 typedef OPAQUE IXAudio2EngineCallback IXAudio2EngineCallback;
@@ -319,7 +310,6 @@ DECLARE_INTERFACE_(IXAudio2, IUnknown)
 #define IXAudio2_Initialize(handle,a,b) handle->Initialize(a, b)
 #define IXAudio2SourceVoice_SubmitSourceBuffer(handle, a, b) handle->SubmitSourceBuffer(a, b)
 #define IXAudio2SourceVoice_Stop(handle, a, b) handle->Stop(a, b)
-#define IXAudio2SourceVoice_GetState(handle, pVoiceState) handle->GetState(pVoiceState)
 #define IXAudio2SourceVoice_DestroyVoice(handle) handle->DestroyVoice()
 #define IXAudio2MasteringVoice_DestroyVoice(handle) handle->DestroyVoice()
 #define IXAudio2_Release(handle) handle->Release()
@@ -338,7 +328,6 @@ DECLARE_INTERFACE_(IXAudio2, IUnknown)
 #define IXAudio2_GetDeviceDetails(handle, Index,pDeviceDetails) (handle)->lpVtbl->GetDeviceDetails(handle, Index, pDeviceDetails)
 #define IXAudio2SourceVoice_Start(handle, Flags, OperationSet) (handle)->lpVtbl->Start(handle, Flags, OperationSet)
 #define IXAudio2SourceVoice_Stop(handle, Flags, OperationSet) (handle)->lpVtbl->Stop(handle, Flags, OperationSet)
-#define IXAudio2SourceVoice_GetState(handle, pVoiceState) (handle)->lpVtbl->GetState(handle, pVoiceState)
 #define IXAudio2SourceVoice_SubmitSourceBuffer(handle, pBuffer, pBufferWMA) (handle)->lpVtbl->SubmitSourceBuffer(handle, pBuffer, pBufferWMA)
 #define IXAudio2SourceVoice_DestroyVoice(handle) (handle)->lpVtbl->DestroyVoice(handle)
 #define IXAudio2MasteringVoice_DestroyVoice(handle) (handle)->lpVtbl->DestroyVoice(handle)
@@ -346,7 +335,7 @@ DECLARE_INTERFACE_(IXAudio2, IUnknown)
 
 #ifdef _XBOX
 STDAPI XAudio2Create(__deref_out IXAudio2** ppXAudio2, UINT32 Flags X2DEFAULT(0),
-      XAUDIO2_PROCESSOR XAudio2Processor X2DEFAULT(XAUDIO2_DEFAULT_PROCESSOR));
+		XAUDIO2_PROCESSOR XAudio2Processor X2DEFAULT(XAUDIO2_DEFAULT_PROCESSOR));
 #else
 static INLINE HRESULT XAudio2Create(IXAudio2 **ppXAudio2, UINT32 flags, XAUDIO2_PROCESSOR proc)
 {

@@ -58,9 +58,8 @@ void co_switch_arm(cothread_t handle, cothread_t current);
 
 cothread_t co_create(unsigned int size, void (*entrypoint)(void))
 {
-   uint32_t *ptr     = NULL;
+   size = (size + 1023) & ~1023;
    cothread_t handle = 0;
-   size              = (size + 1023) & ~1023;
 #if defined(__APPLE__) || HAVE_POSIX_MEMALIGN >= 1
    if (posix_memalign(&handle, 1024, size + 256) < 0)
       return 0;
@@ -71,7 +70,7 @@ cothread_t co_create(unsigned int size, void (*entrypoint)(void))
    if (!handle)
       return handle;
 
-   ptr    = (uint32_t*)handle;
+   uint32_t *ptr = (uint32_t*)handle;
    /* Non-volatiles.  */
    ptr[0] = 0; /* r4  */
    ptr[1] = 0; /* r5  */

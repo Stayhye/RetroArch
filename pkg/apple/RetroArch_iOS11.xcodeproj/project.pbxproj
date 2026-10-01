@@ -611,7 +611,7 @@
 				CODE_SIGN_IDENTITY = "iPhone Developer";
 				"CODE_SIGN_IDENTITY[sdk=iphoneos*]" = "iPhone Developer";
 				CODE_SIGN_RESOURCE_RULES_PATH = "$(SDKROOT)/ResourceRules.plist";
-				CURRENT_PROJECT_VERSION = 1.22.2;
+				CURRENT_PROJECT_VERSION = 1.10.3;
 				DEVELOPMENT_TEAM = R72X3BF4KE;
 				ENABLE_BITCODE = NO;
 				GCC_PRECOMPILE_PREFIX_HEADER = NO;
@@ -619,6 +619,7 @@
 				HEADER_SEARCH_PATHS = (
 					../../,
 					"../../libretro-common/include",
+					"../../libretro-common/include/compat/zlib",
 					../../deps/stb,
 					../../deps/rcheevos/include,
 					../../deps,
@@ -627,21 +628,18 @@
 				IPHONEOS_DEPLOYMENT_TARGET = 11.0;
 				LD_NO_PIE = YES;
 				LIBRARY_SEARCH_PATHS = "";
-				MARKETING_VERSION = 1.22.2;
+				MARKETING_VERSION = 1.10.3;
 				ONLY_ACTIVE_ARCH = NO;
 				OTHER_CFLAGS = (
 					"-DHAVE_NETWORKGAMEPAD",
 					"-DHAVE_STB_FONT",
 					"-DHAVE_HID",
 					"-DHAVE_NETWORKING",
-					"-DHAVE_IFINFO",
 					"-DHAVE_NETPLAYDISCOVERY",
-					"-DHAVE_BSV_MOVIE",
-					"-DHAVE_BSV_MOVIE",
 					"-DHAVE_RUNAHEAD",
 					"-DHAVE_TRANSLATE",
 					"-DHAVE_GRIFFIN",
-					"-DHAVE_RVORBIS",
+					"-DHAVE_STB_VORBIS",
 					"-DHAVE_UPDATE_ASSETS",
 					"-DHAVE_ONLINE_UPDATER",
 					"-DHAVE_LANGEXTRA",
@@ -674,9 +672,9 @@
 					"-DHAVE_COREAUDIO",
 					"-DHAVE_DYNAMIC",
 					"-DHAVE_OVERLAY",
+					"-DHAVE_VIDEO_LAYOUT",
+					"-DHAVE_ZLIB",
 					"-DHAVE_RPNG",
-					"-DHAVE_RWEBP",
-					"-DHAVE_RDDS",
 					"-DHAVE_RJPEG",
 					"-DHAVE_RBMP",
 					"-DHAVE_RTGA",
@@ -711,7 +709,7 @@
 				CODE_SIGN_IDENTITY = "iPhone Developer";
 				"CODE_SIGN_IDENTITY[sdk=iphoneos*]" = "iPhone Developer";
 				CODE_SIGN_RESOURCE_RULES_PATH = "$(SDKROOT)/ResourceRules.plist";
-				CURRENT_PROJECT_VERSION = 1.22.2;
+				CURRENT_PROJECT_VERSION = 1.10.3;
 				DEVELOPMENT_TEAM = R72X3BF4KE;
 				ENABLE_BITCODE = NO;
 				GCC_PRECOMPILE_PREFIX_HEADER = NO;
@@ -719,6 +717,7 @@
 				HEADER_SEARCH_PATHS = (
 					../../,
 					"../../libretro-common/include",
+					"../../libretro-common/include/compat/zlib",
 					../../deps/stb,
 					../../deps/rcheevos/include,
 					../../deps,
@@ -727,7 +726,7 @@
 				IPHONEOS_DEPLOYMENT_TARGET = 11.0;
 				LD_NO_PIE = YES;
 				LIBRARY_SEARCH_PATHS = "";
-				MARKETING_VERSION = 1.22.2;
+				MARKETING_VERSION = 1.10.3;
 				"OTHER_CFLAGS[arch=*]" = (
 					"-DNS_BLOCK_ASSERTIONS=1",
 					"-DNDEBUG",
@@ -735,13 +734,11 @@
 					"-DHAVE_STB_FONT",
 					"-DHAVE_HID",
 					"-DHAVE_NETWORKING",
-					"-DHAVE_IFINFO",
 					"-DHAVE_NETPLAYDISCOVERY",
-					"-DHAVE_BSV_MOVIE",
 					"-DHAVE_RUNAHEAD",
 					"-DHAVE_TRANSLATE",
 					"-DHAVE_GRIFFIN",
-					"-DHAVE_RVORBIS",
+					"-DHAVE_STB_VORBIS",
 					"-DHAVE_UPDATE_ASSETS",
 					"-DHAVE_ONLINE_UPDATER",
 					"-DHAVE_LANGEXTRA",
@@ -775,9 +772,9 @@
 					"-DHAVE_DYNAMIC",
 					"-DRARCH_INTERNAL",
 					"-DHAVE_OVERLAY",
+					"-DHAVE_VIDEO_LAYOUT",
+					"-DHAVE_ZLIB",
 					"-DHAVE_RPNG",
-					"-DHAVE_RWEBP",
-					"-DHAVE_RDDS",
 					"-DHAVE_RJPEG",
 					"-DHAVE_RBMP",
 					"-DHAVE_RTGA",
@@ -786,6 +783,7 @@
 					"-DHAVE_THREADS",
 					"-DHAVE_FILTERS_BUILTIN",
 					"-DHAVE_7ZIP",
+					"-D_7ZIP_ST",
 					"-DHAVE_MATERIALUI",
 					"-DHAVE_XMB",
 					"-DHAVE_OZONE",
@@ -834,7 +832,7 @@
 				CLANG_WARN_UNREACHABLE_CODE = YES;
 				CODE_SIGN_IDENTITY = "iPhone Developer";
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 1.22.2;
+				CURRENT_PROJECT_VERSION = 1.10.3;
 				DEBUG_INFORMATION_FORMAT = dwarf;
 				DEVELOPMENT_TEAM = R72X3BF4KE;
 				ENABLE_STRICT_OBJC_MSGSEND = YES;
@@ -849,13 +847,14 @@
 				HEADER_SEARCH_PATHS = (
 					../../,
 					"../../libretro-common/include",
+					"../../libretro-common/include/compat/zlib",
 					../../deps/stb,
 					../../deps/rcheevos/include,
 					../../deps,
 				);
 				INFOPLIST_FILE = "$(SRCROOT)/tvOS/Info.plist";
 				LD_RUNPATH_SEARCH_PATHS = "$(inherited) @executable_path/Frameworks";
-				MARKETING_VERSION = 1.22.2;
+				MARKETING_VERSION = 1.10.3;
 				MTL_ENABLE_DEBUG_INFO = INCLUDE_SOURCE;
 				MTL_FAST_MATH = YES;
 				ONLY_ACTIVE_ARCH = YES;
@@ -864,13 +863,11 @@
 					"-DHAVE_STB_FONT",
 					"-DHAVE_HID",
 					"-DHAVE_NETWORKING",
-					"-DHAVE_IFINFO",
 					"-DHAVE_NETPLAYDISCOVERY",
-					"-DHAVE_BSV_MOVIE",
 					"-DHAVE_RUNAHEAD",
 					"-DHAVE_TRANSLATE",
 					"-DHAVE_GRIFFIN",
-					"-DHAVE_RVORBIS",
+					"-DHAVE_STB_VORBIS",
 					"-DHAVE_UPDATE_ASSETS",
 					"-DHAVE_ONLINE_UPDATER",
 					"-DHAVE_LANGEXTRA",
@@ -902,9 +899,9 @@
 					"-DRARCH_MOBILE",
 					"-DHAVE_COREAUDIO",
 					"-DHAVE_DYNAMIC",
+					"-DHAVE_VIDEO_LAYOUT",
+					"-DHAVE_ZLIB",
 					"-DHAVE_RPNG",
-					"-DHAVE_RWEBP",
-					"-DHAVE_RDDS",
 					"-DHAVE_RJPEG",
 					"-DHAVE_RBMP",
 					"-DHAVE_RTGA",
@@ -961,7 +958,7 @@
 				CLANG_WARN_UNREACHABLE_CODE = YES;
 				CODE_SIGN_IDENTITY = "iPhone Developer";
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 1.22.2;
+				CURRENT_PROJECT_VERSION = 1.10.3;
 				DEBUG_INFORMATION_FORMAT = "dwarf-with-dsym";
 				DEVELOPMENT_TEAM = R72X3BF4KE;
 				ENABLE_NS_ASSERTIONS = NO;
@@ -976,13 +973,14 @@
 				HEADER_SEARCH_PATHS = (
 					../../,
 					"../../libretro-common/include",
+					"../../libretro-common/include/compat/zlib",
 					../../deps/stb,
 					../../deps/rcheevos/include,
 					../../deps,
 				);
 				INFOPLIST_FILE = "$(SRCROOT)/tvOS/Info.plist";
 				LD_RUNPATH_SEARCH_PATHS = "$(inherited) @executable_path/Frameworks";
-				MARKETING_VERSION = 1.22.2;
+				MARKETING_VERSION = 1.10.3;
 				MTL_ENABLE_DEBUG_INFO = NO;
 				MTL_FAST_MATH = YES;
 				OTHER_CFLAGS = (
@@ -992,13 +990,11 @@
 					"-DHAVE_STB_FONT",
 					"-DHAVE_HID",
 					"-DHAVE_NETWORKING",
-					"-DHAVE_IFINFO",
 					"-DHAVE_NETPLAYDISCOVERY",
-					"-DHAVE_BSV_MOVIE",
 					"-DHAVE_RUNAHEAD",
 					"-DHAVE_TRANSLATE",
 					"-DHAVE_GRIFFIN",
-					"-DHAVE_RVORBIS",
+					"-DHAVE_STB_VORBIS",
 					"-DHAVE_UPDATE_ASSETS",
 					"-DHAVE_ONLINE_UPDATER",
 					"-DHAVE_LANGEXTRA",
@@ -1030,9 +1026,9 @@
 					"-DRARCH_MOBILE",
 					"-DHAVE_COREAUDIO",
 					"-DHAVE_DYNAMIC",
+					"-DHAVE_VIDEO_LAYOUT",
+					"-DHAVE_ZLIB",
 					"-DHAVE_RPNG",
-					"-DHAVE_RWEBP",
-					"-DHAVE_RDDS",
 					"-DHAVE_RJPEG",
 					"-DHAVE_RBMP",
 					"-DHAVE_RTGA",
@@ -1042,6 +1038,7 @@
 					"-DHAVE_THREADS",
 					"-DHAVE_FILTERS_BUILTIN",
 					"-DHAVE_7ZIP",
+					"-D_7ZIP_ST",
 					"-DHAVE_XMB",
 					"-DHAVE_OZONE",
 					"-DHAVE_SHADERPIPELINE",
@@ -1091,13 +1088,11 @@
 					"-DHAVE_STB_FONT",
 					"-DHAVE_HID",
 					"-DHAVE_NETWORKING",
-					"-DHAVE_IFINFO",
 					"-DHAVE_NETPLAYDISCOVERY",
-					"-DHAVE_BSV_MOVIE",
 					"-DHAVE_RUNAHEAD",
 					"-DHAVE_TRANSLATE",
 					"-DHAVE_GRIFFIN",
-					"-DHAVE_RVORBIS",
+					"-DHAVE_STB_VORBIS",
 					"-DHAVE_UPDATE_ASSETS",
 					"-DHAVE_ONLINE_UPDATER",
 					"-DHAVE_LANGEXTRA",
@@ -1132,9 +1127,9 @@
 					"-std=gnu99",
 					"-DHAVE_COREAUDIO",
 					"-DHAVE_OVERLAY",
+					"-DHAVE_VIDEO_LAYOUT",
+					"-DHAVE_ZLIB",
 					"-DHAVE_RPNG",
-					"-DHAVE_RWEBP",
-					"-DHAVE_RDDS",
 					"-DHAVE_RJPEG",
 					"-DHAVE_RBMP",
 					"-DHAVE_RTGA",
@@ -1175,13 +1170,11 @@
 					"-DHAVE_STB_FONT",
 					"-DHAVE_HID",
 					"-DHAVE_NETWORKING",
-					"-DHAVE_IFINFO",
 					"-DHAVE_NETPLAYDISCOVERY",
-					"-DHAVE_BSV_MOVIE",
 					"-DHAVE_RUNAHEAD",
 					"-DHAVE_TRANSLATE",
 					"-DHAVE_GRIFFIN",
-					"-DHAVE_RVORBIS",
+					"-DHAVE_STB_VORBIS",
 					"-DHAVE_UPDATE_ASSETS",
 					"-DHAVE_ONLINE_UPDATER",
 					"-DHAVE_LANGEXTRA",
@@ -1216,9 +1209,9 @@
 					"-std=gnu99",
 					"-DHAVE_COREAUDIO",
 					"-DHAVE_OVERLAY",
+					"-DHAVE_VIDEO_LAYOUT",
+					"-DHAVE_ZLIB",
 					"-DHAVE_RPNG",
-					"-DHAVE_RWEBP",
-					"-DHAVE_RDDS",
 					"-DHAVE_RJPEG",
 					"-DHAVE_RBMP",
 					"-DHAVE_RTGA",
