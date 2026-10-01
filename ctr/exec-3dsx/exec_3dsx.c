@@ -5,6 +5,7 @@
 
 #include "mini-hb-menu/common.h"
 
+extern const loaderFuncs_s loader_Ninjhax1;
 extern const loaderFuncs_s loader_Ninjhax2;
 extern const loaderFuncs_s loader_Rosalina;
 
@@ -14,12 +15,12 @@ static void (*launch_3dsx)(const char* path,
 static int exec_3dsx_actual(const char* path,
       const char** args, bool appendPath)
 {
-   bool inited;
-   bool fileExists;
    struct stat sBuff;
    argData_s newProgramArgs;
    unsigned int argChars = 0;
-   unsigned int argNum   = 0;
+   unsigned int argNum = 0;
+   bool fileExists;
+   bool inited;
 
    if (!path || path[0] == '\0')
    {
@@ -50,8 +51,7 @@ static int exec_3dsx_actual(const char* path,
       newProgramArgs.dst += strlen(path) + 1;
       newProgramArgs.buf[0]++;
    }
-
-   while(args[argNum])
+   while(args[argNum] != NULL)
    {
       strcpy(newProgramArgs.dst, args[argNum]);
       newProgramArgs.dst += strlen(args[argNum]) + 1;
@@ -59,13 +59,19 @@ static int exec_3dsx_actual(const char* path,
       argNum++;
    }
 
-   inited         = loader_Rosalina.init();
-   launch_3dsx    = loader_Rosalina.launchFile;
+   inited = loader_Rosalina.init();
+   launch_3dsx = loader_Rosalina.launchFile;
 
    if (!inited)
    {
-      inited      = loader_Ninjhax2.init();
+      inited = loader_Ninjhax2.init();
       launch_3dsx = loader_Ninjhax2.launchFile;
+   }
+
+   if (!inited)
+   {
+      inited = loader_Ninjhax1.init();
+      launch_3dsx = loader_Ninjhax1.launchFile;
    }
 
    if (inited)

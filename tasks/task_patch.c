@@ -31,10 +31,8 @@
 
 #include <encodings/crc32.h>
 
-#include "../retroarch.h"
 #include "../msg_hash.h"
 #include "../verbosity.h"
-#include "../configuration.h"
 
 enum bps_mode
 {
@@ -62,9 +60,6 @@ enum patch_error
 
 struct bps_data
 {
-   const uint8_t *modify_data;
-   const uint8_t *source_data;
-   uint8_t *target_data;
    size_t modify_length;
    size_t source_length;
    size_t target_length;
@@ -77,13 +72,13 @@ struct bps_data
    uint32_t modify_checksum;
    uint32_t source_checksum;
    uint32_t target_checksum;
+   const uint8_t *modify_data;
+   const uint8_t *source_data;
+   uint8_t *target_data;
 };
 
 struct ups_data
 {
-   const uint8_t *patch_data;
-   const uint8_t *source_data;
-   uint8_t *target_data;
    unsigned patch_length;
    unsigned source_length;
    unsigned target_length;
@@ -93,6 +88,9 @@ struct ups_data
    unsigned patch_checksum;
    unsigned source_checksum;
    unsigned target_checksum;
+   const uint8_t *patch_data;
+   const uint8_t *source_data;
+   uint8_t *target_data;
 };
 
 typedef enum patch_error (*patch_func_t)(const uint8_t*, uint64_t,
@@ -567,11 +565,9 @@ static enum patch_error ips_apply_patch(
 
          if (offset == patchlen - 3)
          {
-#if 0
             uint32_t size  = patchdata[offset++] << 16;
             size          |= patchdata[offset++] << 8;
             size          |= patchdata[offset++] << 0;
-#endif
             return PATCH_SUCCESS;
          }
       }
@@ -615,9 +611,6 @@ static bool apply_patch_content(uint8_t **buf,
       ssize_t *size, const char *patch_desc, const char *patch_path,
       patch_func_t func, void *patch_data, int64_t patch_size)
 {
-   settings_t *settings     = config_get_ptr();
-   bool show_notification   = settings ?
-         settings->bools.notification_show_patch_applied : false;
    enum patch_error err     = PATCH_UNKNOWN;
    ssize_t ret_size         = *size;
    uint8_t *ret_buf         = *buf;
@@ -633,21 +626,6 @@ static bool apply_patch_content(uint8_t **buf,
       free(ret_buf);
       *buf  = patched_content;
       *size = target_size;
-
-      /* Show an OSD message */
-      if (show_notification)
-      {
-         const char *patch_filename = path_basename(patch_path);
-         char msg[256];
-
-         msg[0] = '\0';
-
-         snprintf(msg, sizeof(msg), msg_hash_to_str(MSG_APPLYING_PATCH),
-               patch_filename ? patch_filename :
-                     msg_hash_to_str(MENU_ENUM_LABEL_VALUE_UNKNOWN));
-         runloop_msg_queue_push(msg, 1, 180, false, NULL,
-               MESSAGE_QUEUE_ICON_DEFAULT, MESSAGE_QUEUE_CATEGORY_INFO);
-      }
    }
    else
       RARCH_ERR("%s %s: %s #%u\n",
@@ -760,7 +738,6 @@ bool patch_content(
    bool allow_ups   = !is_bps_pref && !is_ips_pref;
    bool allow_ips   = !is_ups_pref && !is_bps_pref;
    bool allow_bps   = !is_ups_pref && !is_ips_pref;
-   bool patch_found = false;
 
    if (    (unsigned)is_ips_pref
          + (unsigned)is_bps_pref
@@ -771,74 +748,14 @@ bool patch_content(
       return false;
    }
 
-   /* Attempt to apply first (non-indexed) patch */
-   if (     try_ips_patch(allow_ips, name_ips, buf, size)
-         || try_bps_patch(allow_bps, name_bps, buf, size)
-         || try_ups_patch(allow_ups, name_ups, buf, size))
+   if (     !try_ips_patch(allow_ips, name_ips, buf, size)
+         && !try_bps_patch(allow_bps, name_bps, buf, size)
+         && !try_ups_patch(allow_ups, name_ups, buf, size))
    {
-      /* A patch has been found. Now attempt to apply
-       * any additional 'indexed' patch files */
-      size_t name_ips_len    = strlen(name_ips);
-      size_t name_bps_len    = strlen(name_bps);
-      size_t name_ups_len    = strlen(name_ups);
-      char *name_ips_indexed = (char*)malloc((name_ips_len + 2) * sizeof(char));
-      char *name_bps_indexed = (char*)malloc((name_bps_len + 2) * sizeof(char));
-      char *name_ups_indexed = (char*)malloc((name_ups_len + 2) * sizeof(char));
-      /* First patch already applied -> index
-       * for subsequent patches starts at 1 */
-      size_t patch_index     = 1;
-
-      name_ips_indexed[0] = '\0';
-      name_bps_indexed[0] = '\0';
-      name_ups_indexed[0] = '\0';
-
-      strlcpy(name_ips_indexed, name_ips, (name_ips_len + 1) * sizeof(char));
-      strlcpy(name_bps_indexed, name_bps, (name_bps_len + 1) * sizeof(char));
-      strlcpy(name_ups_indexed, name_ups, (name_ups_len + 1) * sizeof(char));
-
-      /* Ensure that we NUL terminate *after* the
-       * index character */
-      name_ips_indexed[name_ips_len + 1] = '\0';
-      name_bps_indexed[name_bps_len + 1] = '\0';
-      name_ups_indexed[name_ups_len + 1] = '\0';
-
-      /* try to patch "*.ipsX" */
-      while (patch_index < 10)
-      {
-         /* Add index character to end of patch
-          * file path string
-          * > Note: This technique only works for
-          *   index values up to 9 (i.e. single
-          *   digit numbers)
-          * > If we want to support more than 10
-          *   patches in total, will have to replace
-          *   this with an snprintf() implementation
-          *   (which will have significantly higher
-          *   performance overheads) */
-         char index_char = '0' + patch_index;
-
-         name_ips_indexed[name_ips_len] = index_char;
-         name_bps_indexed[name_bps_len] = index_char;
-         name_ups_indexed[name_ups_len] = index_char;
-
-         if (     !try_ips_patch(allow_ips, name_ips_indexed, buf, size)
-               && !try_bps_patch(allow_bps, name_bps_indexed, buf, size)
-               && !try_ups_patch(allow_ups, name_ups_indexed, buf, size))
-            break;
-
-         patch_index++;
-      }
-
-      free(name_ips_indexed);
-      free(name_bps_indexed);
-      free(name_ups_indexed);
-
-      patch_found = true;
+      RARCH_LOG("%s\n",
+            msg_hash_to_str(MSG_DID_NOT_FIND_A_VALID_CONTENT_PATCH));
+      return false;
    }
 
-   if(!patch_found)
-      RARCH_LOG("[Content]: %s\n",
-            msg_hash_to_str(MSG_DID_NOT_FIND_A_VALID_CONTENT_PATCH));
-
-   return patch_found;
+   return true;
 }

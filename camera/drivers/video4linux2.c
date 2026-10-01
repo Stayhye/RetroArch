@@ -42,11 +42,9 @@
 #include <gfx/scaler/scaler.h>
 #include <gfx/video_frame.h>
 #include <file/file_path.h>
-#include <libretro.h>
 
 #include <compat/strl.h>
 
-#include "../camera_driver.h"
 #include "../../retroarch.h"
 #include "../../verbosity.h"
 

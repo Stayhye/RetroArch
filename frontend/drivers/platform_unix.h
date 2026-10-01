@@ -21,7 +21,6 @@
 #include <stdint.h>
 
 #include <boolean.h>
-#include <retro_miscellaneous.h>
 
 #include "../../config.def.h"
 
@@ -139,13 +138,11 @@ struct android_app
    /*  Below are "private" implementation of RA code. */
    bool unfocused;
    unsigned accelerometer_event_rate;
-   unsigned gyroscope_event_rate;
    ASensorManager *sensorManager;
    ASensorEventQueue *sensorEventQueue;
    const ASensor* accelerometerSensor;
-   const ASensor* gyroscopeSensor;
    uint64_t sensor_state_mask;
-   char current_ime[NAME_MAX_LENGTH];
+   char current_ime[PATH_MAX_LENGTH];
    bool input_alive;
    int16_t analog_state[DEFAULT_MAX_PADS][MAX_AXIS];
    int8_t hat_state[DEFAULT_MAX_PADS][2];
@@ -169,24 +166,11 @@ struct android_app
    jmethodID getUserLanguageString;
    jmethodID doVibrate;
 
-   jmethodID isPlayStoreBuild;
-   jmethodID getAvailableCores;
-   jmethodID getInstalledCores;
-   jmethodID downloadCore;
-   jmethodID deleteCore;
-
-   jmethodID getVolumeCount;
-   jmethodID getVolumePath;
-
    struct
    {
       unsigned width, height;
       bool changed;
    } content_rect;
-   uint16_t rumble_last_strength_strong[MAX_USERS];
-   uint16_t rumble_last_strength_weak[MAX_USERS];
-   uint16_t rumble_last_strength[MAX_USERS];
-   int id[MAX_USERS];
 };
 
 enum
@@ -361,8 +345,6 @@ enum
 extern JNIEnv *jni_thread_getenv(void);
 
 void android_app_write_cmd(struct android_app *android_app, int8_t cmd);
-
-void android_dpi_get_density(char *s, size_t len);
 
 extern struct android_app *g_android;
 #endif

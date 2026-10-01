@@ -186,9 +186,7 @@ static void *switch_init(const video_info_t *video,
     sw->vp.height       = sw->o_height = video->height;
     sw->overlay_enabled = false;
     sw->overlay         = NULL;
-#ifdef HAVE_MENU
     sw->in_menu         = false;
-#endif
 
     sw->vp.full_width   = 1280;
     sw->vp.full_height  = 720;
@@ -210,10 +208,9 @@ static void *switch_init(const video_info_t *video,
     if (input && input_data)
     {
         settings_t *settings = config_get_ptr();
-        switchinput          = input_driver_init_wrap(&input_switch,
-              settings->arrays.input_joypad_driver);
-        *input               = switchinput ? &input_switch : NULL;
-        *input_data          = switchinput;
+        switchinput = input_switch.init(settings->arrays.input_joypad_driver);
+        *input = switchinput ? &input_switch : NULL;
+        *input_data = switchinput;
     }
 
     font_driver_init_osd(sw,
@@ -351,12 +348,7 @@ static bool switch_frame(void *data, const void *frame,
    switch_video_t   *sw = data;
    uint32_t *out_buffer = NULL;
    bool       ffwd_mode = video_info->input_driver_nonblock_state;
-#ifdef HAVE_MENU
    bool menu_is_alive   = video_info->menu_is_alive;
-#endif
-   struct font_params 
-      *osd_params       = (struct font_params *)&video_info->osd_stat_params;
-   bool statistics_show = video_info->statistics_show;
 
    if (!frame)
       return true;
@@ -405,9 +397,7 @@ static bool switch_frame(void *data, const void *frame,
          sw->hw_scale.width = ceil(screen_ratio / tgt_ratio * sw->scaler.out_width);
          sw->hw_scale.height = sw->scaler.out_height;
          sw->hw_scale.x_offset = ceil((sw->hw_scale.width - sw->scaler.out_width) / 2.0);
-#ifdef HAVE_MENU
-         if (!menu_is_alive)
-#endif
+         if (!video_info->menu_is_alive)
          {
             clear_screen(sw);
             nwindowSetDimensions(sw->win, sw->hw_scale.width, sw->hw_scale.height);
@@ -430,15 +420,14 @@ static bool switch_frame(void *data, const void *frame,
    sw->out_buffer = out_buffer;
    sw->stride     = stride;
 
-#ifdef HAVE_MENU
-   if (sw->in_menu && !menu_is_alive && sw->smooth)
+   if (sw->in_menu && !video_info->menu_is_alive && sw->smooth)
    {
       memset(out_buffer, 0, stride * sw->vp.full_height);
       nwindowSetDimensions(sw->win, sw->hw_scale.width, sw->hw_scale.height);
    }
+   sw->in_menu = video_info->menu_is_alive;
 
-   sw->in_menu = menu_is_alive;
-
+#ifdef HAVE_MENU
    if (sw->menu_texture.enable)
    {
       menu_driver_frame(menu_is_alive, video_info);
@@ -472,11 +461,13 @@ static bool switch_frame(void *data, const void *frame,
          gfx_cpy_dsp_buf(out_buffer, sw->image, sw->vp.full_width, sw->vp.full_height, stride, false);
       }
 
-   if (statistics_show && !sw->smooth)
+   if (video_info->statistics_show && !sw->smooth)
    {
+      struct font_params *osd_params = (struct font_params *)&video_info->osd_stat_params;
+
       if (osd_params)
          font_driver_render_msg(sw, video_info->stat_text,
-               osd_params, NULL);
+               (const struct font_params *)&video_info->osd_stat_params, NULL);
    }
 
    if (msg)
@@ -493,10 +484,30 @@ static void switch_set_nonblock_state(void *data, bool toggle, bool c, unsigned 
     sw->vsync = !toggle;
 }
 
-static bool switch_alive(void *data) { return true; }
-static bool switch_focus(void *data) { return true; }
-static bool switch_suppress_screensaver(void *data, bool enable) { return false; }
-static bool switch_has_windowed(void *data) { return false; }
+static bool switch_alive(void *data)
+{
+    (void)data;
+    return true;
+}
+
+static bool switch_focus(void *data)
+{
+    (void)data;
+    return true;
+}
+
+static bool switch_suppress_screensaver(void *data, bool enable)
+{
+    (void)data;
+    (void)enable;
+    return false;
+}
+
+static bool switch_has_windowed(void *data)
+{
+    (void)data;
+    return false;
+}
 
 static void switch_free(void *data)
 {
@@ -628,18 +639,42 @@ static bool switch_overlay_load(void *data,
     if (!swa)
         return false;
 
-    swa->overlay         = images;
+    swa->overlay = images;
     swa->overlay_enabled = true;
 
     return true;
 }
 
 static void switch_overlay_tex_geom(void *data,
-            unsigned idx, float x, float y, float w, float h) { }
+            unsigned idx, float x, float y, float w, float h)
+{
+    switch_video_t *swa = (switch_video_t *)data;
+
+    if (!swa)
+        return;
+}
+
 static void switch_overlay_vertex_geom(void *data,
-            unsigned idx, float x, float y, float w, float h) { }
-static void switch_overlay_full_screen(void *data, bool enable) { }
-static void switch_overlay_set_alpha(void *data, unsigned idx, float mod) { }
+            unsigned idx, float x, float y, float w, float h)
+{
+    switch_video_t *swa = (switch_video_t *)data;
+
+    if (!swa)
+        return;
+}
+
+static void switch_overlay_full_screen(void *data, bool enable)
+{
+    (void)data;
+    (void)enable;
+}
+
+static void switch_overlay_set_alpha(void *data, unsigned idx, float mod)
+{
+    (void)data;
+    (void)idx;
+    (void)mod;
+}
 
 static const video_overlay_interface_t switch_overlay = {
     switch_overlay_enable,
@@ -682,10 +717,6 @@ static const video_poke_interface_t switch_poke_interface = {
     NULL, /* get_current_shader */
     NULL, /* get_current_software_framebuffer */
     NULL, /* get_hw_render_interface */
-    NULL, /* set_hdr_max_nits */
-    NULL, /* set_hdr_paper_white_nits */
-    NULL, /* set_hdr_contrast */
-    NULL  /* set_hdr_expand_gamut */
 };
 
 static void switch_get_poke_interface(void *data,

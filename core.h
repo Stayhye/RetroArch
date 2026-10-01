@@ -23,9 +23,140 @@
 
 #include <retro_common_api.h>
 
-#include "retroarch_types.h"
+#include "core_type.h"
+#include "input/input_defines.h"
+#include "disk_control_interface.h"
 
 RETRO_BEGIN_DECLS
+
+enum
+{
+   /* Polling is performed before
+    * call to retro_run. */
+   POLL_TYPE_EARLY = 0,
+
+   /* Polling is performed when requested. */
+   POLL_TYPE_NORMAL,
+
+   /* Polling is performed on first call to
+    * retro_input_state per frame. */
+   POLL_TYPE_LATE
+};
+
+typedef struct rarch_memory_descriptor
+{
+   struct retro_memory_descriptor core;
+   size_t disconnect_mask;
+} rarch_memory_descriptor_t;
+
+typedef struct rarch_memory_map
+{
+   rarch_memory_descriptor_t *descriptors;
+   unsigned num_descriptors;
+} rarch_memory_map_t;
+
+typedef struct rarch_system_info
+{
+   struct retro_system_info info;
+
+   unsigned rotation;
+   unsigned performance_level;
+   bool load_no_content;
+
+   const char *input_desc_btn[MAX_USERS][RARCH_FIRST_META_KEY];
+   char valid_extensions[255];
+
+   bool supports_vfs;
+
+   disk_control_interface_t disk_control;
+   struct retro_location_callback location_cb;
+
+   struct
+   {
+      struct retro_subsystem_info *data;
+      unsigned size;
+   } subsystem;
+
+   struct
+   {
+      struct retro_controller_info *data;
+      unsigned size;
+   } ports;
+
+   rarch_memory_map_t mmaps;
+} rarch_system_info_t;
+
+typedef struct retro_ctx_input_state_info
+{
+   retro_input_state_t cb;
+} retro_ctx_input_state_info_t;
+
+typedef struct retro_ctx_cheat_info
+{
+   unsigned index;
+   bool enabled;
+   const char *code;
+} retro_ctx_cheat_info_t;
+
+typedef struct retro_ctx_api_info
+{
+   unsigned version;
+} retro_ctx_api_info_t;
+
+typedef struct retro_ctx_region_info
+{
+  unsigned region;
+} retro_ctx_region_info_t;
+
+typedef struct retro_ctx_controller_info
+{
+   unsigned port;
+   unsigned device;
+} retro_ctx_controller_info_t;
+
+typedef struct retro_ctx_memory_info
+{
+   void *data;
+   size_t size;
+   unsigned id;
+} retro_ctx_memory_info_t;
+
+typedef struct retro_ctx_load_content_info
+{
+   struct retro_game_info *info;
+   const struct string_list *content;
+   const struct retro_subsystem_info *special;
+} retro_ctx_load_content_info_t;
+
+typedef struct retro_ctx_serialize_info
+{
+   const void *data_const;
+   void *data;
+   size_t size;
+} retro_ctx_serialize_info_t;
+
+typedef struct retro_ctx_size_info
+{
+   size_t size;
+} retro_ctx_size_info_t;
+
+typedef struct retro_ctx_environ_info
+{
+   retro_environment_t env;
+} retro_ctx_environ_info_t;
+
+typedef struct retro_callbacks
+{
+   retro_video_refresh_t frame_cb;
+   retro_audio_sample_t sample_cb;
+   retro_audio_sample_batch_t sample_batch_cb;
+   retro_input_state_t state_cb;
+   retro_input_poll_t poll_cb;
+} retro_callbacks_t;
+
+bool core_set_default_callbacks(struct retro_callbacks *cbs);
+
+bool core_set_rewind_callbacks(void);
 
 #ifdef HAVE_NETWORKING
 bool core_set_netplay_callbacks(void);
@@ -62,14 +193,6 @@ bool core_load_game(retro_ctx_load_content_info_t *load_info);
 bool core_set_controller_port_device(retro_ctx_controller_info_t *pad);
 
 bool core_has_set_input_descriptor(void);
-
-/**
- * core_set_default_callbacks:
- * @data           : pointer to retro_callbacks object
- *
- * Binds the libretro callbacks to default callback functions.
- **/
-bool core_set_default_callbacks(void *data);
 
 RETRO_END_DECLS
 

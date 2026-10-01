@@ -40,6 +40,8 @@
 #define DECL_AUTOCONF_DEVICE(device, driver, binds) "input_device = \"" device "\"\ninput_driver = \"" driver "\"\n" binds
 #define DECL_AUTOCONF_PID(pid, vid, driver, binds) "input_product_id = " #pid "\ninput_vendor_id = " #vid "\ninput_driver = \"" driver "\"\n" binds
 
+/* TODO/FIXME - Missing L2/R2 */
+
 #define SDL2_DEFAULT_BINDS \
 DECL_BTN(a, 1) \
 DECL_BTN(b, 0) \
@@ -53,8 +55,6 @@ DECL_BTN(left, 13) \
 DECL_BTN(right, 14) \
 DECL_BTN(l, 9) \
 DECL_BTN(r, 10) \
-DECL_AXIS(l2, +4) \
-DECL_AXIS(r2, +5) \
 DECL_BTN(l3, 7) \
 DECL_BTN(r3, 8) \
 DECL_AXIS(l_x_plus,  +0) \
@@ -65,34 +65,6 @@ DECL_AXIS(r_x_plus,  +2) \
 DECL_AXIS(r_x_minus, -2) \
 DECL_AXIS(r_y_plus,  -3) \
 DECL_AXIS(r_y_minus, +3)
-
-#if defined(DINGUX) && defined(HAVE_SDL_DINGUX)
-#define DINGUX_SDL_DEFAULT_BINDS \
-DECL_BTN_EX(a,           8, "A") \
-DECL_BTN_EX(b,           0, "B") \
-DECL_BTN_EX(x,           9, "X") \
-DECL_BTN_EX(y,           1, "Y") \
-DECL_BTN_EX(start,       3, "Start") \
-DECL_BTN_EX(select,      2, "Select") \
-DECL_BTN_EX(up,          4, "D-Pad Up") \
-DECL_BTN_EX(down,        5, "D-Pad Down") \
-DECL_BTN_EX(left,        6, "D-Pad Left") \
-DECL_BTN_EX(right,       7, "D-Pad Right") \
-DECL_BTN_EX(l,          10, "L") \
-DECL_BTN_EX(r,          11, "R") \
-DECL_BTN_EX(l2,         12, "L2") \
-DECL_BTN_EX(r2,         13, "R2") \
-DECL_BTN_EX(l3,         14, "L3") \
-DECL_BTN_EX(r3,         15, "R3") \
-DECL_AXIS_EX(l_x_plus,  +0, "L-Stick right") \
-DECL_AXIS_EX(l_x_minus, -0, "L-Stick left") \
-DECL_AXIS_EX(l_y_plus,  +1, "L-Stick down") \
-DECL_AXIS_EX(l_y_minus, -1, "L-Stick up") \
-DECL_AXIS_EX(r_x_plus,  +2, "R-Stick right") \
-DECL_AXIS_EX(r_x_minus, -2, "R-Stick left") \
-DECL_AXIS_EX(r_y_plus,  +3, "R-Stick down") \
-DECL_AXIS_EX(r_y_minus, -3, "R-Stick up")
-#endif
 
 #if defined(ANDROID)
 #define ANDROID_DEFAULT_BINDS \
@@ -295,36 +267,14 @@ DECL_BTN_EX(start,  3, "Start/Pause") \
 DECL_BTN_EX(select, 2, "Z") \
 DECL_BTN_EX(r,      10, "R Trigger") \
 DECL_BTN_EX(l,      11, "L Trigger") \
-DECL_AXIS_EX(l_x_plus,  +0, "Analog right") \
-DECL_AXIS_EX(l_x_minus, -0, "Analog left") \
-DECL_AXIS_EX(l_y_plus,  +1, "Analog up") \
-DECL_AXIS_EX(l_y_minus, -1, "Analog down") \
-DECL_AXIS_EX(r_x_plus,  +2, "C-stick right") \
-DECL_AXIS_EX(r_x_minus, -2, "C-stick left") \
-DECL_AXIS_EX(r_y_plus,  +3, "C-stick up") \
-DECL_AXIS_EX(r_y_minus, -3, "C-stick down")
-
-#define WIIUINPUT_WAVEBIRD_DEFAULT_BINDS \
-DECL_BTN_EX(a,      8, "A") \
-DECL_BTN_EX(b,      0, "B") \
-DECL_BTN_EX(x,      9, "X") \
-DECL_BTN_EX(y,      1, "Y") \
-DECL_BTN_EX(left,   6, "D-Pad Left") \
-DECL_BTN_EX(right,  7, "D-Pad Right") \
-DECL_BTN_EX(down,   5, "D-Pad Down") \
-DECL_BTN_EX(up,     4, "D-Pad Up") \
-DECL_BTN_EX(start,  3, "Start/Pause") \
-DECL_BTN_EX(select, 2, "Z") \
-DECL_BTN_EX(r,      10, "R Trigger") \
-DECL_BTN_EX(l,      11, "L Trigger") \
-DECL_AXIS_EX(l_x_plus,  +0, "Analog right") \
-DECL_AXIS_EX(l_x_minus, -0, "Analog left") \
-DECL_AXIS_EX(l_y_plus,  +1, "Analog up") \
-DECL_AXIS_EX(l_y_minus, -1, "Analog down") \
-DECL_AXIS_EX(r_x_plus,  +2, "C-stick right") \
-DECL_AXIS_EX(r_x_minus, -2, "C-stick left") \
-DECL_AXIS_EX(r_y_plus,  +3, "C-stick up") \
-DECL_AXIS_EX(r_y_minus, -3, "C-stick down")
+DECL_AXIS_EX(l_x_plus,  +1, "Analog right") \
+DECL_AXIS_EX(l_x_minus, -1, "Analog left") \
+DECL_AXIS_EX(l_y_plus,  +0, "Analog up") \
+DECL_AXIS_EX(l_y_minus, -0, "Analog down") \
+DECL_AXIS_EX(r_x_plus,  +3, "C-stick right") \
+DECL_AXIS_EX(r_x_minus, -3, "C-stick left") \
+DECL_AXIS_EX(r_y_plus,  +2, "C-stick up") \
+DECL_AXIS_EX(r_y_minus, -2, "C-stick down")
 
 #define WIIUINPUT_DS3_DEFAULT_BINDS \
 DECL_BTN_EX(menu_toggle, 16, "Playstation") \
@@ -344,14 +294,14 @@ DECL_BTN_EX(left, 6, "D-Pad left") \
 DECL_BTN_EX(right, 7, "D-Pad Right") \
 DECL_BTN_EX(r3, 15, "R3") \
 DECL_BTN_EX(l3, 14, "L3") \
-DECL_AXIS_EX(l_x_plus,  +0, "L Analog right") \
-DECL_AXIS_EX(l_x_minus, -0, "L Analog left") \
-DECL_AXIS_EX(l_y_plus,  +1, "L Analog up") \
-DECL_AXIS_EX(l_y_minus, -1, "L Analog down") \
-DECL_AXIS_EX(r_x_plus,  +2, "R Analog right") \
-DECL_AXIS_EX(r_x_minus, -2, "R Analog left") \
-DECL_AXIS_EX(r_y_plus,  +3, "R Analog up") \
-DECL_AXIS_EX(r_y_minus, -3, "R Analog down")
+DECL_AXIS_EX(l_x_plus,  +1, "L Analog right") \
+DECL_AXIS_EX(l_x_minus, -1, "L Analog left") \
+DECL_AXIS_EX(l_y_plus,  +0, "L Analog up") \
+DECL_AXIS_EX(l_y_minus, -0, "L Analog down") \
+DECL_AXIS_EX(r_x_plus,  +3, "R Analog right") \
+DECL_AXIS_EX(r_x_minus, -3, "R Analog left") \
+DECL_AXIS_EX(r_y_plus,  +2, "R Analog up") \
+DECL_AXIS_EX(r_y_minus, -2, "R Analog down")
 
 #define WIIUINPUT_GAMEPAD_DEFAULT_BINDS \
 DECL_BTN_EX(menu_toggle,  1, "Home") \
@@ -715,14 +665,18 @@ const char* const input_builtin_autoconfs[] =
    DECL_AUTOCONF_DEVICE("XInput Controller (User 4)", "xdk", XINPUT_DEFAULT_BINDS),
 #elif defined(_WIN32)
 #if !defined(__STDC_C89__) && !defined(__STDC_C89_AMENDMENT_1__)
-   DECL_AUTOCONF_DEVICE("XInput Controller", "xinput", XINPUT_DEFAULT_BINDS),
+   DECL_AUTOCONF_DEVICE("XInput Controller (User 1)", "xinput", XINPUT_DEFAULT_BINDS),
+   DECL_AUTOCONF_DEVICE("XInput Controller (User 2)", "xinput", XINPUT_DEFAULT_BINDS),
+   DECL_AUTOCONF_DEVICE("XInput Controller (User 3)", "xinput", XINPUT_DEFAULT_BINDS),
+   DECL_AUTOCONF_DEVICE("XInput Controller (User 4)", "xinput", XINPUT_DEFAULT_BINDS),
+   DECL_AUTOCONF_DEVICE("XBOX One Controller (User 1)", "xinput", XINPUT_DEFAULT_BINDS),
+   DECL_AUTOCONF_DEVICE("XBOX One Controller (User 2)", "xinput", XINPUT_DEFAULT_BINDS),
+   DECL_AUTOCONF_DEVICE("XBOX One Controller (User 3)", "xinput", XINPUT_DEFAULT_BINDS),
+   DECL_AUTOCONF_DEVICE("XBOX One Controller (User 4)", "xinput", XINPUT_DEFAULT_BINDS),
 #endif
 #endif
 #ifdef HAVE_SDL2
    DECL_AUTOCONF_DEVICE("Standard Gamepad", "sdl2", SDL2_DEFAULT_BINDS),
-#endif
-#if defined(DINGUX) && defined(HAVE_SDL_DINGUX)
-   DECL_AUTOCONF_DEVICE("Dingux Gamepad", "sdl_dingux", DINGUX_SDL_DEFAULT_BINDS),
 #endif
 #if defined(ANDROID)
    DECL_AUTOCONF_DEVICE("Android Gamepad", "android", ANDROID_DEFAULT_BINDS),
@@ -765,11 +719,10 @@ const char* const input_builtin_autoconfs[] =
    DECL_AUTOCONF_DEVICE(PAD_NAME_NUNCHUK, "wiiu", WIIUINPUT_NUNCHUK_DEFAULT_BINDS),
    DECL_AUTOCONF_DEVICE(PAD_NAME_CLASSIC, "wiiu", WIIUINPUT_CLASSIC_CONTROLLER_DEFAULT_BINDS),
    DECL_AUTOCONF_DEVICE(PAD_NAME_HID, "wiiu", WIIUINPUT_GAMEPAD_DEFAULT_BINDS),
-   DECL_AUTOCONF_DEVICE("GameCube controller", "wiiu", WIIUINPUT_GAMECUBE_DEFAULT_BINDS),
-   DECL_AUTOCONF_DEVICE("WaveBird controller", "wiiu", WIIUINPUT_WAVEBIRD_DEFAULT_BINDS),
-   DECL_AUTOCONF_DEVICE("PLAYSTATION(R)3 Controller", "wiiu", WIIUINPUT_DS3_DEFAULT_BINDS),
+   DECL_AUTOCONF_DEVICE("GameCube Controller", "wiiu", WIIUINPUT_GAMECUBE_DEFAULT_BINDS),
+   DECL_AUTOCONF_DEVICE("Sony DualShock 3", "wiiu", WIIUINPUT_DS3_DEFAULT_BINDS),
 #endif
-#ifdef __PS3__
+#ifdef __CELLOS_LV2__
    DECL_AUTOCONF_DEVICE("SixAxis Controller", "ps3", PS3INPUT_DEFAULT_BINDS),
 #endif
 #if defined(__SWITCH__) || defined(SWITCH)

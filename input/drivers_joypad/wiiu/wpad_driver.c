@@ -25,69 +25,72 @@
 
 #define PANIC_BUTTON_MASK (VPAD_BUTTON_R | VPAD_BUTTON_L | VPAD_BUTTON_STICK_R | VPAD_BUTTON_STICK_L)
 
-#define WPAD_INVALID_CHANNEL -1
-
-static VPADChan to_gamepad_channel(unsigned pad)
+typedef struct _drc_state drc_state;
+struct _drc_state
 {
+   uint64_t button_state;
+   int16_t  analog_state[3][2];
+};
+static drc_state gamepads[WIIU_GAMEPAD_CHANNELS] = { 0 };
+
+#define WPAD_INVALID_CHANNEL -1
+static int channel_slot_map[WIIU_GAMEPAD_CHANNELS] = { WPAD_INVALID_CHANNEL, WPAD_INVALID_CHANNEL };
+
+static VPADChan to_gamepad_channel(unsigned pad) {
    unsigned i;
 
-   for (i = 0; i < WIIU_GAMEPAD_CHANNELS; i++)
-   {
-      if (joypad_state.wpad.channel_slot_map[i] == pad)
+   for (i = 0; i < WIIU_GAMEPAD_CHANNELS; i++) {
+      if (channel_slot_map[i] == pad) {
          return i;
+      }
    }
 
    return WPAD_INVALID_CHANNEL;
 }
 
-static void wpad_deregister(unsigned channel)
-{
+static void wpad_deregister(unsigned channel) {
    unsigned slot;
 
    if (channel >= WIIU_GAMEPAD_CHANNELS)
       return;
 
    /* See if Gamepad is already disconnected */
-   if (joypad_state.wpad.channel_slot_map[channel] == WPAD_INVALID_CHANNEL)
+   if (channel_slot_map[channel] == WPAD_INVALID_CHANNEL)
       return;
 
    /* Sanity check, about to use as unsigned */
-   if (joypad_state.wpad.channel_slot_map[channel] < 0)
-   {
-      joypad_state.wpad.channel_slot_map[channel] = WPAD_INVALID_CHANNEL;
+   if (channel_slot_map[channel] < 0) {
+      channel_slot_map[channel] = WPAD_INVALID_CHANNEL;
       return;
    }
 
-   slot = (unsigned)joypad_state.wpad.channel_slot_map[channel];
+   slot = (unsigned)channel_slot_map[channel];
    if (slot >= MAX_USERS)
       return;
 
    input_autoconfigure_disconnect(slot, wpad_driver.ident);
-   joypad_state.pads[slot].connected = false;
-   joypad_state.wpad.channel_slot_map[channel] = WPAD_INVALID_CHANNEL;
+   hid_instance.pad_list[slot].connected = false;
+   channel_slot_map[channel] = WPAD_INVALID_CHANNEL;
 }
 
-static void wpad_register(unsigned channel)
-{
+static void wpad_register(unsigned channel) {
    int slot;
 
    if (channel >= WIIU_GAMEPAD_CHANNELS)
       return;
 
    /* Check if gamepad is already handled
-      Other checks not needed here - about to overwrite 
-      joypad_state.wpad.channel_slot_map entry*/
-   if (joypad_state.wpad.channel_slot_map[channel] != WPAD_INVALID_CHANNEL)
+      Other checks not needed here - about to overwrite channel_slot_map entry*/
+   if (channel_slot_map[channel] != WPAD_INVALID_CHANNEL)
       return;
 
-   slot = pad_connection_find_vacant_pad(joypad_state.pads);
+   slot = pad_connection_find_vacant_pad(hid_instance.pad_list);
    if(slot < 0)
       return;
 
-   joypad_state.pads[slot].connected = true;
-   joypad_state.pads[slot].input_driver = &wpad_driver;
+   hid_instance.pad_list[slot].connected = true;
    input_pad_connect(slot, &wpad_driver);
-   joypad_state.wpad.channel_slot_map[channel] = slot;
+   channel_slot_map[channel] = slot;
 }
 
 static void update_button_state(uint64_t *state, uint32_t held_buttons)
@@ -189,8 +192,7 @@ static void log_coords(int16_t x, int16_t y)
 }
 #endif
 
-static void update_touch_state(int16_t state[3][2],
-      uint64_t *buttons, VPADStatus *vpad, VPADChan channel)
+static void update_touch_state(int16_t state[3][2], uint64_t *buttons, VPADStatus *vpad, VPADChan channel)
 {
    VPADTouchData point            = {0};
    struct video_viewport viewport = {0};
@@ -233,122 +235,91 @@ static void wpad_poll(void)
    VPADReadError error;
    VPADChan channel;
 
-   for (channel = VPAD_CHAN_0; channel < WIIU_GAMEPAD_CHANNELS; channel++)
-   {
+   for (channel = VPAD_CHAN_0; channel < WIIU_GAMEPAD_CHANNELS; channel++) {
       VPADRead(channel, &vpad, 1, &error);
 
-      /* Gamepad is connected! */
-      if (error == VPAD_READ_SUCCESS || error == VPAD_READ_NO_SAMPLES)
+      if (error == VPAD_READ_SUCCESS || error == VPAD_READ_NO_SAMPLES) {
+         /* Gamepad is connected! */
          wpad_register(channel);
-      else if (error == VPAD_READ_INVALID_CONTROLLER)
+      } else if (error == VPAD_READ_INVALID_CONTROLLER) {
          wpad_deregister(channel);
+      }
 
-      if (error == VPAD_READ_SUCCESS)
-      {
-         update_button_state(&joypad_state.wpad.pads[channel].button_state, vpad.hold);
-         update_analog_state(joypad_state.wpad.pads[channel].analog_state, &vpad);
-         update_touch_state(joypad_state.wpad.pads[channel].analog_state, &joypad_state.wpad.pads[channel].button_state, &vpad, channel);
+      if (error == VPAD_READ_SUCCESS) {
+         update_button_state(&gamepads[channel].button_state, vpad.hold);
+         update_analog_state(gamepads[channel].analog_state, &vpad);
+         update_touch_state(gamepads[channel].analog_state, &gamepads[channel].button_state, &vpad, channel);
          check_panic_button(vpad.hold);
       }
    }
 }
 
-static void *wpad_init(void *data)
+static bool wpad_init(void *data)
 {
-   memset(&joypad_state.wpad, 0, sizeof(joypad_state.wpad));
-   for(int i = 0; i < WIIU_GAMEPAD_CHANNELS; i++) {
-      joypad_state.wpad.channel_slot_map[i] = WPAD_INVALID_CHANNEL;
-   }
    wpad_poll();
-   return (void*)-1;
+
+   return true;
 }
 
-static bool wpad_query_pad(unsigned port)
+static bool wpad_query_pad(unsigned pad)
 {
-   return port < MAX_USERS && 
-      (to_gamepad_channel(port) != WPAD_INVALID_CHANNEL);
+   return pad < MAX_USERS && (to_gamepad_channel(pad) != WPAD_INVALID_CHANNEL);
 }
 
-static void wpad_destroy(void) { }
+static void wpad_destroy(void)
+{
 
-static int32_t wpad_button(unsigned port, uint16_t joykey)
+}
+
+static bool wpad_button(unsigned pad, uint16_t button_bit)
 {
    VPADChan channel;
-   if (!wpad_query_pad(port))
-      return 0;
-   channel = to_gamepad_channel(port);
+
+   if (!wpad_query_pad(pad))
+      return false;
+
+   channel = to_gamepad_channel(pad);
    if (channel < 0)
-      return 0;
-   return (joypad_state.wpad.pads[channel].button_state & (UINT64_C(1) << joykey));
+      return false;
+
+   return gamepads[channel].button_state & (UINT64_C(1) << button_bit);
 }
 
-static void wpad_get_buttons(unsigned port, input_bits_t *state)
+static void wpad_get_buttons(unsigned pad, input_bits_t *state)
 {
    VPADChan channel;
 
-   if (!wpad_query_pad(port))
-   {
+   if (!wpad_query_pad(pad)) {
       BIT256_CLEAR_ALL_PTR(state);
       return;
    }
 
-   channel = to_gamepad_channel(port);
-   if (channel < 0)
-   {
+   channel = to_gamepad_channel(pad);
+   if (channel < 0) {
       BIT256_CLEAR_ALL_PTR(state);
       return;
    }
 
-   BITS_COPY32_PTR(state, joypad_state.wpad.pads[channel].button_state);
+   BITS_COPY32_PTR(state, gamepads[channel].button_state);
 }
 
-static int16_t wpad_axis(unsigned port, uint32_t axis)
+static int16_t wpad_axis(unsigned pad, uint32_t axis)
 {
    axis_data data;
    VPADChan channel;
 
-   if (!wpad_query_pad(port))
+   if (!wpad_query_pad(pad) || axis == AXIS_NONE)
       return 0;
 
-   channel = to_gamepad_channel(port);
+   channel = to_gamepad_channel(pad);
    if (channel < 0)
       return 0;
 
    pad_functions.read_axis_data(axis, &data);
-   return pad_functions.get_axis_value(data.axis,
-         joypad_state.wpad.pads[channel].analog_state, data.is_negative);
+   return pad_functions.get_axis_value(data.axis, gamepads[channel].analog_state, data.is_negative);
 }
 
-static int16_t wpad_state(
-      rarch_joypad_info_t *joypad_info,
-      const struct retro_keybind *binds,
-      unsigned port)
-{
-   unsigned i;
-   int16_t ret                          = 0;
-   uint16_t port_idx                    = joypad_info->joy_idx;
-
-   for (i = 0; i < RARCH_FIRST_CUSTOM_BIND; i++)
-   {
-      /* Auto-binds are per joypad, not per user. */
-      const uint64_t joykey  = (binds[i].joykey != NO_BTN)
-         ? binds[i].joykey  : joypad_info->auto_binds[i].joykey;
-      const uint32_t joyaxis = (binds[i].joyaxis != AXIS_NONE)
-         ? binds[i].joyaxis : joypad_info->auto_binds[i].joyaxis;
-      if (
-               (uint16_t)joykey != NO_BTN 
-            && wpad_button(port_idx, (uint16_t)joykey))
-         ret |= ( 1 << i);
-      else if (joyaxis != AXIS_NONE &&
-            ((float)abs(wpad_axis(port_idx, joyaxis)) 
-             / 0x8000) > joypad_info->axis_threshold)
-         ret |= (1 << i);
-   }
-
-   return ret;
-}
-
-static const char *wpad_name(unsigned port)
+static const char *wpad_name(unsigned pad)
 {
    return PAD_NAME_WIIU_GAMEPAD;
 }
@@ -359,11 +330,9 @@ input_device_driver_t wpad_driver =
   wpad_query_pad,
   wpad_destroy,
   wpad_button,
-  wpad_state,
   wpad_get_buttons,
   wpad_axis,
   wpad_poll,
-  NULL,
   NULL,
   wpad_name,
   "gamepad",

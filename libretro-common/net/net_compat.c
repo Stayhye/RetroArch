@@ -33,9 +33,7 @@
 #include <retro_timers.h>
 #include <compat/strl.h>
 
-#ifdef GEKKO
-#define gethostbyname net_gethostbyname
-#elif defined(_XBOX)
+#if defined(_XBOX)
 /* TODO - implement h_length and h_addrtype */
 struct hostent
 {
@@ -219,9 +217,9 @@ int getaddrinfo_retro(const char *node, const char *service,
 
    if (!node && (hints->ai_flags & AI_PASSIVE))
       in_addr->sin_addr.s_addr = INADDR_ANY;
-   else if (node && isdigit((unsigned char)*node))
+   else if (node && isdigit(*node))
       in_addr->sin_addr.s_addr = inet_addr(node);
-   else if (node && !isdigit((unsigned char)*node))
+   else if (node && !isdigit(*node))
    {
       struct hostent *host = (struct hostent*)gethostbyname(node);
 
@@ -230,7 +228,7 @@ int getaddrinfo_retro(const char *node, const char *service,
 
       in_addr->sin_family = host->h_addrtype;
 
-#if defined(AF_INET6) && !defined(__PS3__) || defined(VITA)
+#if defined(AF_INET6) && !defined(__CELLOS_LV2__) || defined(VITA)
       /* TODO/FIXME - In case we ever want to support IPv6 */
       in_addr->sin_addr.s_addr = inet_addr(host->h_addr_list[0]);
 #else
@@ -266,31 +264,6 @@ void freeaddrinfo_retro(struct addrinfo *res)
 #endif
 }
 
-#if defined(WIIU)
-#include <malloc.h>
-
-static OSThread wiiu_net_cmpt_thread;
-static void wiiu_net_cmpt_thread_cleanup(OSThread *thread, void *stack) {
-   free(stack);
-}
-static int wiiu_net_cmpt_thread_entry(int argc, const char** argv) {
-   const int buf_size = WIIU_RCVBUF + WIIU_SNDBUF;
-   void* buf = memalign(128, buf_size);
-   if (!buf) return -1;
-
-   somemopt(1, buf, buf_size, 0);
-
-   free(buf);
-   return 0;
-}
-#endif
-
-#if defined(GEKKO)
-static char localip[16] = {0};
-static char gateway[16] = {0};
-static char netmask[16] = {0};
-#endif
-
 /**
  * network_init:
  *
@@ -313,22 +286,22 @@ bool network_init(void)
       network_deinit();
       return false;
    }
-#elif defined(__PSL1GHT__) || defined(__PS3__) 
+#elif defined(__CELLOS_LV2__) && !defined(__PSL1GHT__)
    int timeout_count = 10;
 
-   sysModuleLoad(SYSMODULE_NET);
-   netInitialize();
+   cellSysmoduleLoadModule(CELL_SYSMODULE_NET);
+   sys_net_initialize_network();
 
-   if (netCtlInit() < 0)
+   if (cellNetCtlInit() < 0)
       return false;
 
    for (;;)
    {
       int state;
-      if (netCtlGetState(&state) < 0)
+      if (cellNetCtlGetState(&state) < 0)
          return false;
 
-      if (state == NET_CTL_STATE_IPObtained)
+      if (state == CELL_NET_CTL_STATE_IPObtained)
          break;
 
       retro_sleep(500);
@@ -354,22 +327,11 @@ bool network_init(void)
 
    retro_epoll_fd = sceNetEpollCreate("epoll", 0);
 #elif defined(GEKKO)
-   if (if_config(localip, netmask, gateway, true, 10) < 0)
+   char t[16];
+   if (if_config(t, NULL, NULL, TRUE, 10) < 0)
       return false;
 #elif defined(WIIU)
    socket_lib_init();
-
-   const int stack_size = 4096;
-   void* stack = malloc(stack_size);
-   if (stack && OSCreateThread(&wiiu_net_cmpt_thread,
-      wiiu_net_cmpt_thread_entry, 0, NULL, stack+stack_size, stack_size,
-      3, OS_THREAD_ATTRIB_AFFINITY_ANY)) {
-
-      OSSetThreadName(&wiiu_net_cmpt_thread, "Network compat thread");
-      OSSetThreadDeallocator(&wiiu_net_cmpt_thread,
-         wiiu_net_cmpt_thread_cleanup);
-      OSResumeThread(&wiiu_net_cmpt_thread);
-   }
 #elif defined(_3DS)
     _net_compat_net_memory = (u32*)memalign(SOC_ALIGN, SOC_BUFFERSIZE);
 	if (!_net_compat_net_memory)
@@ -394,10 +356,10 @@ void network_deinit(void)
 {
 #if defined(_WIN32)
    WSACleanup();
-#elif defined(__PSL1GHT__) || defined(__PS3__)
-   netCtlTerm();
-   netFinalizeNetwork();
-   sysModuleUnload(SYSMODULE_NET);
+#elif defined(__CELLOS_LV2__) && !defined(__PSL1GHT__)
+   cellNetCtlTerm();
+   sys_net_finalize_network();
+   cellSysmoduleUnloadModule(CELL_SYSMODULE_NET);
 #elif defined(VITA)
    sceNetCtlTerm();
    sceNetTerm();
@@ -422,7 +384,7 @@ void network_deinit(void)
 
 uint16_t inet_htons(uint16_t hostshort)
 {
-#if defined(VITA)
+#if defined(VITA) || defined(__ORBIS__)
    return sceNetHtons(hostshort);
 #else
    return htons(hostshort);
@@ -432,7 +394,7 @@ uint16_t inet_htons(uint16_t hostshort)
 
 int inet_ptrton(int af, const char *src, void *dst)
 {
-#if defined(VITA)
+#if defined(VITA) || defined(__ORBIS__)
    return sceNetInetPton(af, src, dst);
 #elif defined(GEKKO) || defined(_WIN32)
    /* TODO/FIXME - should use InetPton on Vista and later */
@@ -597,7 +559,7 @@ static const char *isockaddr_ntop(int af,
 
 const char *inet_ntop_compat(int af, const void *src, char *dst, socklen_t cnt)
 {
-#if defined(VITA)
+#if defined(VITA) || defined(__ORBIS__)
    return sceNetInetNtop(af,src,dst,cnt);
 #elif defined(WIIU)
    return inet_ntop(af, src, dst, cnt);

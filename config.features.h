@@ -302,6 +302,12 @@
 #define SUPPORTS_NETPLAY false
 #endif
 
+#ifdef HAVE_PYTHON
+#define SUPPORTS_PYTHON true
+#else
+#define SUPPORTS_PYTHON false
+#endif
+
 #if defined(HAVE_COCOA) || defined(HAVE_COCOATOUCH) || defined(HAVE_COCOA_METAL)
 #define SUPPORTS_COCOA true
 #else
@@ -342,12 +348,6 @@
 #define SUPPORTS_CORETEXT true
 #else
 #define SUPPORTS_CORETEXT false
-#endif
-
-#ifdef HAVE_CHECK
-#define SUPPORTS_CHECK true
-#else
-#define SUPPORTS_CHECK false
 #endif
 
 #if !defined(_WIN32) && !defined(GLOBAL_CONFIG_DIR)

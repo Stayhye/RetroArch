@@ -18,63 +18,60 @@
 
 enum gamepad_pad_axes
 {
-   AXIS_LEFT_ANALOG_X = 0,
+   AXIS_LEFT_ANALOG_X,
    AXIS_LEFT_ANALOG_Y,
    AXIS_RIGHT_ANALOG_X,
    AXIS_RIGHT_ANALOG_Y,
-   AXIS_TOUCH_X,
-   AXIS_TOUCH_Y,
    AXIS_INVALID
 };
 
+static int16_t gamepad_clamp_axis(int16_t value, bool is_negative)
+{
+   if (is_negative && value > 0)
+      return 0;
+   if (!is_negative && value < 0)
+      return 0;
+
+   return value;
+}
+
 void gamepad_read_axis_data(uint32_t axis, axis_data *data)
 {
-   if (!data)
+   if(!data)
       return;
 
-   data->axis           = AXIS_POS_GET(axis);
-   data->is_negative    = false;
+   data->axis = AXIS_POS_GET(axis);
+   data->is_negative = false;
 
-   if (data->axis >= AXIS_INVALID)
+   if(data->axis >= AXIS_INVALID)
    {
-      data->axis        = AXIS_NEG_GET(axis);
+      data->axis = AXIS_NEG_GET(axis);
       data->is_negative = true;
    }
 }
 
 int16_t gamepad_get_axis_value(int16_t state[3][2], axis_data *data)
 {
-   return gamepad_get_axis_value_raw(state, data, true);
-}
-
-int16_t gamepad_get_axis_value_raw(int16_t state[3][2], axis_data *data, bool do_clamp)
-{
    int16_t value = 0;
 
-   if (!data)
+   if(!data)
       return 0;
 
-   switch (data->axis)
+   switch(data->axis)
    {
       case AXIS_LEFT_ANALOG_X:
-         value = state[RETRO_DEVICE_INDEX_ANALOG_LEFT][1];
+         value = state[RETRO_DEVICE_INDEX_ANALOG_LEFT][RETRO_DEVICE_ID_ANALOG_X];
          break;
       case AXIS_LEFT_ANALOG_Y:
-         value = state[RETRO_DEVICE_INDEX_ANALOG_LEFT][0];
+         value = state[RETRO_DEVICE_INDEX_ANALOG_LEFT][RETRO_DEVICE_ID_ANALOG_Y];
          break;
       case AXIS_RIGHT_ANALOG_X:
-         value = state[RETRO_DEVICE_INDEX_ANALOG_RIGHT][1];
+         value = state[RETRO_DEVICE_INDEX_ANALOG_RIGHT][RETRO_DEVICE_ID_ANALOG_X];
          break;
       case AXIS_RIGHT_ANALOG_Y:
-         value = state[RETRO_DEVICE_INDEX_ANALOG_RIGHT][0];
+         value = state[RETRO_DEVICE_INDEX_ANALOG_RIGHT][RETRO_DEVICE_ID_ANALOG_Y];
          break;
    }
-   if(do_clamp) {
-      if (data->is_negative && value > 0)
-         return 0;
-      if (!data->is_negative && value < 0)
-         return 0;
-   }
 
-   return value;
+   return gamepad_clamp_axis(value, data->is_negative);
 }

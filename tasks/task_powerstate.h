@@ -22,8 +22,6 @@
 #include <retro_common_api.h>
 #include <retro_miscellaneous.h>
 
-#include "../frontend/frontend_driver.h"
-
 #ifdef HAVE_CONFIG_H
 #include "../config.h"
 #endif

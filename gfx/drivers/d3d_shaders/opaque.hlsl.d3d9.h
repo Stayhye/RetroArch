@@ -3,18 +3,18 @@
 static const char *stock_hlsl_program = CG(
       void main_vertex
       (
-         float3 position : POSITION,
+         float4 position : POSITION,
          float4 color    : COLOR,
-         float2 texCoord : TEXCOORD0,
 
          uniform float4x4 modelViewProj,
 
+         float4 texCoord : TEXCOORD0,
          out float4 oPosition : POSITION,
          out float4 oColor : COLOR,
          out float2 otexCoord : TEXCOORD
       )
       {
-         oPosition = mul(modelViewProj, float4(position, 1.0f));
+         oPosition = mul(modelViewProj, position);
          oColor = color;
          otexCoord = texCoord;
       }
@@ -34,11 +34,11 @@ static const char *stock_hlsl_program = CG(
          float frame_rotation;
       };
 
-      output main_fragment(float4 color : COLOR, float2 texCoord : TEXCOORD0,
+      output main_fragment(float2 texCoord : TEXCOORD0,
       uniform sampler2D decal : TEXUNIT0, uniform input IN)
       {
          output OUT;
-         OUT.color = color * tex2D(decal, texCoord);
+         OUT.color = tex2D(decal, texCoord);
          return OUT;
       }
 );

@@ -243,6 +243,11 @@ typedef struct {
 
     /** Cipher-specific context */
     void *cipher_ctx;
+
+#if defined(MBEDTLS_CMAC_C)
+    /** CMAC Specific context */
+    mbedtls_cmac_context_t *cmac_ctx;
+#endif
 } mbedtls_cipher_context_t;
 
 /**

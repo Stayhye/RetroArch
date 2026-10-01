@@ -16,23 +16,19 @@
 #include <stdint.h>
 #include <stddef.h>
 #include <boolean.h>
-#include <kernel.h>
 
 #include "../../config.def.h"
-#include "../../tasks/tasks_internal.h"
 
 #include "../input_driver.h"
 
-#include "libmtap.h"
 #include "libpad.h"
 
-#define PS2_MAX_PORT 2 /* each ps2 has 2 ports */
-#define PS2_MAX_SLOT 4 /* maximum - 4 slots in one multitap */
+#define PS2_PAD_SLOT 0 /* Always zero if not using multitap */
 #define PS2_ANALOG_STICKS 2
 #define PS2_ANALOG_AXIS 2
 
-/* TODO/FIXME - static globals */
-static unsigned char padBuf[PS2_MAX_PORT][PS2_MAX_SLOT][256] ALIGNED(64);
+static unsigned char padBuf[2][256] ALIGNED(64);
+
 static uint64_t pad_state[DEFAULT_MAX_PADS];
 static int16_t analog_state[DEFAULT_MAX_PADS][PS2_ANALOG_STICKS][PS2_ANALOG_AXIS];
 
@@ -43,140 +39,107 @@ static INLINE int16_t convert_u8_to_s16(uint8_t val)
    return val * 0x0101 - 0x8000;
 }
 
+static bool is_analog_enabled(struct padButtonStatus buttons)
+{
+   bool enabled = false;
+
+   if (buttons.ljoy_h || buttons.ljoy_v || buttons.rjoy_h || buttons.rjoy_v)
+      enabled = true;
+
+   return enabled;
+}
+
 static const char *ps2_joypad_name(unsigned pad)
 {
    return "PS2 Controller";
 }
 
-static void *ps2_joypad_init(void *data)
+static bool ps2_joypad_init(void *data)
 {
    unsigned ret  = 0;
    unsigned port = 0;
-   unsigned slot = 0;
-   unsigned pad  = 0;
+   bool init     = true;
 
-   for (port = 0; port < PS2_MAX_PORT; port++)
-      mtapPortOpen(port);
-   /* it can fail - we dont care, we will check it more strictly when padPortOpen */
+   printf("PortMax: %d\n", padGetPortMax());
+   printf("SlotMax: %d\n", padGetSlotMax(port));
 
-   for (slot = 0; slot < PS2_MAX_SLOT; slot++)
+   for (port = 0; port < DEFAULT_MAX_PADS; port++)
    {
-      for (port = 0; port < PS2_MAX_PORT; port++)
-      {
-         input_autoconfigure_connect( ps2_joypad_name(pad), /* name */
-            NULL,                                           /* display name */
-            ps2_joypad.ident,                               /* driver */
-            pad,                                            /* idx */
-            0,                                              /* vid */
-            0);                                             /* pid */
-         pad++;
-         /* 2 main controller ports acts the same with and without multitap
-            Port 0,0 -> Connector 1 - the same as Port 0
-            Port 1,0 -> Connector 2 - the same as Port 1
-            Port 0,1 -> Connector 3
-            Port 1,1 -> Connector 4
-            Port 0,2 -> Connector 5
-            Port 1,2 -> Connector 6
-            Port 0,3 -> Connector 7
-            Port 1,3 -> Connector 8
-          */
+      input_autoconfigure_connect( ps2_joypad_name(port),
+            NULL,
+            ps2_joypad.ident,
+            port,
+            0,
+            0);
 
-         if((ret = padPortOpen(port, slot, padBuf[port][slot])) == 0)
-            return NULL;
+      /* Port 0 -> Connector 1, Port 1 -> Connector 2 */
+      if((ret = padPortOpen(port, PS2_PAD_SLOT, padBuf[port])) == 0)
+      {
+         printf("padOpenPort failed: %d\n", ret);
+         init = false;
+         break;
       }
    }
-   return (void*)-1;
+
+   return init;
 }
 
-static int32_t ps2_joypad_button(unsigned port, uint16_t joykey)
+static bool ps2_joypad_button(unsigned port_num, uint16_t joykey)
 {
-   if (port >= DEFAULT_MAX_PADS)
-      return 0;
-   return pad_state[port] & (UINT64_C(1) << joykey);
+   if (port_num >= DEFAULT_MAX_PADS)
+      return false;
+
+   return (pad_state[port_num] & (UINT64_C(1) << joykey));
 }
 
-static int16_t ps2_joypad_axis_state(unsigned port_num, uint32_t joyaxis)
+static void ps2_joypad_get_buttons(unsigned port_num, input_bits_t *state)
+{
+	BIT256_CLEAR_ALL_PTR(state);
+}
+
+static int16_t ps2_joypad_axis(unsigned port_num, uint32_t joyaxis)
 {
    int val     = 0;
    int axis    = -1;
    bool is_neg = false;
    bool is_pos = false;
 
+   if (joyaxis == AXIS_NONE || port_num >= DEFAULT_MAX_PADS)
+      return 0;
+
    if (AXIS_NEG_GET(joyaxis) < 4)
    {
-      axis   = AXIS_NEG_GET(joyaxis);
+      axis = AXIS_NEG_GET(joyaxis);
       is_neg = true;
    }
    else if (AXIS_POS_GET(joyaxis) < 4)
    {
-      axis   = AXIS_POS_GET(joyaxis);
+      axis = AXIS_POS_GET(joyaxis);
       is_pos = true;
    }
-   else
-      return 0;
 
    switch (axis)
    {
       case 0:
+         val = analog_state[port_num][0][0];
+         break;
       case 1:
-         val = analog_state[port_num][0][axis];
+         val = analog_state[port_num][0][1];
          break;
       case 2:
+         val = analog_state[port_num][1][0];
+         break;
       case 3:
-         val = analog_state[port_num][1][axis-2];
+         val = analog_state[port_num][1][1];
          break;
    }
 
    if (is_neg && val > 0)
-      return 0;
+      val = 0;
    else if (is_pos && val < 0)
-      return 0;
+      val = 0;
+
    return val;
-}
-
-static int16_t ps2_joypad_state(
-      rarch_joypad_info_t *joypad_info,
-      const struct retro_keybind *binds,
-      unsigned port)
-{
-   unsigned i;
-   int16_t ret                          = 0;
-   uint16_t port_idx                    = joypad_info->joy_idx;
-
-   if (port_idx >= DEFAULT_MAX_PADS)
-      return 0;
-
-   for (i = 0; i < RARCH_FIRST_CUSTOM_BIND; i++)
-   {
-      /* Auto-binds are per joypad, not per user. */
-      const uint64_t joykey  = (binds[i].joykey != NO_BTN)
-         ? binds[i].joykey  : joypad_info->auto_binds[i].joykey;
-      const uint32_t joyaxis = (binds[i].joyaxis != AXIS_NONE)
-         ? binds[i].joyaxis : joypad_info->auto_binds[i].joyaxis;
-      if (
-               (uint16_t)joykey != NO_BTN
-            && pad_state[port_idx] & (UINT64_C(1) << joykey)
-         )
-         ret |= ( 1 << i);
-      else if (joyaxis != AXIS_NONE &&
-            ((float)abs(ps2_joypad_axis_state(port_idx, joyaxis))
-             / 0x8000) > joypad_info->axis_threshold)
-         ret |= (1 << i);
-   }
-
-   return ret;
-}
-
-static int16_t ps2_joypad_axis(unsigned port_num, uint32_t joyaxis)
-{
-   if (port_num >= DEFAULT_MAX_PADS)
-      return 0;
-   return ps2_joypad_axis_state(port_num, joyaxis);
-}
-
-static void ps2_joypad_get_buttons(unsigned port_num, input_bits_t *state)
-{
-   BIT256_CLEAR_ALL_PTR(state);
 }
 
 static void ps2_joypad_poll(void)
@@ -186,13 +149,10 @@ static void ps2_joypad_poll(void)
 
    for (player = 0; player < DEFAULT_MAX_PADS; player++)
    {
-      int ps2_slot = player >> 1;
-      int ps2_port = player & 0x1;
-
-      int state = padGetState(ps2_port, ps2_slot);
-      if (state != PAD_STATE_DISCONN || state != PAD_STATE_EXECCMD || state != PAD_STATE_ERROR)
+      int state = padGetState(player, PS2_PAD_SLOT);
+      if (state == PAD_STATE_STABLE)
       {
-         int ret = padRead(ps2_port, ps2_slot, &buttons); /* port, slot, buttons */
+         int ret = padRead(player, PS2_PAD_SLOT, &buttons); /* port, slot, buttons */
          if (ret != 0)
          {
             int32_t state_tmp = 0xffff ^ buttons.btns;
@@ -216,7 +176,7 @@ static void ps2_joypad_poll(void)
             pad_state[player] |= (state_tmp & PAD_L3) ? (UINT64_C(1) << RETRO_DEVICE_ID_JOYPAD_L3) : 0;
 
             /* Analog */
-            if (buttons.ljoy_h || buttons.ljoy_v || buttons.rjoy_h || buttons.rjoy_v)
+            if (is_analog_enabled(buttons))
             {
                analog_state[player][RETRO_DEVICE_INDEX_ANALOG_LEFT] [RETRO_DEVICE_ID_ANALOG_X] = convert_u8_to_s16(buttons.ljoy_h);
                analog_state[player][RETRO_DEVICE_INDEX_ANALOG_LEFT] [RETRO_DEVICE_ID_ANALOG_Y] = convert_u8_to_s16(buttons.ljoy_v);;
@@ -244,13 +204,8 @@ static bool ps2_joypad_rumble(unsigned pad,
 static void ps2_joypad_destroy(void)
 {
    unsigned port;
-   unsigned slot;
-   for (port = 0; port < PS2_MAX_PORT; port++)
-   {
-      for (slot = 0; slot < PS2_MAX_SLOT; slot++)
-         padPortClose(port, slot);
-      mtapPortClose(port);
-   }
+   for (port = 0; port < DEFAULT_MAX_PADS; port++)
+      padPortClose(port, PS2_PAD_SLOT);
 }
 
 input_device_driver_t ps2_joypad = {
@@ -258,12 +213,10 @@ input_device_driver_t ps2_joypad = {
    ps2_joypad_query_pad,
    ps2_joypad_destroy,
    ps2_joypad_button,
-   ps2_joypad_state,
    ps2_joypad_get_buttons,
    ps2_joypad_axis,
    ps2_joypad_poll,
    ps2_joypad_rumble,
-   NULL,
    ps2_joypad_name,
    "ps2",
 };

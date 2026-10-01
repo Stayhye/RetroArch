@@ -27,7 +27,8 @@
 #include "../common/switch_common.h"
 #include "../../frontend/frontend_driver.h"
 
-/* TODO/FIXME - global referenced */
+static enum gfx_ctx_api ctx_nx_api = GFX_CTX_OPENGL_API;
+
 extern bool platform_switch_has_focus;
 
 void switch_ctx_destroy(void *data)
@@ -54,7 +55,7 @@ static void switch_ctx_get_video_size(void *data,
             *width = 1280;
             *height = 720;
             break;
-         case AppletOperationMode_Console:
+         case AppletOperationMode_Docked:
             *width = 1920;
             *height = 1080;
             break;
@@ -196,12 +197,15 @@ static void switch_ctx_input_driver(void *data,
 
 static enum gfx_ctx_api switch_ctx_get_api(void *data)
 {
-    return GFX_CTX_OPENGL_API;
+    return ctx_nx_api;
 }
 
 static bool switch_ctx_bind_api(void *data,
       enum gfx_ctx_api api, unsigned major, unsigned minor)
 {
+    (void)data;
+    ctx_nx_api = api;
+
     if (api == GFX_CTX_OPENGL_API)
         if (egl_bind_api(EGL_OPENGL_API))
             return true;
@@ -209,8 +213,18 @@ static bool switch_ctx_bind_api(void *data,
     return false;
 }
 
-static bool switch_ctx_has_focus(void *data) { return platform_switch_has_focus; }
-static bool switch_ctx_suppress_screensaver(void *data, bool enable) { return false; }
+static bool switch_ctx_has_focus(void *data)
+{
+    (void)data;
+    return platform_switch_has_focus;
+}
+
+static bool switch_ctx_suppress_screensaver(void *data, bool enable)
+{
+    (void)data;
+    (void)enable;
+    return false;
+}
 
 static void switch_ctx_set_swap_interval(void *data,
                                          int swap_interval)
@@ -228,6 +242,13 @@ static void switch_ctx_swap_buffers(void *data)
 
 #ifdef HAVE_EGL
     egl_swap_buffers(&ctx_nx->egl);
+#endif
+}
+
+static gfx_ctx_proc_t switch_ctx_get_proc_address(const char *symbol)
+{
+#ifdef HAVE_EGL
+    return egl_get_proc_address(symbol);
 #endif
 }
 
@@ -260,7 +281,10 @@ static uint32_t switch_ctx_get_flags(void *data)
     return flags;
 }
 
-static void switch_ctx_set_flags(void *data, uint32_t flags) { }
+static void switch_ctx_set_flags(void *data, uint32_t flags)
+{
+    (void)data;
+}
 
 static float switch_ctx_get_refresh_rate(void *data)
 {
@@ -279,7 +303,7 @@ bool switch_ctx_get_metrics(void *data,
           * the hardware - these hard-coded values are a kludge */
          switch (appletGetOperationMode())
          {
-            case AppletOperationMode_Console:
+            case AppletOperationMode_Docked:
                /* Docked mode
                 * > Resolution:  1920x1080
                 * > Screen Size: 39 inch
@@ -341,18 +365,13 @@ const gfx_ctx_driver_t switch_ctx = {
     false, /* has_windowed */
     switch_ctx_swap_buffers,
     switch_ctx_input_driver,
-#ifdef HAVE_EGL
-    egl_get_proc_address,
-#else
-    NULL,
-#endif
+    switch_ctx_get_proc_address,
     NULL,
     NULL,
     NULL,
-    "egl_switch",
+    "switch",
     switch_ctx_get_flags,
     switch_ctx_set_flags,
     switch_ctx_bind_hw_render,
     NULL,
-    NULL
-};
+    NULL};

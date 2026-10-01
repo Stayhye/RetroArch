@@ -31,7 +31,6 @@
 								<option id="com.qnx.qcc.option.compiler.security.1348091274" name="Enhanced Security (-fstack-protector-strong)" superClass="com.qnx.qcc.option.compiler.security" value="true" valueType="boolean"/>
 								<option id="com.qnx.qcc.option.compiler.defines.107606349" name="Defines (-D)" superClass="com.qnx.qcc.option.compiler.defines" valueType="definedSymbols">
 									<listOptionValue builtIn="false" value="HAVE_RPNG"/>
-									<listOptionValue builtIn="false" value="HAVE_CORE_INFO_CACHE"/>
 									<listOptionValue builtIn="false" value="HAVE_LIBRETRODB"/>
 									<listOptionValue builtIn="false" value="HAVE_CHEEVOS"/>
 									<listOptionValue builtIn="false" value="HAVE_FREETYPE"/>
@@ -55,12 +54,6 @@
 									<listOptionValue builtIn="false" value="HAVE_RGUI"/>
 									<listOptionValue builtIn="false" value="HAVE_MENU"/>
 									<listOptionValue builtIn="false" value="HAVE_CONFIGFILE"/>
-									<listOptionValue builtIn="false" value="HAVE_PATCH"/>
-									<listOptionValue builtIn="false" value="HAVE_REWIND"/>
-									<listOptionValue builtIn="false" value="HAVE_DSP_FILTER"/>
-									<listOptionValue builtIn="false" value="HAVE_VIDEO_FILTER"/>
-									<listOptionValue builtIn="false" value="HAVE_SCREENSHOTS"/>
-									<listOptionValue builtIn="false" value="HAVE_CHEATS"/>
 									<listOptionValue builtIn="false" value="RARCH_MOBILE"/>
 									<listOptionValue builtIn="false" value="HAVE_GRIFFIN"/>
 									<listOptionValue builtIn="false" value="HAVE_LANGEXTRA"/>
@@ -104,7 +97,6 @@
 								</option>
 								<option id="com.qnx.qcc.option.assembler.defines.103275832" name="Defines (-D)" superClass="com.qnx.qcc.option.assembler.defines" valueType="definedSymbols">
 									<listOptionValue builtIn="false" value="HAVE_RPNG"/>
-									<listOptionValue builtIn="false" value="HAVE_CORE_INFO_CACHE"/>
 									<listOptionValue builtIn="false" value="HAVE_LIBRETRODB"/>
 									<listOptionValue builtIn="false" value="HAVE_CHEEVOS"/>
 									<listOptionValue builtIn="false" value="HAVE_FREETYPE"/>
@@ -128,10 +120,6 @@
 									<listOptionValue builtIn="false" value="HAVE_RGUI"/>
 									<listOptionValue builtIn="false" value="HAVE_MENU"/>
 									<listOptionValue builtIn="false" value="HAVE_CONFIGFILE"/>
-									<listOptionValue builtIn="false" value="HAVE_PATCH"/>
-									<listOptionValue builtIn="false" value="HAVE_REWIND"/>
-									<listOptionValue builtIn="false" value="HAVE_SCREENSHOTS"/>
-									<listOptionValue builtIn="false" value="HAVE_CHEATS"/>
 									<listOptionValue builtIn="false" value="RARCH_MOBILE"/>
 									<listOptionValue builtIn="false" value="HAVE_GRIFFIN"/>
 									<listOptionValue builtIn="false" value="HAVE_LANGEXTRA"/>
@@ -179,6 +167,26 @@
 							<tool id="com.qnx.qcc.tool.archiver.235941332" name="QCC Archiver" superClass="com.qnx.qcc.tool.archiver"/>
 						</toolChain>
 					</folderInfo>
+					<fileInfo id="com.qnx.qcc.configuration.exe.debug.381170420.1258732047" name="sinc_neon.S" rcbsApplicability="disable" resourcePath="src/sinc_resampler_neon.S" toolsToInvoke="com.qnx.qcc.tool.assembler.2035959754.991633861">
+						<tool command="qcc" commandLinePattern="${COMMAND}  ${OUTPUT_FLAG} ${OUTPUT_PREFIX}${OUTPUT} ${INPUTS} ${FLAGS}" id="com.qnx.qcc.tool.assembler.2035959754.991633861" name="QCC Assembler" superClass="com.qnx.qcc.tool.assembler.2035959754">
+							<option id="com.qnx.qcc.option.assembler.qccoptions.1129161676" name="QCC Options" superClass="com.qnx.qcc.option.assembler.qccoptions" valueType="stringList">
+								<listOptionValue builtIn="false" value="-mcpu=cortex-a9"/>
+								<listOptionValue builtIn="false" value="-marm"/>
+								<listOptionValue builtIn="false" value="-mfpu=neon"/>
+							</option>
+							<inputType id="com.qnx.qcc.inputType.assembler.1085916531" superClass="com.qnx.qcc.inputType.assembler"/>
+						</tool>
+					</fileInfo>
+					<fileInfo id="com.qnx.qcc.configuration.exe.debug.381170420.973423226" name="audio_utils_neon.S" rcbsApplicability="disable" resourcePath="src/audio_utils_neon.S" toolsToInvoke="com.qnx.qcc.tool.assembler.2035959754.347573070">
+						<tool id="com.qnx.qcc.tool.assembler.2035959754.347573070" name="QCC Assembler" superClass="com.qnx.qcc.tool.assembler.2035959754">
+							<option id="com.qnx.qcc.option.assembler.qccoptions.1775882432" name="QCC Options" superClass="com.qnx.qcc.option.assembler.qccoptions" valueType="stringList">
+								<listOptionValue builtIn="false" value="-mcpu=cortex-a9"/>
+								<listOptionValue builtIn="false" value="-marm"/>
+								<listOptionValue builtIn="false" value="-mfpu=neon"/>
+							</option>
+							<inputType id="com.qnx.qcc.inputType.assembler.1121112632" superClass="com.qnx.qcc.inputType.assembler"/>
+						</tool>
+					</fileInfo>
 					<sourceEntries>
 						<entry flags="VALUE_WORKSPACE_PATH|RESOLVED" kind="sourcePath" name="src"/>
 					</sourceEntries>
@@ -213,7 +221,6 @@
 								<option id="com.qnx.qcc.option.compiler.security.1255305436" name="Enhanced Security (-fstack-protector-strong)" superClass="com.qnx.qcc.option.compiler.security" value="true" valueType="boolean"/>
 								<option id="com.qnx.qcc.option.compiler.defines.1244683608" name="Defines (-D)" superClass="com.qnx.qcc.option.compiler.defines" valueType="definedSymbols">
 									<listOptionValue builtIn="false" value="HAVE_RPNG"/>
-									<listOptionValue builtIn="false" value="HAVE_CORE_INFO_CACHE"/>
 									<listOptionValue builtIn="false" value="HAVE_LIBRETRODB"/>
 									<listOptionValue builtIn="false" value="HAVE_CHEEVOS"/>
 									<listOptionValue builtIn="false" value="HAVE_FREETYPE"/>
@@ -237,10 +244,6 @@
 									<listOptionValue builtIn="false" value="HAVE_RGUI"/>
 									<listOptionValue builtIn="false" value="HAVE_MENU"/>
 									<listOptionValue builtIn="false" value="HAVE_CONFIGFILE"/>
-									<listOptionValue builtIn="false" value="HAVE_PATCH"/>
-									<listOptionValue builtIn="false" value="HAVE_REWIND"/>
-									<listOptionValue builtIn="false" value="HAVE_SCREENSHOTS"/>
-									<listOptionValue builtIn="false" value="HAVE_CHEATS"/>
 									<listOptionValue builtIn="false" value="RARCH_MOBILE"/>
 									<listOptionValue builtIn="false" value="HAVE_GRIFFIN"/>
 									<listOptionValue builtIn="false" value="HAVE_LANGEXTRA"/>
@@ -281,7 +284,6 @@
 								</option>
 								<option id="com.qnx.qcc.option.assembler.defines.334766340" name="Defines (-D)" superClass="com.qnx.qcc.option.assembler.defines" valueType="definedSymbols">
 									<listOptionValue builtIn="false" value="HAVE_RPNG"/>
-									<listOptionValue builtIn="false" value="HAVE_CORE_INFO_CACHE"/>
 									<listOptionValue builtIn="false" value="HAVE_LIBRETRODB"/>
 									<listOptionValue builtIn="false" value="HAVE_CHEEVOS"/>
 									<listOptionValue builtIn="false" value="HAVE_FREETYPE"/>
@@ -305,10 +307,6 @@
 									<listOptionValue builtIn="false" value="HAVE_RGUI"/>
 									<listOptionValue builtIn="false" value="HAVE_MENU"/>
 									<listOptionValue builtIn="false" value="HAVE_CONFIGFILE"/>
-									<listOptionValue builtIn="false" value="HAVE_PATCH"/>
-									<listOptionValue builtIn="false" value="HAVE_REWIND"/>
-									<listOptionValue builtIn="false" value="HAVE_SCREENSHOTS"/>
-									<listOptionValue builtIn="false" value="HAVE_CHEATS"/>
 									<listOptionValue builtIn="false" value="RARCH_MOBILE"/>
 									<listOptionValue builtIn="false" value="HAVE_GRIFFIN"/>
 									<listOptionValue builtIn="false" value="HAVE_LANGEXTRA"/>
@@ -356,6 +354,26 @@
 							<tool id="com.qnx.qcc.tool.archiver.1590791010" name="QCC Archiver" superClass="com.qnx.qcc.tool.archiver"/>
 						</toolChain>
 					</folderInfo>
+					<fileInfo id="com.qnx.qcc.configuration.exe.release.648144057.1567247301" name="sinc_neon.S" rcbsApplicability="disable" resourcePath="src/sinc_resampler_neon.S" toolsToInvoke="com.qnx.qcc.tool.assembler.599691721.61424297">
+						<tool id="com.qnx.qcc.tool.assembler.599691721.61424297" name="QCC Assembler" superClass="com.qnx.qcc.tool.assembler.599691721">
+							<option id="com.qnx.qcc.option.assembler.qccoptions.1232679431" name="QCC Options" superClass="com.qnx.qcc.option.assembler.qccoptions" valueType="stringList">
+								<listOptionValue builtIn="false" value="-mcpu=cortex-a9"/>
+								<listOptionValue builtIn="false" value="-marm"/>
+								<listOptionValue builtIn="false" value="-mfpu=neon"/>
+							</option>
+							<inputType id="com.qnx.qcc.inputType.assembler.1064746892" superClass="com.qnx.qcc.inputType.assembler"/>
+						</tool>
+					</fileInfo>
+					<fileInfo id="com.qnx.qcc.configuration.exe.release.648144057.1910510900" name="audio_utils_neon.S" rcbsApplicability="disable" resourcePath="src/audio_utils_neon.S" toolsToInvoke="com.qnx.qcc.tool.assembler.599691721.237427487">
+						<tool id="com.qnx.qcc.tool.assembler.599691721.237427487" name="QCC Assembler" superClass="com.qnx.qcc.tool.assembler.599691721">
+							<option id="com.qnx.qcc.option.assembler.qccoptions.1196541901" name="QCC Options" superClass="com.qnx.qcc.option.assembler.qccoptions" valueType="stringList">
+								<listOptionValue builtIn="false" value="-mcpu=cortex-a9"/>
+								<listOptionValue builtIn="false" value="-marm"/>
+								<listOptionValue builtIn="false" value="-mfpu=neon"/>
+							</option>
+							<inputType id="com.qnx.qcc.inputType.assembler.1045628756" superClass="com.qnx.qcc.inputType.assembler"/>
+						</tool>
+					</fileInfo>
 					<sourceEntries>
 						<entry flags="VALUE_WORKSPACE_PATH|RESOLVED" kind="sourcePath" name="src"/>
 					</sourceEntries>
@@ -393,7 +411,6 @@
 								<option id="com.qnx.qcc.option.compiler.security.1322487460" name="Enhanced Security (-fstack-protector-strong)" superClass="com.qnx.qcc.option.compiler.security" value="true" valueType="boolean"/>
 								<option id="com.qnx.qcc.option.compiler.defines.979624391" name="Defines (-D)" superClass="com.qnx.qcc.option.compiler.defines" valueType="definedSymbols">
 									<listOptionValue builtIn="false" value="HAVE_RPNG"/>
-									<listOptionValue builtIn="false" value="HAVE_CORE_INFO_CACHE"/>
 									<listOptionValue builtIn="false" value="HAVE_LIBRETRODB"/>
 									<listOptionValue builtIn="false" value="HAVE_CHEEVOS"/>
 									<listOptionValue builtIn="false" value="HAVE_FREETYPE"/>
@@ -417,10 +434,6 @@
 									<listOptionValue builtIn="false" value="HAVE_RGUI"/>
 									<listOptionValue builtIn="false" value="HAVE_MENU"/>
 									<listOptionValue builtIn="false" value="HAVE_CONFIGFILE"/>
-									<listOptionValue builtIn="false" value="HAVE_PATCH"/>
-									<listOptionValue builtIn="false" value="HAVE_REWIND"/>
-									<listOptionValue builtIn="false" value="HAVE_SCREENSHOTS"/>
-									<listOptionValue builtIn="false" value="HAVE_CHEATS"/>
 									<listOptionValue builtIn="false" value="RARCH_MOBILE"/>
 									<listOptionValue builtIn="false" value="HAVE_GRIFFIN"/>
 									<listOptionValue builtIn="false" value="HAVE_LANGEXTRA"/>
@@ -461,7 +474,6 @@
 								</option>
 								<option id="com.qnx.qcc.option.assembler.defines.268036269" name="Defines (-D)" superClass="com.qnx.qcc.option.assembler.defines" valueType="definedSymbols">
 									<listOptionValue builtIn="false" value="HAVE_RPNG"/>
-									<listOptionValue builtIn="false" value="HAVE_CORE_INFO_CACHE"/>
 									<listOptionValue builtIn="false" value="HAVE_LIBRETRODB"/>
 									<listOptionValue builtIn="false" value="HAVE_CHEEVOS"/>
 									<listOptionValue builtIn="false" value="HAVE_FREETYPE"/>
@@ -485,10 +497,6 @@
 									<listOptionValue builtIn="false" value="HAVE_RGUI"/>
 									<listOptionValue builtIn="false" value="HAVE_MENU"/>
 									<listOptionValue builtIn="false" value="HAVE_CONFIGFILE"/>
-									<listOptionValue builtIn="false" value="HAVE_PATCH"/>
-									<listOptionValue builtIn="false" value="HAVE_REWIND"/>
-									<listOptionValue builtIn="false" value="HAVE_SCREENSHOTS"/>
-									<listOptionValue builtIn="false" value="HAVE_CHEATS"/>
 									<listOptionValue builtIn="false" value="RARCH_MOBILE"/>
 									<listOptionValue builtIn="false" value="HAVE_GRIFFIN"/>
 									<listOptionValue builtIn="false" value="HAVE_LANGEXTRA"/>
@@ -536,6 +544,26 @@
 							<tool id="com.qnx.qcc.tool.archiver.1197180708" name="QCC Archiver" superClass="com.qnx.qcc.tool.archiver"/>
 						</toolChain>
 					</folderInfo>
+					<fileInfo id="com.qnx.qcc.configuration.exe.debug.381170420.1569968395.src/sinc_resampler_neon.S" name="sinc_neon.S" rcbsApplicability="disable" resourcePath="src/sinc_resampler_neon.S" toolsToInvoke="com.qnx.qcc.tool.assembler.48637936">
+						<tool command="qcc" commandLinePattern="${COMMAND}  ${OUTPUT_FLAG} ${OUTPUT_PREFIX}${OUTPUT} ${INPUTS} ${FLAGS}" id="com.qnx.qcc.tool.assembler.48637936" name="QCC Assembler" superClass="com.qnx.qcc.tool.assembler.531077521">
+							<option id="com.qnx.qcc.option.assembler.qccoptions.687937025" name="QCC Options" superClass="com.qnx.qcc.option.assembler.qccoptions" valueType="stringList">
+								<listOptionValue builtIn="false" value="-mcpu=cortex-a9"/>
+								<listOptionValue builtIn="false" value="-marm"/>
+								<listOptionValue builtIn="false" value="-mfpu=neon"/>
+							</option>
+							<inputType id="com.qnx.qcc.inputType.assembler.110957011" superClass="com.qnx.qcc.inputType.assembler"/>
+						</tool>
+					</fileInfo>
+					<fileInfo id="com.qnx.qcc.configuration.exe.debug.381170420.1569968395.src/audio_utils_neon.S" name="audio_utils_neon.S" rcbsApplicability="disable" resourcePath="src/audio_utils_neon.S" toolsToInvoke="com.qnx.qcc.tool.assembler.1424635866">
+						<tool id="com.qnx.qcc.tool.assembler.1424635866" name="QCC Assembler" superClass="com.qnx.qcc.tool.assembler.531077521">
+							<option id="com.qnx.qcc.option.assembler.qccoptions.1578077765" name="QCC Options" superClass="com.qnx.qcc.option.assembler.qccoptions" valueType="stringList">
+								<listOptionValue builtIn="false" value="-mcpu=cortex-a9"/>
+								<listOptionValue builtIn="false" value="-marm"/>
+								<listOptionValue builtIn="false" value="-mfpu=neon"/>
+							</option>
+							<inputType id="com.qnx.qcc.inputType.assembler.1218782009" superClass="com.qnx.qcc.inputType.assembler"/>
+						</tool>
+					</fileInfo>
 					<sourceEntries>
 						<entry flags="VALUE_WORKSPACE_PATH|RESOLVED" kind="sourcePath" name="src"/>
 					</sourceEntries>
@@ -570,7 +598,6 @@
 								<option id="com.qnx.qcc.option.compiler.security.1003162703" name="Enhanced Security (-fstack-protector-strong)" superClass="com.qnx.qcc.option.compiler.security" value="true" valueType="boolean"/>
 								<option id="com.qnx.qcc.option.compiler.defines.2012868141" name="Defines (-D)" superClass="com.qnx.qcc.option.compiler.defines" valueType="definedSymbols">
 									<listOptionValue builtIn="false" value="HAVE_RPNG"/>
-									<listOptionValue builtIn="false" value="HAVE_CORE_INFO_CACHE"/>
 									<listOptionValue builtIn="false" value="HAVE_LIBRETRODB"/>
 									<listOptionValue builtIn="false" value="HAVE_CHEEVOS"/>
 									<listOptionValue builtIn="false" value="HAVE_FREETYPE"/>
@@ -594,10 +621,6 @@
 									<listOptionValue builtIn="false" value="HAVE_RGUI"/>
 									<listOptionValue builtIn="false" value="HAVE_MENU"/>
 									<listOptionValue builtIn="false" value="HAVE_CONFIGFILE"/>
-									<listOptionValue builtIn="false" value="HAVE_PATCH"/>
-									<listOptionValue builtIn="false" value="HAVE_REWIND"/>
-									<listOptionValue builtIn="false" value="HAVE_SCREENSHOTS"/>
-									<listOptionValue builtIn="false" value="HAVE_CHEATS"/>
 									<listOptionValue builtIn="false" value="RARCH_MOBILE"/>
 									<listOptionValue builtIn="false" value="HAVE_GRIFFIN"/>
 									<listOptionValue builtIn="false" value="HAVE_LANGEXTRA"/>
@@ -638,7 +661,6 @@
 								</option>
 								<option id="com.qnx.qcc.option.assembler.defines.1684433040" name="Defines (-D)" superClass="com.qnx.qcc.option.assembler.defines" valueType="definedSymbols">
 									<listOptionValue builtIn="false" value="HAVE_RPNG"/>
-									<listOptionValue builtIn="false" value="HAVE_CORE_INFO_CACHE"/>
 									<listOptionValue builtIn="false" value="HAVE_LIBRETRODB"/>
 									<listOptionValue builtIn="false" value="HAVE_CHEEVOS"/>
 									<listOptionValue builtIn="false" value="HAVE_FREETYPE"/>
@@ -662,10 +684,6 @@
 									<listOptionValue builtIn="false" value="HAVE_RGUI"/>
 									<listOptionValue builtIn="false" value="HAVE_MENU"/>
 									<listOptionValue builtIn="false" value="HAVE_CONFIGFILE"/>
-									<listOptionValue builtIn="false" value="HAVE_PATCH"/>
-									<listOptionValue builtIn="false" value="HAVE_REWIND"/>
-									<listOptionValue builtIn="false" value="HAVE_SCREENSHOTS"/>
-									<listOptionValue builtIn="false" value="HAVE_CHEATS"/>
 									<listOptionValue builtIn="false" value="RARCH_MOBILE"/>
 									<listOptionValue builtIn="false" value="HAVE_GRIFFIN"/>
 									<listOptionValue builtIn="false" value="HAVE_LANGEXTRA"/>
@@ -713,6 +731,26 @@
 							<tool id="com.qnx.qcc.tool.archiver.437734291" name="QCC Archiver" superClass="com.qnx.qcc.tool.archiver"/>
 						</toolChain>
 					</folderInfo>
+					<fileInfo id="com.qnx.qcc.configuration.exe.release.648144057.76343805.src/sinc_resampler_neon.S" name="sinc_neon.S" rcbsApplicability="disable" resourcePath="src/sinc_resampler_neon.S" toolsToInvoke="com.qnx.qcc.tool.assembler.148149390">
+						<tool id="com.qnx.qcc.tool.assembler.148149390" name="QCC Assembler" superClass="com.qnx.qcc.tool.assembler.689750306">
+							<option id="com.qnx.qcc.option.assembler.qccoptions.149021029" name="QCC Options" superClass="com.qnx.qcc.option.assembler.qccoptions" valueType="stringList">
+								<listOptionValue builtIn="false" value="-mcpu=cortex-a9"/>
+								<listOptionValue builtIn="false" value="-marm"/>
+								<listOptionValue builtIn="false" value="-mfpu=neon"/>
+							</option>
+							<inputType id="com.qnx.qcc.inputType.assembler.1691230153" superClass="com.qnx.qcc.inputType.assembler"/>
+						</tool>
+					</fileInfo>
+					<fileInfo id="com.qnx.qcc.configuration.exe.release.648144057.76343805.src/audio_utils_neon.S" name="audio_utils_neon.S" rcbsApplicability="disable" resourcePath="src/audio_utils_neon.S" toolsToInvoke="com.qnx.qcc.tool.assembler.588943843">
+						<tool id="com.qnx.qcc.tool.assembler.588943843" name="QCC Assembler" superClass="com.qnx.qcc.tool.assembler.689750306">
+							<option id="com.qnx.qcc.option.assembler.qccoptions.1322262019" name="QCC Options" superClass="com.qnx.qcc.option.assembler.qccoptions" valueType="stringList">
+								<listOptionValue builtIn="false" value="-mcpu=cortex-a9"/>
+								<listOptionValue builtIn="false" value="-marm"/>
+								<listOptionValue builtIn="false" value="-mfpu=neon"/>
+							</option>
+							<inputType id="com.qnx.qcc.inputType.assembler.469879186" superClass="com.qnx.qcc.inputType.assembler"/>
+						</tool>
+					</fileInfo>
 					<sourceEntries>
 						<entry flags="VALUE_WORKSPACE_PATH|RESOLVED" kind="sourcePath" name="src"/>
 					</sourceEntries>

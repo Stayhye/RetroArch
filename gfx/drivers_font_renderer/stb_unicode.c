@@ -18,7 +18,6 @@
 
 #include <file/file_path.h>
 #include <streams/file_stream.h>
-#include <string/stdstring.h>
 #include <retro_miscellaneous.h>
 
 #ifdef WIIU
@@ -42,31 +41,29 @@
 #define STB_UNICODE_ATLAS_ROWS 16
 #define STB_UNICODE_ATLAS_COLS 16
 #define STB_UNICODE_ATLAS_SIZE (STB_UNICODE_ATLAS_ROWS * STB_UNICODE_ATLAS_COLS)
-/* Padding is required between each glyph in
- * the atlas to prevent texture bleed when
- * drawing with linear filtering enabled */
-#define STB_UNICODE_ATLAS_PADDING 1
 
 typedef struct stb_unicode_atlas_slot
 {
-   struct stb_unicode_atlas_slot* next;
-   struct font_glyph glyph;      /* unsigned alignment */
+   struct font_glyph glyph;
    unsigned charcode;
    unsigned last_used;
+   struct stb_unicode_atlas_slot* next;
 }stb_unicode_atlas_slot_t;
 
 typedef struct
 {
    uint8_t *font_data;
-   struct font_atlas atlas;               /* ptr alignment */
-   stb_unicode_atlas_slot_t* uc_map[0x100];
-   stb_unicode_atlas_slot_t atlas_slots[STB_UNICODE_ATLAS_SIZE];
-   stbtt_fontinfo info;                   /* ptr alignment */
+   stbtt_fontinfo info;
+
    int max_glyph_width;
    int max_glyph_height;
-   unsigned usage_counter;
    float scale_factor;
-   struct font_line_metrics line_metrics; /* float alignment */
+   struct font_line_metrics line_metrics;
+
+   struct font_atlas atlas;
+   stb_unicode_atlas_slot_t atlas_slots[STB_UNICODE_ATLAS_SIZE];
+   stb_unicode_atlas_slot_t* uc_map[0x100];
+   unsigned usage_counter;
 } stb_unicode_font_renderer_t;
 
 static struct font_atlas *font_renderer_stb_unicode_get_atlas(void *data)
@@ -90,18 +87,18 @@ static stb_unicode_atlas_slot_t* font_renderer_stb_unicode_get_slot(stb_unicode_
    unsigned oldest = 0;
 
    for (i = 1; i < STB_UNICODE_ATLAS_SIZE; i++)
-      if ((handle->usage_counter - handle->atlas_slots[i].last_used) >
+      if((handle->usage_counter - handle->atlas_slots[i].last_used) >
          (handle->usage_counter - handle->atlas_slots[oldest].last_used))
          oldest = i;
 
    /* remove from map */
    map_id = handle->atlas_slots[oldest].charcode & 0xFF;
-   if (handle->uc_map[map_id] == &handle->atlas_slots[oldest])
+   if(handle->uc_map[map_id] == &handle->atlas_slots[oldest])
       handle->uc_map[map_id] = handle->atlas_slots[oldest].next;
    else if (handle->uc_map[map_id])
    {
       stb_unicode_atlas_slot_t* ptr = handle->uc_map[map_id];
-      while (ptr->next && ptr->next != &handle->atlas_slots[oldest])
+      while(ptr->next && ptr->next != &handle->atlas_slots[oldest])
          ptr = ptr->next;
       ptr->next = handle->atlas_slots[oldest].next;
    }
@@ -124,15 +121,15 @@ static const struct font_glyph *font_renderer_stb_unicode_get_glyph(
    float glyph_advance_x                = 0.0f;
    float glyph_draw_offset_y            = 0.0f;
 
-   if (!self)
+   if(!self)
       return NULL;
 
    map_id                               = charcode & 0xFF;
    atlas_slot                           = self->uc_map[map_id];
 
-   while (atlas_slot)
+   while(atlas_slot)
    {
-      if (atlas_slot->charcode == charcode)
+      if(atlas_slot->charcode == charcode)
       {
          atlas_slot->last_used = self->usage_counter++;
          return &atlas_slot->glyph;
@@ -199,8 +196,8 @@ static bool font_renderer_stb_unicode_create_atlas(
    self->max_glyph_width  = font_size < 0 ? -font_size : font_size;
    self->max_glyph_height = font_size < 0 ? -font_size : font_size;
 
-   self->atlas.width      = (self->max_glyph_width  + STB_UNICODE_ATLAS_PADDING) * STB_UNICODE_ATLAS_COLS;
-   self->atlas.height     = (self->max_glyph_height + STB_UNICODE_ATLAS_PADDING) * STB_UNICODE_ATLAS_ROWS;
+   self->atlas.width      = self->max_glyph_width  * STB_UNICODE_ATLAS_COLS;
+   self->atlas.height     = self->max_glyph_height * STB_UNICODE_ATLAS_ROWS;
 
    self->atlas.buffer     = (uint8_t*)
       calloc(self->atlas.width * self->atlas.height, sizeof(uint8_t));
@@ -214,8 +211,8 @@ static bool font_renderer_stb_unicode_create_atlas(
    {
       for (x = 0; x < STB_UNICODE_ATLAS_COLS; x++)
       {
-         slot->glyph.atlas_offset_x = x * (self->max_glyph_width  + STB_UNICODE_ATLAS_PADDING);
-         slot->glyph.atlas_offset_y = y * (self->max_glyph_height + STB_UNICODE_ATLAS_PADDING);
+         slot->glyph.atlas_offset_x = x * self->max_glyph_width;
+         slot->glyph.atlas_offset_y = y * self->max_glyph_height;
          slot++;
       }
    }
@@ -225,7 +222,7 @@ static bool font_renderer_stb_unicode_create_atlas(
 
    for (i = 0; i < 256; i++)
    {
-      if (ISALNUM(i))
+      if(isalnum(i))
          font_renderer_stb_unicode_get_glyph(self, i);
    }
 
@@ -245,7 +242,7 @@ static void *font_renderer_stb_unicode_init(const char *font_path, float font_si
    font_size = STBTT_POINT_SIZE(font_size);
 
 #ifdef WIIU
-   if (!*font_path)
+   if(!*font_path)
    {
       uint32_t size = 0;
       if (!OSGetSharedData(SHARED_FONT_DEFAULT, 0, (void**)&self->font_data, &size))

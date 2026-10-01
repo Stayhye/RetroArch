@@ -144,9 +144,7 @@ static bool vga_gfx_frame(void *data, const void *frame,
    const void *frame_to_copy = frame;
    bool draw                 = true;
    vga_t *vga                = (vga_t*)data;
-#ifdef HAVE_MENU
    bool menu_is_alive        = video_info->menu_is_alive;
-#endif
 
    if (!frame || !frame_width || !frame_height)
       return true;
@@ -167,8 +165,7 @@ static bool vga_gfx_frame(void *data, const void *frame,
       }
    }
 
-#ifdef HAVE_MENU
-   if (vga->vga_menu_frame && menu_is_alive)
+   if (vga->vga_menu_frame && video_info->menu_is_alive)
    {
       frame_to_copy = vga->vga_menu_frame;
       width         = vga->vga_menu_width;
@@ -177,7 +174,6 @@ static bool vga_gfx_frame(void *data, const void *frame,
       bits          = vga->vga_menu_bits;
    }
    else
-#endif
    {
       width         = vga->vga_video_width;
       height        = vga->vga_video_height;
@@ -187,10 +183,8 @@ static bool vga_gfx_frame(void *data, const void *frame,
       if (frame_width == 4 && frame_height == 4 && (frame_width < width && frame_height < height))
          draw = false;
 
-#ifdef HAVE_MENU
-      if (menu_is_alive)
+      if (video_info->menu_is_alive)
          draw = false;
-#endif
    }
 
    if (draw)
@@ -199,7 +193,7 @@ static bool vga_gfx_frame(void *data, const void *frame,
 
       if (frame_to_copy == vga->vga_menu_frame)
          dosmemput(frame_to_copy,
-               VGA_WIDTH*VGA_HEIGHT, 0xA0000);
+               MIN(VGA_WIDTH,width)*MIN(VGA_HEIGHT,height), 0xA0000);
       else
       {
          if (bits == 32)
@@ -339,17 +333,17 @@ static void vga_set_texture_frame(void *data,
       {
          unsigned short *video_frame = (unsigned short*)frame;
 
-         for (y = 0; y < VGA_HEIGHT; y++)
+         for(y = 0; y < VGA_HEIGHT; y++)
          {
-            for (x = 0; x < VGA_WIDTH; x++)
+            for(x = 0; x < VGA_WIDTH; x++)
             {
                /* scale incoming frame to fit the screen */
-               unsigned scaled_x    = (width * x) / VGA_WIDTH;
-               unsigned scaled_y    = (height * y) / VGA_HEIGHT;
+               unsigned scaled_x = (width * x) / VGA_WIDTH;
+               unsigned scaled_y = (height * y) / VGA_HEIGHT;
                unsigned short pixel = video_frame[width * scaled_y + scaled_x];
-               unsigned r           = ((pixel & 0xF000) >> 13);
-               unsigned g           = ((pixel & 0xF00) >> 9);
-               unsigned b           = ((pixel & 0xF0) >> 6);
+               unsigned r = ((pixel & 0xF000) >> 13);
+               unsigned g = ((pixel & 0xF00) >> 9);
+               unsigned b = ((pixel & 0xF0) >> 6);
                vga->vga_menu_frame[VGA_WIDTH * y + x] = (b << 6) | (g << 3) | r;
             }
          }
@@ -362,7 +356,12 @@ static void vga_set_texture_frame(void *data,
    }
 }
 
-static uint32_t vga_get_flags(void *data) { return 0; }
+static uint32_t vga_get_flags(void *data)
+{
+   uint32_t flags = 0;
+
+   return flags;
+}
 
 static const video_poke_interface_t vga_poke_interface = {
    vga_get_flags,
@@ -385,17 +384,20 @@ static const video_poke_interface_t vga_poke_interface = {
    NULL,                   /* grab_mouse_toggle */
    NULL,                   /* get_current_shader */
    NULL,                   /* get_current_software_framebuffer */
-   NULL,                   /* get_hw_render_interface */
-   NULL,                   /* set_hdr_max_nits */
-   NULL,                   /* set_hdr_paper_white_nits */
-   NULL,                   /* set_hdr_contrast */
-   NULL                    /* set_hdr_expand_gamut */
+   NULL                    /* get_hw_render_interface */
 };
 
 static void vga_gfx_get_poke_interface(void *data,
-      const video_poke_interface_t **iface) { *iface = &vga_poke_interface; }
+      const video_poke_interface_t **iface)
+{
+   (void)data;
+   *iface = &vga_poke_interface;
+}
+
 void vga_gfx_set_viewport(void *data, unsigned viewport_width,
-      unsigned viewport_height, bool force_full, bool allow_rotate) { }
+      unsigned viewport_height, bool force_full, bool allow_rotate)
+{
+}
 
 video_driver_t video_vga = {
    vga_gfx_init,

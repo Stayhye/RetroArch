@@ -47,7 +47,13 @@
 #include "ecdh.h"
 #endif
 
-#include <time.h>
+#if defined(MBEDTLS_ZLIB_SUPPORT)
+#include "zlib.h"
+#endif
+
+#if defined(MBEDTLS_HAVE_TIME)
+#include "platform_time.h"
+#endif
 
 /*
  * SSL Error codes
@@ -541,7 +547,9 @@ typedef struct mbedtls_ssl_flight_item mbedtls_ssl_flight_item;
  */
 struct mbedtls_ssl_session
 {
-    time_t start;               /*!< starting time      */
+#if defined(MBEDTLS_HAVE_TIME)
+    mbedtls_time_t start;       /*!< starting time      */
+#endif
     int ciphersuite;            /*!< chosen ciphersuite */
     int compression;            /*!< chosen compression */
     size_t id_len;              /*!< session id length  */
@@ -855,6 +863,9 @@ struct mbedtls_ssl_context
     size_t out_msglen;          /*!< record header: message length    */
     size_t out_left;            /*!< amount of data not yet written   */
 
+#if defined(MBEDTLS_ZLIB_SUPPORT)
+    unsigned char *compress_buf;        /*!<  zlib data buffer        */
+#endif
 #if defined(MBEDTLS_SSL_CBC_RECORD_SPLITTING)
     signed char split_done;     /*!< current record already splitted? */
 #endif

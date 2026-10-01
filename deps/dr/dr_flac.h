@@ -5063,6 +5063,7 @@ drflac_uint64 drflac_read_s32(drflac* pFlac, drflac_uint64 samplesToRead, drflac
 
           alignedSamplesRead = alignedSampleCountPerChannel * channelCount;
           samplesRead   += alignedSamplesRead;
+          samplesReadFromFrameSoFar += alignedSamplesRead;
           bufferOut     += alignedSamplesRead;
           samplesToRead -= alignedSamplesRead;
           pFlac->currentFrame.samplesRemaining -= (unsigned int)alignedSamplesRead;
@@ -5077,6 +5078,7 @@ drflac_uint64 drflac_read_s32(drflac* pFlac, drflac_uint64 samplesToRead, drflac
              }
 
              samplesRead   += excessSamplesRead;
+             samplesReadFromFrameSoFar += excessSamplesRead;
              bufferOut     += excessSamplesRead;
              samplesToRead -= excessSamplesRead;
           }

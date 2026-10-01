@@ -75,14 +75,6 @@ extern "C" {
 
 /* RETRO_LANGUAGE_SLOVAK */
 
-/* RETRO_LANGUAGE_PERSIAN */
-
-/* RETRO_LANGUAGE_HEBREW */
-
-/* RETRO_LANGUAGE_ASTURIAN */
-
-/* RETRO_LANGUAGE_FINNISH */
-
 #ifdef __cplusplus
 }
 #endif

@@ -26,7 +26,7 @@
 #include <rthreads/rthreads.h>
 
 #include "../../configuration.h"
-#include "../audio_driver.h"
+#include "../../retroarch.h"
 #include "../../verbosity.h"
 
 #define FRAMES(x) (x / (sizeof(float) * 2))
@@ -35,44 +35,23 @@ typedef struct jack
 {
    jack_client_t *client;
    jack_port_t *ports[2];
-   jack_ringbuffer_t *buffer;
+   jack_ringbuffer_t *buffer[2];
+   volatile bool shutdown;
+   bool nonblock;
+   bool is_paused;
+
 #ifdef HAVE_THREADS
    scond_t *cond;
    slock_t *cond_lock;
 #endif
    size_t buffer_size;
-   volatile bool shutdown;
-   bool nonblock;
-   bool is_paused;
 } jack_t;
-
-static size_t read_deinterleaved(float *dst[2], jack_nframes_t dst_offset,
-      jack_ringbuffer_data_t buf, jack_nframes_t nframes)
-{
-   int i;
-   jack_nframes_t j, frames_avail;
-   const float *src = (const float *)buf.buf;
-
-   if (nframes <= 0)
-      return 0;
-
-   frames_avail = FRAMES(buf.len);
-   nframes = nframes < frames_avail ? nframes : frames_avail;
-
-   for (j = 0; j < nframes; j++)
-      for (i = 0; i < 2; i++)
-         dst[i][dst_offset + j] = *src++;
-
-   return nframes;
-}
 
 static int process_cb(jack_nframes_t nframes, void *data)
 {
    int i;
-   jack_nframes_t read = 0;
+   jack_nframes_t avail[2], min_avail;
    jack_t *jd = (jack_t*)data;
-   jack_ringbuffer_data_t buf[2];
-   float *dst[2];
 
    if (nframes <= 0)
    {
@@ -82,20 +61,23 @@ static int process_cb(jack_nframes_t nframes, void *data)
       return 0;
    }
 
+   avail[0]  = jack_ringbuffer_read_space(jd->buffer[0]);
+   avail[1]  = jack_ringbuffer_read_space(jd->buffer[1]);
+   min_avail = ((avail[0] < avail[1]) ? avail[0] : avail[1]) / sizeof(jack_default_audio_sample_t);
+
+   if (min_avail > nframes)
+      min_avail = nframes;
+
    for (i = 0; i < 2; i++)
-      dst[i] = (float *)jack_port_get_buffer(jd->ports[i], nframes);
+   {
+      jack_nframes_t f;
+      jack_default_audio_sample_t *out = (jack_default_audio_sample_t*)jack_port_get_buffer(jd->ports[i], nframes);
 
-   jack_ringbuffer_get_read_vector(jd->buffer, buf);
+      jack_ringbuffer_read(jd->buffer[i], (char*)out, min_avail * sizeof(jack_default_audio_sample_t));
 
-   for (i = 0; i < 2; i++)
-      read += read_deinterleaved(dst, read, buf[i], nframes - read);
-
-   jack_ringbuffer_read_advance(jd->buffer, read * sizeof(float) * 2);
-
-   for (; read < nframes; read++)
-      for (i = 0; i < 2; i++)
-         dst[i][read] = 0.0f;
-
+      for (f = min_avail; f < nframes; f++)
+         out[f] = 0.0f;
+   }
 #ifdef HAVE_THREADS
    scond_signal(jd->cond);
 #endif
@@ -212,12 +194,14 @@ static void *ja_init(const char *device,
    jd->buffer_size = bufsize;
 
    RARCH_LOG("[JACK]: Internal buffer size: %d frames.\n", (int)(bufsize / sizeof(jack_default_audio_sample_t)));
-
-   jd->buffer = jack_ringbuffer_create(bufsize);
-   if (!jd->buffer)
+   for (i = 0; i < 2; i++)
    {
-      RARCH_ERR("[JACK]: Failed to create buffers.\n");
-      goto error;
+      jd->buffer[i] = jack_ringbuffer_create(bufsize);
+      if (!jd->buffer[i])
+      {
+         RARCH_ERR("[JACK]: Failed to create buffers.\n");
+         goto error;
+      }
    }
 
    parsed = parse_ports(dest_ports, jports);
@@ -252,46 +236,65 @@ error:
    return NULL;
 }
 
-static ssize_t ja_write(void *data, const void *buf_, size_t size)
+static size_t write_buffer(jack_t *jd, const float *buf, size_t size)
 {
-   jack_t      *jd = (jack_t*)data;
-   const char *buf = (const char *)buf_;
-   size_t  written = 0;
+   int i;
+   size_t j, written = 0;
+   jack_default_audio_sample_t out_deinterleaved_buffer[2][AUDIO_CHUNK_SIZE_NONBLOCKING * AUDIO_MAX_RATIO];
+   size_t frames = FRAMES(size);
 
-   while (size > 0)
+   /* Avoid buffer overflow if a DSP plugin generated a huge number of frames. */
+   if (frames > AUDIO_CHUNK_SIZE_NONBLOCKING * AUDIO_MAX_RATIO)
+      frames = AUDIO_CHUNK_SIZE_NONBLOCKING * AUDIO_MAX_RATIO;
+
+   for (i = 0; i < 2; i++)
+      for (j = 0; j < frames; j++)
+         out_deinterleaved_buffer[i][j] = buf[j * 2 + i];
+
+   while (written < frames)
    {
-      size_t avail, to_write;
-
+      size_t avail[2], min_avail, write_frames;
       if (jd->shutdown)
          return 0;
 
-      avail = jack_ringbuffer_write_space(jd->buffer);
+      avail[0] = jack_ringbuffer_write_space(jd->buffer[0]);
+      avail[1] = jack_ringbuffer_write_space(jd->buffer[1]);
 
-      to_write = size < avail ? size : avail;
-      /* make sure to only write multiples of the sample size */
-      to_write = (to_write / sizeof(float)) * sizeof(float);
+      min_avail = avail[0] < avail[1] ? avail[0] : avail[1];
+      min_avail /= sizeof(float);
 
-      if (to_write > 0)
+      write_frames = frames - written > min_avail ? min_avail : frames - written;
+
+      if (write_frames > 0)
       {
-         jack_ringbuffer_write(jd->buffer, buf, to_write);
-         buf     += to_write;
-         size    -= to_write;
-         written += to_write;
+         for (i = 0; i < 2; i++)
+         {
+            jack_ringbuffer_write(jd->buffer[i], (const char*)&out_deinterleaved_buffer[i][written],
+                  write_frames * sizeof(jack_default_audio_sample_t));
+         }
+         written += write_frames;
       }
-      else if (!jd->nonblock)
-      {
 #ifdef HAVE_THREADS
+      else
+      {
          slock_lock(jd->cond_lock);
          scond_wait(jd->cond, jd->cond_lock);
          slock_unlock(jd->cond_lock);
-#endif
-         continue;
       }
-      else
+#endif
+
+      if (jd->nonblock)
          break;
    }
 
-   return written;
+   return written * sizeof(float) * 2;
+}
+
+static ssize_t ja_write(void *data, const void *buf, size_t size)
+{
+   jack_t *jd = (jack_t*)data;
+
+   return write_buffer(jd, (const float*)buf, size);
 }
 
 static bool ja_stop(void *data)
@@ -338,8 +341,9 @@ static void ja_free(void *data)
       jack_client_close(jd->client);
    }
 
-   if (jd->buffer)
-      jack_ringbuffer_free(jd->buffer);
+   for (i = 0; i < 2; i++)
+      if (jd->buffer[i])
+         jack_ringbuffer_free(jd->buffer[i]);
 
 #ifdef HAVE_THREADS
    if (jd->cond_lock)
@@ -359,7 +363,7 @@ static bool ja_use_float(void *data)
 static size_t ja_write_avail(void *data)
 {
    jack_t *jd = (jack_t*)data;
-   return jack_ringbuffer_write_space(jd->buffer);
+   return jack_ringbuffer_write_space(jd->buffer[0]);
 }
 
 static size_t ja_buffer_size(void *data)

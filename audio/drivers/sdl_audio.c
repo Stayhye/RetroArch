@@ -25,27 +25,28 @@
 #include <retro_inline.h>
 #include <retro_math.h>
 
+#include "../../retroarch.h"
+#include "../../verbosity.h"
+
 #include "SDL.h"
 #include "SDL_audio.h"
 
-#include "../audio_driver.h"
-#include "../../verbosity.h"
-
 typedef struct sdl_audio
 {
+   bool nonblock;
+   bool is_paused;
+
 #ifdef HAVE_THREADS
    slock_t *lock;
    scond_t *cond;
 #endif
    fifo_buffer_t *buffer;
-   bool nonblock;
-   bool is_paused;
 } sdl_audio_t;
 
 static void sdl_audio_cb(void *data, Uint8 *stream, int len)
 {
    sdl_audio_t  *sdl = (sdl_audio_t*)data;
-   size_t      avail = FIFO_READ_AVAIL(sdl->buffer);
+   size_t      avail = fifo_read_avail(sdl->buffer);
    size_t write_size = len > (int)avail ? avail : len;
 
    fifo_read(sdl->buffer, stream, write_size);
@@ -74,24 +75,19 @@ static void *sdl_audio_init(const char *device,
    int frames;
    size_t bufsize;
    SDL_AudioSpec out;
-   SDL_AudioSpec spec           = {0};
-   void *tmp                    = NULL;
-   sdl_audio_t *sdl             = NULL;
-   uint32_t sdl_subsystem_flags = SDL_WasInit(0);
+   SDL_AudioSpec spec   = {0};
+   void            *tmp = NULL;
+   sdl_audio_t *sdl     = NULL;
 
    (void)device;
 
-   /* Initialise audio subsystem, if required */
-   if (sdl_subsystem_flags == 0)
+   if (SDL_WasInit(0) == 0)
    {
       if (SDL_Init(SDL_INIT_AUDIO) < 0)
          return NULL;
    }
-   else if ((sdl_subsystem_flags & SDL_INIT_AUDIO) == 0)
-   {
-      if (SDL_InitSubSystem(SDL_INIT_AUDIO) < 0)
-         return NULL;
-   }
+   else if (SDL_InitSubSystem(SDL_INIT_AUDIO) < 0)
+      return NULL;
 
    sdl = (sdl_audio_t*)calloc(1, sizeof(*sdl));
    if (!sdl)
@@ -155,7 +151,7 @@ static ssize_t sdl_audio_write(void *data, const void *buf, size_t size)
       size_t avail, write_amt;
 
       SDL_LockAudio();
-      avail = FIFO_WRITE_AVAIL(sdl->buffer);
+      avail = fifo_write_avail(sdl->buffer);
       write_amt = avail > size ? size : avail;
       fifo_write(sdl->buffer, buf, write_amt);
       SDL_UnlockAudio();
@@ -170,7 +166,7 @@ static ssize_t sdl_audio_write(void *data, const void *buf, size_t size)
          size_t avail;
 
          SDL_LockAudio();
-         avail = FIFO_WRITE_AVAIL(sdl->buffer);
+         avail = fifo_write_avail(sdl->buffer);
 
          if (avail == 0)
          {
@@ -232,6 +228,7 @@ static void sdl_audio_free(void *data)
    sdl_audio_t *sdl = (sdl_audio_t*)data;
 
    SDL_CloseAudio();
+   SDL_QuitSubSystem(SDL_INIT_AUDIO);
 
    if (sdl)
    {

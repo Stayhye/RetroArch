@@ -6,7 +6,7 @@
 
   <package id="retroarch.lifning.001">
 
-    <author name="libretro" website="https://www.libretro.com/"/>
+    <author name="lifning" website="http://libretro.org/"/>
 
     <version major="0" minor="9" release="7" build="2" type="beta"/>
 
@@ -28,7 +28,7 @@
 
     <exec command="scripts/retroarch.sh"/>
 
-    <author name="Libretro" website="https://www.retroarch.com"/>
+    <author name="Themaister" website="http://themaister.net/retroarch.html"/>
 
     <version major="0" minor="9" release="7" build="1"/>
     <osversion major="1" minor="0" release="0" build="0"/>

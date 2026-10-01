@@ -1,5 +1,3 @@
+*.json
 crowdin.yaml
 crowdin.yml
-crowdin-cli.jar
-msg_hash_*.json
-progress.json

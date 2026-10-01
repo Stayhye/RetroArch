@@ -45,23 +45,26 @@
 #include "../../verbosity.h"
 #include "../../frontend/frontend_driver.h"
 
-#ifdef HAVE_EGL
 #include "../common/egl_common.h"
-#endif
+#include "../common/gl_common.h"
 
 #ifdef HAVE_ANGLE
 #include "../common/angle_common.h"
 #endif
 
-/* TODO/FIXME - static globals */
-static egl_ctx_data_t uwp_egl;
 #ifdef HAVE_DYNAMIC
 static dylib_t          dll_handle = NULL; /* Handle to libGLESv2.dll */
 #endif
 
+static void gfx_ctx_uwp_destroy(void *data);
+
+static egl_ctx_data_t uwp_egl;
+static int uwp_interval         = 0;
+static enum gfx_ctx_api uwp_api = GFX_CTX_OPENGL_ES_API;
+
 typedef struct gfx_ctx_cgl_data
 {
-   int interval;
+   void *empty;
 } gfx_ctx_uwp_data_t;
 
 bool create_gles_context(void* corewindow)
@@ -116,14 +119,30 @@ error:
 
 static void gfx_ctx_uwp_swap_interval(void *data, int interval)
 {
-   gfx_ctx_uwp_data_t *uwp = (gfx_ctx_uwp_data_t*)data;
+   (void)data;
 
-   if (uwp->interval != interval)
+   switch (uwp_api)
    {
-      uwp->interval = interval;
-      egl_set_swap_interval(&uwp_egl, uwp->interval);
+      case GFX_CTX_OPENGL_ES_API:
+         if (uwp_interval != interval)
+         {
+            uwp_interval = interval;
+            egl_set_swap_interval(&uwp_egl, uwp_interval);
+         }
+         break;
+
+      case GFX_CTX_NONE:
+      default:
+         break;
    }
 }
+
+static void gfx_ctx_uwp_check_window(void *data, bool *quit,
+      bool *resize, unsigned *width, unsigned *height)
+{
+   win32_check_window(quit, resize, width, height);
+}
+
 
 static gfx_ctx_proc_t gfx_ctx_uwp_get_proc_address(const char* symbol)
 {
@@ -135,23 +154,36 @@ static gfx_ctx_proc_t gfx_ctx_uwp_get_proc_address(const char* symbol)
 }
 
 
-static void gfx_ctx_uwp_swap_buffers(void *data) { egl_swap_buffers(&uwp_egl); }
+static void gfx_ctx_uwp_swap_buffers(void *data)
+{
+   switch (uwp_api)
+   {
+      case GFX_CTX_OPENGL_ES_API:
+         egl_swap_buffers(&uwp_egl);
+         break;
+      case GFX_CTX_NONE:
+      default:
+         break;
+   }
+}
 
 static bool gfx_ctx_uwp_set_resize(void *data,
-      unsigned width, unsigned height) { return false; }
+      unsigned width, unsigned height)
+{
+   (void)data;
+   (void)width;
+   (void)height;
+
+   return false;
+}
+
 
 static void gfx_ctx_uwp_get_video_size(void *data,
       unsigned *width, unsigned *height)
 {
    bool quit;
    bool resize;
-   win32_check_window(NULL, &quit, &resize, width, height);
-   if (is_running_on_xbox())
-   {
-      //we can set it to 1920x1080 as xbox uwp windowsize is guaranteed to be 1920x1080 and currently there is now way to set angle to use a variable resolution swapchain so regardless of the size the window is always 1080p
-      width = 1920;
-      height = 1080;
-   }
+   win32_check_window(&quit, &resize, width, height);
 }
 
 static void *gfx_ctx_uwp_init(void *video_driver)
@@ -160,6 +192,7 @@ static void *gfx_ctx_uwp_init(void *video_driver)
 
    if (!uwp)
       return NULL;
+
 
 #ifdef HAVE_DYNAMIC
    dll_handle = dylib_load("libGLESv2.dll");
@@ -171,35 +204,39 @@ static void *gfx_ctx_uwp_init(void *video_driver)
 static void gfx_ctx_uwp_destroy(void *data)
 {
    gfx_ctx_uwp_data_t *wgl = (gfx_ctx_uwp_data_t*)data;
-   
-   if (!wgl)
-      return;
 
-   egl_destroy(&uwp_egl);
+   switch (uwp_api)
+   {
+   case GFX_CTX_OPENGL_ES_API:
+      egl_destroy(&uwp_egl);
+      break;
+
+   case GFX_CTX_NONE:
+   default:
+      break;
+   }
 
 #ifdef HAVE_DYNAMIC
    dylib_close(dll_handle);
 #endif
+
 }
 
 static bool gfx_ctx_uwp_set_video_mode(void *data,
       unsigned width, unsigned height,
       bool fullscreen)
 {
-   gfx_ctx_uwp_data_t *uwp = (gfx_ctx_uwp_data_t*)data;
-
    if (!win32_set_video_mode(NULL, width, height, fullscreen))
    {
       RARCH_ERR("[UWP EGL]: win32_set_video_mode failed.\n");
    }
 
-   if (!create_gles_context(uwp_get_corewindow()))
-   {
+   if (!create_gles_context(uwp_get_corewindow())) {
       RARCH_ERR("[UWP EGL]: create_gles_context failed.\n");
       goto error;
    }
 
-   gfx_ctx_uwp_swap_interval(data, uwp->interval);
+   gfx_ctx_uwp_swap_interval(data, uwp_interval);
    return true;
 
 error:
@@ -217,46 +254,67 @@ static void gfx_ctx_uwp_input_driver(void *data,
     * supports joypad only (uwp driver was added later) */
    if (string_is_equal(settings->arrays.input_driver, "xinput"))
    {
-      void* xinput = input_driver_init_wrap(&input_xinput, joypad_name);
-      *input       = xinput ? (input_driver_t*)&input_xinput : NULL;
-      *input_data  = xinput;
+      void* xinput = input_xinput.init(joypad_name);
+      *input = xinput ? (input_driver_t*)&input_xinput : NULL;
+      *input_data = xinput;
    }
    else
    {
-      void* uwp   = input_driver_init_wrap(&input_uwp, joypad_name);
-      *input      = uwp ? (input_driver_t*)&input_uwp : NULL;
+      void* uwp = input_uwp.init(joypad_name);
+      *input = uwp ? (input_driver_t*)&input_uwp : NULL;
       *input_data = uwp;
    }
 }
 
 static enum gfx_ctx_api gfx_ctx_uwp_get_api(void *data)
 {
-   return GFX_CTX_OPENGL_ES_API;
+   return uwp_api;
 }
 
 static bool gfx_ctx_uwp_bind_api(void *data,
       enum gfx_ctx_api api, unsigned major, unsigned minor)
 {
+   (void)data;
+
    if (api == GFX_CTX_OPENGL_ES_API)
       return true;
-   return false;
+   else
+      return false;
 }
 
 static void gfx_ctx_uwp_bind_hw_render(void *data, bool enable)
 {
-   egl_bind_hw_render(&uwp_egl, enable);
+   switch (uwp_api)
+   {
+      case GFX_CTX_OPENGL_ES_API:
+         egl_bind_hw_render(&uwp_egl, enable);
+         break;
+
+      case GFX_CTX_NONE:
+      default:
+         break;
+   }
 }
 
 static uint32_t gfx_ctx_uwp_get_flags(void *data)
 {
    uint32_t flags = 0;
 
+   switch (uwp_api)
+   {
+      case GFX_CTX_OPENGL_ES_API:
 #if defined(HAVE_SLANG) && defined(HAVE_SPIRV_CROSS)
-   BIT32_SET(flags, GFX_CTX_FLAGS_SHADERS_SLANG);
+         BIT32_SET(flags, GFX_CTX_FLAGS_SHADERS_SLANG);
 #endif
 #ifdef HAVE_GLSL
-   BIT32_SET(flags, GFX_CTX_FLAGS_SHADERS_GLSL);
+         BIT32_SET(flags, GFX_CTX_FLAGS_SHADERS_GLSL);
 #endif
+         break;
+
+      case GFX_CTX_NONE:
+      default:
+         break;
+   }
 
    return flags;
 }
@@ -276,7 +334,7 @@ const gfx_ctx_driver_t gfx_ctx_uwp = {
    win32_get_metrics,
    NULL,
    NULL, /* update title */
-   win32_check_window,
+   gfx_ctx_uwp_check_window,
    gfx_ctx_uwp_set_resize,
    win32_has_focus,
    NULL, /* suppress screensaver */
@@ -287,7 +345,7 @@ const gfx_ctx_driver_t gfx_ctx_uwp = {
    NULL,
    NULL,
    win32_show_cursor,
-   "egl_uwp",
+   "uwp",
    gfx_ctx_uwp_get_flags, /* get flags */
    NULL, /* set flags */
    gfx_ctx_uwp_bind_hw_render,

@@ -42,7 +42,6 @@
 #include "../../retroarch.h"
 #include "../../verbosity.h"
 #include "../../ui/drivers/ui_win32.h"
-#include "../../paths.h"
 
 #include "../../uwp/uwp_func.h"
 
@@ -105,36 +104,36 @@ static void frontend_uwp_get_os(char *s, size_t len, int *major, int *minor)
    {
       case 10:
          if (server)
-            strcpy_literal(s, "Windows Server 2016");
+            strlcpy(s, "Windows Server 2016", len);
          else
-            strcpy_literal(s, "Windows 10");
+            strlcpy(s, "Windows 10", len);
          break;
       case 6:
          switch (vi.dwMinorVersion)
          {
             case 3:
                if (server)
-                  strcpy_literal(s, "Windows Server 2012 R2");
+                  strlcpy(s, "Windows Server 2012 R2", len);
                else
-                  strcpy_literal(s, "Windows 8.1");
+                  strlcpy(s, "Windows 8.1", len);
                break;
             case 2:
                if (server)
-                  strcpy_literal(s, "Windows Server 2012");
+                  strlcpy(s, "Windows Server 2012", len);
                else
-                  strcpy_literal(s, "Windows 8");
+                  strlcpy(s, "Windows 8", len);
                break;
             case 1:
                if (server)
-                  strcpy_literal(s, "Windows Server 2008 R2");
+                  strlcpy(s, "Windows Server 2008 R2", len);
                else
-                  strcpy_literal(s, "Windows 7");
+                  strlcpy(s, "Windows 7", len);
                break;
             case 0:
                if (server)
-                  strcpy_literal(s, "Windows Server 2008");
+                  strlcpy(s, "Windows Server 2008", len);
                else
-                  strcpy_literal(s, "Windows Vista");
+                  strlcpy(s, "Windows Vista", len);
                break;
             default:
                break;
@@ -145,19 +144,19 @@ static void frontend_uwp_get_os(char *s, size_t len, int *major, int *minor)
          {
             case 2:
                if (server)
-                  strcpy_literal(s, "Windows Server 2003");
+                  strlcpy(s, "Windows Server 2003", len);
                else
                {
                   /* Yes, XP Pro x64 is a higher version number than XP x86 */
                   if (string_is_equal(arch, "x64"))
-                     strcpy_literal(s, "Windows XP");
+                     strlcpy(s, "Windows XP", len);
                }
                break;
             case 1:
-               strcpy_literal(s, "Windows XP");
+               strlcpy(s, "Windows XP", len);
                break;
             case 0:
-               strcpy_literal(s, "Windows 2000");
+               strlcpy(s, "Windows 2000", len);
                break;
          }
          break;
@@ -166,17 +165,17 @@ static void frontend_uwp_get_os(char *s, size_t len, int *major, int *minor)
          {
             case 0:
                if (vi.dwPlatformId == VER_PLATFORM_WIN32_WINDOWS)
-                  strcpy_literal(s, "Windows 95");
+                  strlcpy(s, "Windows 95", len);
                else if (vi.dwPlatformId == VER_PLATFORM_WIN32_NT)
-                  strcpy_literal(s, "Windows NT 4.0");
+                  strlcpy(s, "Windows NT 4.0", len);
                else
-                  strcpy_literal(s, "Unknown");
+                  strlcpy(s, "Unknown", len);
                break;
             case 90:
-               strcpy_literal(s, "Windows ME");
+               strlcpy(s, "Windows ME", len);
                break;
             case 10:
-               strcpy_literal(s, "Windows 98");
+               strlcpy(s, "Windows 98", len);
                break;
          }
          break;
@@ -242,7 +241,7 @@ enum frontend_powerstate frontend_uwp_get_powerstate(
    return ret;
 }
 
-enum frontend_architecture frontend_uwp_get_arch(void)
+enum frontend_architecture frontend_uwp_get_architecture(void)
 {
 #if defined(_WIN32_WINNT) && _WIN32_WINNT >= 0x0500
    /* Windows 2000 and later */
@@ -254,12 +253,16 @@ enum frontend_architecture frontend_uwp_get_arch(void)
    {
       case PROCESSOR_ARCHITECTURE_AMD64:
          return FRONTEND_ARCH_X86_64;
+         break;
       case PROCESSOR_ARCHITECTURE_INTEL:
          return FRONTEND_ARCH_X86;
+         break;
       case PROCESSOR_ARCHITECTURE_ARM:
          return FRONTEND_ARCH_ARM;
+         break;
       case PROCESSOR_ARCHITECTURE_ARM64:
          return FRONTEND_ARCH_ARMV8;
+         break;
       default:
          break;
    }
@@ -271,24 +274,22 @@ enum frontend_architecture frontend_uwp_get_arch(void)
 static int frontend_uwp_parse_drive_list(void *data, bool load_content)
 {
 #ifdef HAVE_MENU
-   char home_dir[PATH_MAX_LENGTH];
    file_list_t            *list = (file_list_t*)data;
    enum msg_hash_enums enum_idx = load_content ?
          MENU_ENUM_LABEL_FILE_DETECT_CORE_LIST_PUSH_DIR :
          MENU_ENUM_LABEL_FILE_BROWSER_DIRECTORY;
+   char drive[]                 = " :\\";
+   char *home_dir               = (char*)malloc(PATH_MAX_LENGTH * sizeof(char));
    bool have_any_drives         = false;
-   home_dir[0]                  = '\0';
 
-   fill_pathname_home_dir(home_dir, sizeof(home_dir));
+   fill_pathname_home_dir(home_dir, PATH_MAX_LENGTH * sizeof(char));
 
-   DWORD drives = GetLogicalDrives();
-   for (int i = 0; i < 26; i++)
+   for (drive[0] = 'A'; drive[0] <= 'Z'; drive[0]++)
    {
-      if (drives & (1 << i))
+      if (uwp_drive_exists(drive))
       {
-         TCHAR driveName[] = { TEXT('A') + i, TEXT(':'), TEXT('\\'), TEXT('\0') };
          menu_entries_append_enum(list,
-            driveName,
+            drive,
             msg_hash_to_str(MENU_ENUM_LABEL_FILE_DETECT_CORE_LIST_PUSH_DIR),
             enum_idx,
             FILE_TYPE_DIRECTORY, 0, 0);
@@ -319,12 +320,14 @@ static int frontend_uwp_parse_drive_list(void *data, bool load_content)
             MENU_SETTING_ACTION, 0, 0);
       }
    }
+
+   free(home_dir);
 #endif
 
    return 0;
 }
 
-static void frontend_uwp_env_get(int *argc, char *argv[],
+static void frontend_uwp_environment_get(int *argc, char *argv[],
       void *args, void *params_data)
 {
    /* On UWP, we have to use the writable directory
@@ -388,21 +391,20 @@ static void frontend_uwp_env_get(int *argc, char *argv[],
 #ifdef HAVE_MENU
 #if defined(HAVE_OPENGL) || defined(HAVE_OPENGLES) || defined(HAVE_OPENGL_CORE)
    if (string_is_equal(uwp_device_family, "Windows.Mobile"))
-      strcpy_literal(g_defaults.settings_menu, "glui");
-#endif
-#endif
-
-#ifndef IS_SALAMANDER
    {
-      char custom_ini_path[PATH_MAX_LENGTH];
-      fill_pathname_expand_special(custom_ini_path,
-            "~\\custom.ini", sizeof(custom_ini_path));
-      dir_check_defaults(custom_ini_path);
+      snprintf(g_defaults.settings.menu,
+         sizeof(g_defaults.settings.menu), "glui");
    }
+   else
+   {
+      snprintf(g_defaults.settings.menu,
+         sizeof(g_defaults.settings.menu), "xmb");
+   }
+#endif
 #endif
 }
 
-static uint64_t frontend_uwp_get_total_mem(void)
+static uint64_t frontend_uwp_get_mem_total(void)
 {
    /* OSes below 2000 don't have the Ex version,
     * and non-Ex cannot work with >4GB RAM */
@@ -419,7 +421,7 @@ static uint64_t frontend_uwp_get_total_mem(void)
 #endif
 }
 
-static uint64_t frontend_uwp_get_free_mem(void)
+static uint64_t frontend_uwp_get_mem_used(void)
 {
    /* OSes below 2000 don't have the Ex version,
     * and non-Ex cannot work with >4GB RAM */
@@ -427,12 +429,12 @@ static uint64_t frontend_uwp_get_free_mem(void)
    MEMORYSTATUSEX mem_info;
    mem_info.dwLength = sizeof(MEMORYSTATUSEX);
    GlobalMemoryStatusEx(&mem_info);
-   return ((frontend_uwp_get_total_mem() - mem_info.ullAvailPhys));
+   return ((frontend_uwp_get_mem_total() - mem_info.ullAvailPhys));
 #else
    MEMORYSTATUS mem_info;
    mem_info.dwLength = sizeof(MEMORYSTATUS);
    GlobalMemoryStatus(&mem_info);
-   return ((frontend_uwp_get_total_mem() - mem_info.dwAvailPhys));
+   return ((frontend_uwp_get_mem_total() - mem_info.dwAvailPhys));
 #endif
 }
 
@@ -447,8 +449,8 @@ static const char* frontend_uwp_get_cpu_model_name(void)
 }
 
 frontend_ctx_driver_t frontend_ctx_uwp = {
-   frontend_uwp_env_get,           /* env_get */
-   frontend_uwp_init,              /* init    */
+   frontend_uwp_environment_get,
+   frontend_uwp_init,
    NULL,                           /* deinit */
    NULL,                           /* exitspawn */
    NULL,                           /* process_args */
@@ -457,29 +459,25 @@ frontend_ctx_driver_t frontend_ctx_uwp = {
    NULL,                           /* shutdown */
    NULL,                           /* get_name */
    frontend_uwp_get_os,
-   NULL,                            /* get_rating */
-   NULL,                            /* content_loaded */
-   frontend_uwp_get_arch,           /* get_architecture       */
+   NULL,                           /* get_rating */
+   NULL,                           /* load_content */
+   frontend_uwp_get_architecture,
    frontend_uwp_get_powerstate,
    frontend_uwp_parse_drive_list,
-   frontend_uwp_get_total_mem,      /* get_total_mem          */
-   frontend_uwp_get_free_mem,       /* get_free_mem           */
+   frontend_uwp_get_mem_total,
+   frontend_uwp_get_mem_used,
    NULL,                            /* install_signal_handler */
    NULL,                            /* get_sighandler_state */
    NULL,                            /* set_sighandler_state */
    NULL,                            /* destroy_sighandler_state */
    NULL,                            /* attach_console */
    NULL,                            /* detach_console */
-   NULL,                            /* get_lakka_version */
-   NULL,                            /* set_screen_brightness */
    NULL,                            /* watch_path_for_changes */
    NULL,                            /* check_for_path_changes */
    NULL,                            /* set_sustained_performance_mode */
-   frontend_uwp_get_cpu_model_name, /* get_cpu_model_name  */
-   frontend_uwp_get_user_language,  /* get_user_language   */
+   frontend_uwp_get_cpu_model_name,
+   frontend_uwp_get_user_language,
    NULL,                            /* is_narrator_running */
    NULL,                            /* accessibility_speak */
-   NULL,                            /* set_gamemode        */
-   "uwp",                           /* ident               */
-   NULL                             /* get_video_driver    */
+   "uwp"
 };

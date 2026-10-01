@@ -58,6 +58,9 @@ static void *switch_font_init_font(void *data, const char *font_path,
 
    font->atlas = font->font_driver->get_atlas(font->font_data);
 
+   RARCH_LOG("Switch font driver initialized with backend %s\n",
+         font->font_driver->ident);
+
    return font;
 }
 
@@ -78,18 +81,14 @@ static int switch_font_get_message_width(void *data, const char *msg,
       unsigned msg_len, float scale)
 {
    unsigned i;
-   const struct font_glyph* glyph_q = NULL;
    int         delta_x = 0;
    switch_font_t *font = (switch_font_t *)data;
 
    if (!font)
       return 0;
 
-   glyph_q = font->font_driver->get_glyph(font->font_data, '?');
-
    for (i = 0; i < msg_len; i++)
    {
-      const struct font_glyph *glyph;
       const char *msg_tmp = &msg[i];
       unsigned       code = utf8_walk(&msg_tmp);
       unsigned       skip = msg_tmp - &msg[i];
@@ -97,11 +96,14 @@ static int switch_font_get_message_width(void *data, const char *msg,
       if (skip > 1)
          i += skip - 1;
 
-      /* Do something smarter here ... */
-      if (!(glyph =
-               font->font_driver->get_glyph(font->font_data, code)))
-         if (!(glyph = glyph_q))
-            continue;
+      const struct font_glyph *glyph =
+         font->font_driver->get_glyph(font->font_data, code);
+
+      if (!glyph) /* Do something smarter here ... */
+         glyph = font->font_driver->get_glyph(font->font_data, '?');
+
+      if (!glyph)
+         continue;
 
       delta_x += glyph->advance_x;
    }
@@ -115,7 +117,6 @@ static void switch_font_render_line(
       float scale, const unsigned int color, float pos_x,
       float pos_y, unsigned text_align)
 {
-   const struct font_glyph* glyph_q = NULL;
    int delta_x        = 0;
    int delta_y        = 0;
    unsigned fb_width  = sw->vp.full_width;
@@ -124,7 +125,6 @@ static void switch_font_render_line(
    if (sw->out_buffer)
    {
       unsigned i;
-      const struct font_glyph* glyph_q = NULL;
       int x = roundf(pos_x * fb_width);
       int y = roundf((1.0f - pos_y) * fb_height);
 
@@ -138,12 +138,9 @@ static void switch_font_render_line(
             break;
       }
 
-      glyph_q = font->font_driver->get_glyph(font->font_data, '?');
-
       for (i = 0; i < msg_len; i++)
       {
-         const struct font_glyph *glyph;
-         int off_x, off_y, tex_x, tex_y, width, height;
+         int off_x, off_y, tex_x, tex_y, width, height, y;
          const char *msg_tmp = &msg[i];
          unsigned code       = utf8_walk(&msg_tmp);
          unsigned skip       = msg_tmp - &msg[i];
@@ -151,15 +148,18 @@ static void switch_font_render_line(
          if (skip > 1)
             i += skip - 1;
 
-         /* Do something smarter here ... */
-         if (!(glyph =
-                  font->font_driver->get_glyph(font->font_data, code)))
-            if (!(glyph = glyph_q))
-               continue;
+         const struct font_glyph *glyph =
+            font->font_driver->get_glyph(font->font_data, code);
 
-         off_x  = x + glyph->draw_offset_x + delta_x;
-         off_y  = y + glyph->draw_offset_y + delta_y;
-         width  = glyph->width;
+         if (!glyph) /* Do something smarter here ... */
+            glyph = font->font_driver->get_glyph(font->font_data, '?');
+
+         if (!glyph)
+            continue;
+
+         off_x = x + glyph->draw_offset_x + delta_x;
+         off_y = y + glyph->draw_offset_y + delta_y;
+         width = glyph->width;
          height = glyph->height;
 
          tex_x = glyph->atlas_offset_x;
@@ -197,15 +197,15 @@ static void switch_font_render_message(
    int lines                              = 0;
    float line_height;
 
-   if (!msg || !*msg || !sw)
+   if (!msg || !*msg)
       return;
 
    /* If font line metrics are not supported just draw as usual */
    if (!font->font_driver->get_line_metrics ||
        !font->font_driver->get_line_metrics(font->font_data, &line_metrics))
    {
-      int msg_len = strlen(msg);
-      if (msg_len <= AVG_GLPYH_LIMIT)
+      int msgLen = strlen(msg);
+      if (msgLen <= AVG_GLPYH_LIMIT)
       {
          if (sw)
             switch_font_render_line(sw, font, msg, strlen(msg),
@@ -218,20 +218,33 @@ static void switch_font_render_message(
    for (;;)
    {
       const char *delim = strchr(msg, '\n');
-      unsigned msg_len  = delim ?
-         (unsigned)(delim - msg) : strlen(msg);
 
       /* Draw the line */
-      if (msg_len <= AVG_GLPYH_LIMIT)
-         switch_font_render_line(sw, font, msg, msg_len,
-               scale, color, pos_x, pos_y - (float)lines * line_height,
-               text_align);
-
-      if (!delim)
+      if (delim)
+      {
+         unsigned msg_len = delim - msg;
+         if (msg_len <= AVG_GLPYH_LIMIT)
+         {
+            if (sw)
+               switch_font_render_line(sw, font, msg, msg_len,
+                     scale, color, pos_x, pos_y - (float)lines * line_height,
+                     text_align);
+         }
+         msg += msg_len + 1;
+         lines++;
+      }
+      else
+      {
+         unsigned msg_len = strlen(msg);
+         if (msg_len <= AVG_GLPYH_LIMIT)
+         {
+            if (sw)
+               switch_font_render_line(sw, font, msg, msg_len,
+                     scale, color, pos_x, pos_y - (float)lines * line_height,
+                     text_align);
+         }
          break;
-
-      msg += msg_len + 1;
-      lines++;
+      }
    }
 }
 
@@ -291,17 +304,23 @@ static const struct font_glyph *switch_font_get_glyph(
     void *data, uint32_t code)
 {
    switch_font_t *font = (switch_font_t *)data;
-   if (font && font->font_driver && font->font_driver->ident)
-      return font->font_driver->get_glyph((void *)font->font_driver, code);
-   return NULL;
+
+   if (!font || !font->font_driver)
+      return NULL;
+
+   if (!font->font_driver->ident)
+      return NULL;
+
+   return font->font_driver->get_glyph((void *)font->font_driver, code);
 }
 
 static bool switch_font_get_line_metrics(void* data, struct font_line_metrics **metrics)
 {
    switch_font_t *font = (switch_font_t *)data;
-   if (font && font->font_driver && font->font_data)
-      return font->font_driver->get_line_metrics(font->font_data, metrics);
-   return -1;
+   if (!font || !font->font_driver || !font->font_data)
+      return -1;
+
+   return font->font_driver->get_line_metrics(font->font_data, metrics);
 }
 
 font_renderer_t switch_font =

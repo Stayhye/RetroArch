@@ -35,7 +35,7 @@
 #ifdef RARCH_INTERNAL
 #include "../configuration.h"
 
-int msg_hash_get_help_jp_enum(enum msg_hash_enums msg, char *s, size_t len)
+int menu_hash_get_help_jp_enum(enum msg_hash_enums msg, char *s, size_t len)
 {
    settings_t *settings = config_get_ptr();
 
@@ -2318,9 +2318,4 @@ const char *msg_hash_to_str_jp(enum msg_hash_enums msg) {
    }
 
    return "null";
-}
-
-const char *msg_hash_get_wideglyph_str_jp(void)
-{
-   return "漢";
 }

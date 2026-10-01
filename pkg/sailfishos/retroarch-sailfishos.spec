@@ -1,6 +1,6 @@
 Name:           retroarch
-Version:        1.10.3
-Release:        v1.10.3
+Version:        1.8.4
+Release:        v1.8.4
 Summary:        Official reference frontend for libretro
 
 Group:          Applications/Emulators
@@ -32,7 +32,7 @@ cores also in their own programs or devices.
 %ifarch armv7hl
 ./configure --prefix=%{_prefix} --enable-opengles --enable-neon --enable-egl --enable-wayland
 %else
-./configure --prefix=%{_prefix} --enable-opengles
+./configure --prefix=%{_prefix} --enable-gles
 %endif
 make %{?_smp_mflags}
 

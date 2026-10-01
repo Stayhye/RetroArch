@@ -26,9 +26,6 @@
 
 #include "menu_defines.h"
 #include "../input/input_types.h"
-#include "../input/input_driver.h"
-#include "../gfx/gfx_display.h"
-#include "../performance_counters.h"
 
 RETRO_BEGIN_DECLS
 
@@ -99,11 +96,6 @@ RETRO_BEGIN_DECLS
 #define MENU_INPUT_DPI_THRESHOLD_SWIPE 0.55f
 #define MENU_INPUT_DPI_THRESHOLD_SWIPE_TANGENT 0.45f
 
-#define MENU_MAX_BUTTONS           219
-#define MENU_MAX_AXES              32
-#define MENU_MAX_HATS              4
-#define MENU_MAX_MBUTTONS          32 /* Enough to cover largest libretro constant*/
-
 enum menu_pointer_type
 {
    MENU_POINTER_DISABLED = 0,
@@ -144,49 +136,13 @@ enum menu_input_pointer_gesture
    MENU_INPUT_GESTURE_SWIPE_RIGHT
 };
 
-struct menu_bind_state_port
-{
-   int16_t axes[MENU_MAX_AXES];
-   uint16_t hats[MENU_MAX_HATS];
-   bool mouse_buttons[MENU_MAX_MBUTTONS];
-   bool buttons[MENU_MAX_BUTTONS];
-};
-
-struct menu_bind_axis_state
-{
-   /* Default axis state. */
-   int16_t rested_axes[MENU_MAX_AXES];
-   /* Locked axis state. If we configured an axis,
-    * avoid having the same axis state trigger something again right away. */
-   int16_t locked_axes[MENU_MAX_AXES];
-};
-
-struct menu_bind_state
-{
-   rarch_timer_t timer_timeout;
-   rarch_timer_t timer_hold;
-
-   struct retro_keybind *output;
-   struct retro_keybind buffer;
-
-   struct menu_bind_state_port state[MAX_USERS];
-   struct menu_bind_axis_state axis_state[MAX_USERS];
-
-   unsigned begin;
-   unsigned last;
-   unsigned user;
-   unsigned port;
-
-   bool skip;
-};
-
 /* Defines set of (abstracted) inputs/states
  * common to mouse + touchscreen hardware */
 typedef struct menu_input_pointer_hw_state
 {
+   bool active;
    int16_t x;
    int16_t y;
-   bool active;
    bool select_pressed;
    bool cancel_pressed;
    bool up_pressed;
@@ -197,22 +153,22 @@ typedef struct menu_input_pointer_hw_state
 
 typedef struct menu_input_pointer
 {
-   retro_time_t press_duration;  /* int64_t alignment */
-   float y_accel;
    enum menu_pointer_type type;
+   bool active;
+   bool pressed;
+   bool dragged;
+   retro_time_t press_duration;
    enum menu_input_pointer_press_direction press_direction;
    int16_t x;
    int16_t y;
    int16_t dx;
    int16_t dy;
-   bool active;
-   bool pressed;
-   bool dragged;
+   float y_accel;
 } menu_input_pointer_t;
 
 typedef struct menu_input
 {
-   menu_input_pointer_t pointer; /* retro_time_t alignment */
+   menu_input_pointer_t pointer;
    unsigned ptr;
    bool select_inhibit;
    bool cancel_inhibit;
@@ -226,83 +182,30 @@ typedef struct menu_input_ctx_hitbox
    int32_t y2;
 } menu_input_ctx_hitbox_t;
 
-typedef struct key_desc
-{
-   /* libretro key id */
-   unsigned key;
+/* Provides access to all pointer device parameters */
+void menu_input_get_pointer_state(menu_input_pointer_t *pointer);
 
-   /* description */
-   char desc[32];
-} key_desc_t;
-
-/* TODO/FIXME - public global variables */
-extern struct key_desc key_descriptors[RARCH_MAX_KEYS];
-
-/**
- * Copy parameters from the global menu_input_state to a menu_input_pointer_t
- * in order to provide access to all pointer device parameters.
- * 
- * @param copy_target  menu_input_pointer_t struct where values will be copied
- **/
-void menu_input_get_pointer_state(menu_input_pointer_t *copy_target);
-
-/**
- * Get the menu item index currently selected or hovered over by the pointer.
- * 
- * @return the selected menu index
- **/
+/* Getters/setters for menu item (index) currently
+ * selected/highlighted (hovered over) by the pointer
+ * device
+ * Note: Each menu driver is responsible for setting this */
 unsigned menu_input_get_pointer_selection(void);
-
-/**
- * Set the menu item index that is currently selected or hovered over by the
- * pointer. Note: Each menu driver is responsible for setting this.
- *
- * @param selection  the selected menu index
- **/
 void menu_input_set_pointer_selection(unsigned selection);
 
-/**
- * Allows the pointer's y acceleration to be overridden. For example, menu
- * drivers typically set acceleration to zero when populating entries.
- * 
- * @param y_accel
- **/
+/* Allows pointer y acceleration to be overridden
+ * (typically want to set acceleration to zero when
+ * calling populate entries) */
 void menu_input_set_pointer_y_accel(float y_accel);
 
-typedef struct menu_input_ctx_line
-{
-   const char *label;
-   const char *label_setting;
-   unsigned type;
-   unsigned idx;
-   input_keyboard_line_complete_t cb;
-} menu_input_ctx_line_t;
+/* Inhibits pointer 'select' and 'cancel' actions
+ * (until the next time 'select'/'cancel' are released) */
+void menu_input_set_pointer_inhibit(bool inhibit);
 
-bool menu_input_dialog_start(menu_input_ctx_line_t *line);
+void menu_input_reset(void);
 
-const char *menu_input_dialog_get_label_setting_buffer(void);
+bool menu_input_pointer_check_vector_inside_hitbox(menu_input_ctx_hitbox_t *hitbox);
 
-const char *menu_input_dialog_get_label_buffer(void);
-
-const char *menu_input_dialog_get_buffer(void);
-
-unsigned menu_input_dialog_get_kb_idx(void);
-
-bool menu_input_dialog_start_search(void);
-
-bool menu_input_dialog_get_display_kb(void);
-
-void menu_input_dialog_end(void);
-
-bool menu_input_key_bind_poll_find_hold(
-      unsigned max_users,
-      struct menu_bind_state *new_state,
-      struct retro_keybind * output);
-
-void menu_input_set_pointer_visibility(
-      menu_input_pointer_hw_state_t *pointer_hw_state,
-      menu_input_t *menu_input,
-      retro_time_t current_time);
+void menu_input_post_iterate(int *ret, unsigned action);
 
 RETRO_END_DECLS
 

@@ -27,17 +27,18 @@
 #include <boolean.h>
 #include <retro_inline.h>
 
-#include <defines/gx_defines.h>
-
-#include "../audio_driver.h"
+#include "../../retroarch.h"
+#include "../../defines/gx_defines.h"
 
 typedef struct
 {
-   size_t write_ptr;
    uint32_t data[BLOCKS][CHUNK_FRAMES];
+
    volatile unsigned dma_busy;
    volatile unsigned dma_next;
    volatile unsigned dma_write;
+   size_t write_ptr;
+
    bool nonblock;
    bool is_paused;
 } gx_audio_t;
@@ -108,7 +109,7 @@ static INLINE void copy_swapped(uint32_t * restrict dst,
    {
       uint32_t s = *src++;
       *dst++ = (s >> 16) | (s << 16);
-   } while (--size);
+   }while(--size);
 }
 
 static ssize_t gx_audio_write(void *data, const void *buf_, size_t size)

@@ -1,448 +1,244 @@
-#include "rc_internal.h"
+#include "internal.h"
 
 #include <stdlib.h> /* malloc/realloc */
 #include <string.h> /* memcpy */
-#include <math.h>   /* INFINITY/NAN */
 
 #define MEMREF_PLACEHOLDER_ADDRESS 0xFFFFFFFF
 
-rc_memref_t* rc_alloc_memref(rc_parse_state_t* parse, unsigned address, char size, char is_indirect) {
-  rc_memref_t** next_memref;
+static rc_memref_value_t* rc_alloc_memref_value_sizing_mode(rc_parse_state_t* parse, unsigned address, char size, char is_indirect) {
   rc_memref_t* memref;
+  int i;
 
-  if (!is_indirect) {
-    /* attempt to find an existing memref that can be shared */
-    next_memref = parse->first_memref;
-    while (*next_memref) {
-      memref = *next_memref;
-      if (!memref->value.is_indirect && memref->address == address && memref->value.size == size)
-        return memref;
-
-      next_memref = &memref->next;
-    }
-
-    /* no match found, create a new entry */
-    memref = RC_ALLOC_SCRATCH(rc_memref_t, parse);
-    *next_memref = memref;
-  }
-  else {
-    /* indirect references always create a new entry because we can't guarantee that the 
-     * indirection amount will be the same between references. because they aren't shared,
-     * don't bother putting them in the chain.
-     */
-    memref = RC_ALLOC(rc_memref_t, parse);
+  /* indirect address always creates two new entries; don't bother tracking them */
+  if (is_indirect) {
+    RC_ALLOC(rc_memref_value_t, parse);
+    return RC_ALLOC(rc_memref_value_t, parse);
   }
 
-  memset(memref, 0, sizeof(*memref));
-  memref->address = address;
-  memref->value.size = size;
-  memref->value.is_indirect = is_indirect;
+  memref = NULL;
 
-  return memref;
-}
-
-int rc_parse_memref(const char** memaddr, char* size, unsigned* address) {
-  const char* aux = *memaddr;
-  char* end;
-  unsigned long value;
-
-  if (aux[0] == '0') {
-    if (aux[1] != 'x' && aux[1] != 'X')
-      return RC_INVALID_MEMORY_OPERAND;
-
-    aux += 2;
-    switch (*aux++) {
-      /* ordered by estimated frequency in case compiler doesn't build a jump table */
-      case 'h': case 'H': *size = RC_MEMSIZE_8_BITS; break;
-      case ' ':           *size = RC_MEMSIZE_16_BITS; break;
-      case 'x': case 'X': *size = RC_MEMSIZE_32_BITS; break;
-
-      case 'm': case 'M': *size = RC_MEMSIZE_BIT_0; break;
-      case 'n': case 'N': *size = RC_MEMSIZE_BIT_1; break;
-      case 'o': case 'O': *size = RC_MEMSIZE_BIT_2; break;
-      case 'p': case 'P': *size = RC_MEMSIZE_BIT_3; break;
-      case 'q': case 'Q': *size = RC_MEMSIZE_BIT_4; break;
-      case 'r': case 'R': *size = RC_MEMSIZE_BIT_5; break;
-      case 's': case 'S': *size = RC_MEMSIZE_BIT_6; break;
-      case 't': case 'T': *size = RC_MEMSIZE_BIT_7; break;
-      case 'l': case 'L': *size = RC_MEMSIZE_LOW; break;
-      case 'u': case 'U': *size = RC_MEMSIZE_HIGH; break;
-      case 'k': case 'K': *size = RC_MEMSIZE_BITCOUNT; break;
-      case 'w': case 'W': *size = RC_MEMSIZE_24_BITS; break;
-      case 'g': case 'G': *size = RC_MEMSIZE_32_BITS_BE; break;
-      case 'i': case 'I': *size = RC_MEMSIZE_16_BITS_BE; break;
-      case 'j': case 'J': *size = RC_MEMSIZE_24_BITS_BE; break;
-
-      /* case 'v': case 'V': */
-      /* case 'y': case 'Y': 64 bit? */
-      /* case 'z': case 'Z': 128 bit? */
-
-      case '0': case '1': case '2': case '3': case '4':
-      case '5': case '6': case '7': case '8': case '9':
-      case 'a': case 'b': case 'c': case 'd': case 'e': case 'f':
-      case 'A': case 'B': case 'C': case 'D': case 'E': case 'F':
-        /* legacy support - addresses without a size prefix are assumed to be 16-bit */
-        aux--;
-        *size = RC_MEMSIZE_16_BITS;
-        break;
-
-      default:
-        return RC_INVALID_MEMORY_OPERAND;
+  /* have to track unique address/size/bcd combinations - use scratch.memref for sizing mode */
+  for (i = 0; i < parse->scratch.memref_count; ++i) {
+    memref = &parse->scratch.memref[i];
+    if (memref->address == address && memref->size == size) {
+      return &parse->scratch.obj.memref_value;
     }
   }
-  else if (aux[0] == 'f' || aux[0] == 'F') {
-    ++aux;
-    switch (*aux++) {
-      case 'f': case 'F': *size = RC_MEMSIZE_FLOAT; break;
-      case 'm': case 'M': *size = RC_MEMSIZE_MBF32; break;
 
-      default:
-        return RC_INVALID_FP_OPERAND;
-    }
-  }
-  else {
-    return RC_INVALID_MEMORY_OPERAND;
-  }
-
-  value = strtoul(aux, &end, 16);
-
-  if (end == aux)
-    return RC_INVALID_MEMORY_OPERAND;
-
-  if (value > 0xffffffffU)
-    value = 0xffffffffU;
-
-  *address = (unsigned)value;
-  *memaddr = end;
-  return RC_OK;
-}
-
-static float rc_build_float(unsigned mantissa_bits, int exponent, int sign) {
-  /* 32-bit float has a 23-bit mantissa and 8-bit exponent */
-  const unsigned mantissa = mantissa_bits | 0x800000;
-  double dbl = ((double)mantissa) / ((double)0x800000);
-
-  if (exponent > 127) {
-    /* exponent above 127 is a special number */
-    if (mantissa_bits == 0) {
-      /* infinity */
-#ifdef INFINITY /* INFINITY and NAN #defines require C99 */
-      dbl = INFINITY;
-#else
-      dbl = -log(0.0);
-#endif
-    }
+  /* no match found - resize unique tracking buffer if necessary */
+  if (parse->scratch.memref_count == parse->scratch.memref_size) {
+    if (parse->scratch.memref == parse->scratch.memref_buffer) {
+      parse->scratch.memref_size += 16;
+      memref = (rc_memref_t*)malloc(parse->scratch.memref_size * sizeof(parse->scratch.memref_buffer[0]));
+      if (memref) {
+        parse->scratch.memref = memref;
+        memcpy(memref, parse->scratch.memref_buffer, parse->scratch.memref_count * sizeof(parse->scratch.memref_buffer[0]));
+      }
+      else {
+        parse->offset = RC_OUT_OF_MEMORY;
+        return 0;
+      }
+    } 
     else {
-      /* NaN */
-#ifdef NAN
-      dbl = NAN;
-#else
-      dbl = -sqrt(-1);
-#endif
+      parse->scratch.memref_size += 32;
+      memref = (rc_memref_t*)realloc(parse->scratch.memref, parse->scratch.memref_size * sizeof(parse->scratch.memref_buffer[0]));
+      if (memref) {
+        parse->scratch.memref = memref;
+      }
+      else {
+        parse->offset = RC_OUT_OF_MEMORY;
+        return 0;
+      }
     }
   }
-  else if (exponent > 0) {
-    /* exponent from 1 to 127 is a number greater than 1 */
-    while (exponent > 30) {
-      dbl *= (double)(1 << 30);
-      exponent -= 30;
-    }
-    dbl *= (double)((long long)1 << exponent);
+
+  /* add new unique tracking entry */
+  if (parse->scratch.memref) {
+    memref = &parse->scratch.memref[parse->scratch.memref_count++];
+    memref->address = address;
+    memref->size = size;
+    memref->is_indirect = is_indirect;
   }
-  else if (exponent < 0) {
-    /* exponent from -1 to -127 is a number less than 1 */
-    exponent = -exponent;
-    while (exponent > 30) {
-      dbl /= (double)(1 << 30);
-      exponent -= 30;
+  
+  /* allocate memory but don't actually populate, as it might overwrite the self object referencing the rc_memref_value_t */
+  return RC_ALLOC(rc_memref_value_t, parse);
+}
+
+static rc_memref_value_t* rc_alloc_memref_value_constuct_mode(rc_parse_state_t* parse, unsigned address, char size, char is_indirect) {
+  rc_memref_value_t** next_memref_value;
+  rc_memref_value_t* memref_value;
+  rc_memref_value_t* indirect_memref_value;
+  
+  if (!is_indirect) {
+    /* attempt to find an existing rc_memref_value_t */
+    next_memref_value = parse->first_memref;
+    while (*next_memref_value) {
+      memref_value = *next_memref_value;
+      if (!memref_value->memref.is_indirect && memref_value->memref.address == address &&
+          memref_value->memref.size == size) {
+        return memref_value;
+      }
+
+      next_memref_value = &memref_value->next;
     }
-    dbl /= (double)((long long)1 << exponent);
   }
   else {
-    /* exponent of 0 requires no adjustment */
+    /* indirect address always creates two new entries - one for the original address, and one for 
+       the indirect dereference - just skip ahead to the end of the list */
+    next_memref_value = parse->first_memref;
+    while (*next_memref_value) {
+      next_memref_value = &(*next_memref_value)->next;
+    }
   }
 
-  return (sign) ? (float)-dbl : (float)dbl;
-}
+  /* no match found, create a new entry */
+  memref_value = RC_ALLOC(rc_memref_value_t, parse);
+  memref_value->memref.address = address;
+  memref_value->memref.size = size;
+  memref_value->memref.is_indirect = is_indirect;
+  memref_value->value = 0;
+  memref_value->previous = 0;
+  memref_value->prior = 0;
+  memref_value->next = 0;
 
-static void rc_transform_memref_float(rc_typed_value_t* value) {
-  /* decodes an IEEE 754 float */
-  const unsigned mantissa = (value->value.u32 & 0x7FFFFF);
-  const int exponent = (int)((value->value.u32 >> 23) & 0xFF) - 127;
-  const int sign = (value->value.u32 & 0x80000000);
+  *next_memref_value = memref_value;
 
-  if (mantissa == 0 && exponent == -127)
-    value->value.f32 = (sign) ? -0.0f : 0.0f;
-  else
-    value->value.f32 = rc_build_float(mantissa, exponent, sign);
+  /* also create the indirect deference entry for indirect references */
+  if (is_indirect) {
+    indirect_memref_value = RC_ALLOC(rc_memref_value_t, parse);
+    indirect_memref_value->memref.address = MEMREF_PLACEHOLDER_ADDRESS;
+    indirect_memref_value->memref.size = size;
+    indirect_memref_value->memref.is_indirect = 1;
+    indirect_memref_value->value = 0;
+    indirect_memref_value->previous = 0;
+    indirect_memref_value->prior = 0;
+    indirect_memref_value->next = 0;
 
-  value->type = RC_VALUE_TYPE_FLOAT;
-}
-
-static void rc_transform_memref_mbf32(rc_typed_value_t* value) {
-  /* decodes a Microsoft Binary Format float */
-  /* NOTE: 32-bit MBF is stored in memory as big endian (at least for Apple II) */
-  const unsigned mantissa = ((value->value.u32 & 0xFF000000) >> 24) |
-                            ((value->value.u32 & 0x00FF0000) >> 8) |
-                            ((value->value.u32 & 0x00007F00) << 8);
-  const int exponent = (int)(value->value.u32 & 0xFF) - 129;
-  const int sign = (value->value.u32 & 0x00008000);
-
-  if (mantissa == 0 && exponent == -129)
-    value->value.f32 = (sign) ? -0.0f : 0.0f;
-  else
-    value->value.f32 = rc_build_float(mantissa, exponent, sign);
-
-  value->type = RC_VALUE_TYPE_FLOAT;
-}
-
-static const unsigned char rc_bits_set[16] = { 0,1,1,2,1,2,2,3,1,2,2,3,2,3,3,4 };
-
-void rc_transform_memref_value(rc_typed_value_t* value, char size) {
-  /* ASSERT: value->type == RC_VALUE_TYPE_UNSIGNED */
-  switch (size)
-  {
-    case RC_MEMSIZE_8_BITS:
-      value->value.u32 = (value->value.u32 & 0x000000ff);
-      break;
-
-    case RC_MEMSIZE_16_BITS:
-      value->value.u32 = (value->value.u32 & 0x0000ffff);
-      break;
-
-    case RC_MEMSIZE_24_BITS:
-      value->value.u32 = (value->value.u32 & 0x00ffffff);
-      break;
-
-    case RC_MEMSIZE_32_BITS:
-      break;
-
-    case RC_MEMSIZE_BIT_0:
-      value->value.u32 = (value->value.u32 >> 0) & 1;
-      break;
-
-    case RC_MEMSIZE_BIT_1:
-      value->value.u32 = (value->value.u32 >> 1) & 1;
-      break;
-
-    case RC_MEMSIZE_BIT_2:
-      value->value.u32 = (value->value.u32 >> 2) & 1;
-      break;
-
-    case RC_MEMSIZE_BIT_3:
-      value->value.u32 = (value->value.u32 >> 3) & 1;
-      break;
-
-    case RC_MEMSIZE_BIT_4:
-      value->value.u32 = (value->value.u32 >> 4) & 1;
-      break;
-
-    case RC_MEMSIZE_BIT_5:
-      value->value.u32 = (value->value.u32 >> 5) & 1;
-      break;
-
-    case RC_MEMSIZE_BIT_6:
-      value->value.u32 = (value->value.u32 >> 6) & 1;
-      break;
-
-    case RC_MEMSIZE_BIT_7:
-      value->value.u32 = (value->value.u32 >> 7) & 1;
-      break;
-
-    case RC_MEMSIZE_LOW:
-      value->value.u32 = value->value.u32 & 0x0f;
-      break;
-
-    case RC_MEMSIZE_HIGH:
-      value->value.u32 = (value->value.u32 >> 4) & 0x0f;
-      break;
-
-    case RC_MEMSIZE_BITCOUNT:
-      value->value.u32 = rc_bits_set[(value->value.u32 & 0x0F)]
-                       + rc_bits_set[((value->value.u32 >> 4) & 0x0F)];
-      break;
-
-    case RC_MEMSIZE_16_BITS_BE:
-      value->value.u32 = ((value->value.u32 & 0xFF00) >> 8) |
-                         ((value->value.u32 & 0x00FF) << 8);
-      break;
-
-    case RC_MEMSIZE_24_BITS_BE:
-      value->value.u32 = ((value->value.u32 & 0xFF0000) >> 16) |
-                          (value->value.u32 & 0x00FF00) |
-                         ((value->value.u32 & 0x0000FF) << 16);
-      break;
-
-    case RC_MEMSIZE_32_BITS_BE:
-      value->value.u32 = ((value->value.u32 & 0xFF000000) >> 24) |
-                         ((value->value.u32 & 0x00FF0000) >> 8) |
-                         ((value->value.u32 & 0x0000FF00) << 8) |
-                         ((value->value.u32 & 0x000000FF) << 24);
-      break;
-
-    case RC_MEMSIZE_FLOAT:
-      rc_transform_memref_float(value);
-      break;
-
-    case RC_MEMSIZE_MBF32:
-      rc_transform_memref_mbf32(value);
-      break;
-
-    default:
-      break;
+    memref_value->next = indirect_memref_value;
   }
+
+  return memref_value;
 }
 
-static const unsigned rc_memref_masks[] = {
-  0x000000ff, /* RC_MEMSIZE_8_BITS     */
-  0x0000ffff, /* RC_MEMSIZE_16_BITS    */
-  0x00ffffff, /* RC_MEMSIZE_24_BITS    */
-  0xffffffff, /* RC_MEMSIZE_32_BITS    */
-  0x0000000f, /* RC_MEMSIZE_LOW        */
-  0x000000f0, /* RC_MEMSIZE_HIGH       */
-  0x00000001, /* RC_MEMSIZE_BIT_0      */
-  0x00000002, /* RC_MEMSIZE_BIT_1      */
-  0x00000004, /* RC_MEMSIZE_BIT_2      */
-  0x00000008, /* RC_MEMSIZE_BIT_3      */
-  0x00000010, /* RC_MEMSIZE_BIT_4      */
-  0x00000020, /* RC_MEMSIZE_BIT_5      */
-  0x00000040, /* RC_MEMSIZE_BIT_6      */
-  0x00000080, /* RC_MEMSIZE_BIT_7      */
-  0x000000ff, /* RC_MEMSIZE_BITCOUNT   */
-  0x0000ffff, /* RC_MEMSIZE_16_BITS_BE */
-  0x00ffffff, /* RC_MEMSIZE_24_BITS_BE */
-  0xffffffff, /* RC_MEMSIZE_32_BITS_BE */
-  0xffffffff, /* RC_MEMSIZE_FLOAT      */
-  0xffffffff, /* RC_MEMSIZE_MBF32      */
-  0xffffffff  /* RC_MEMSIZE_VARIABLE   */
-};
+rc_memref_value_t* rc_alloc_memref_value(rc_parse_state_t* parse, unsigned address, char size, char is_indirect) {
+  if (!parse->first_memref)
+    return rc_alloc_memref_value_sizing_mode(parse, address, size, is_indirect);
 
-unsigned rc_memref_mask(char size) {
-  const size_t index = (size_t)size;
-  if (index >= sizeof(rc_memref_masks) / sizeof(rc_memref_masks[0]))
-    return 0xffffffff;
-
-  return rc_memref_masks[index];
+  return rc_alloc_memref_value_constuct_mode(parse, address, size, is_indirect);
 }
 
-/* all sizes less than 8-bits (1 byte) are mapped to 8-bits. 24-bit is mapped to 32-bit
- * as we don't expect the client to understand a request for 3 bytes. all other reads are
- * mapped to the little-endian read of the same size. */
-static const char rc_memref_shared_sizes[] = {
-  RC_MEMSIZE_8_BITS,  /* RC_MEMSIZE_8_BITS     */
-  RC_MEMSIZE_16_BITS, /* RC_MEMSIZE_16_BITS    */
-  RC_MEMSIZE_32_BITS, /* RC_MEMSIZE_24_BITS    */
-  RC_MEMSIZE_32_BITS, /* RC_MEMSIZE_32_BITS    */
-  RC_MEMSIZE_8_BITS,  /* RC_MEMSIZE_LOW        */
-  RC_MEMSIZE_8_BITS,  /* RC_MEMSIZE_HIGH       */
-  RC_MEMSIZE_8_BITS,  /* RC_MEMSIZE_BIT_0      */
-  RC_MEMSIZE_8_BITS,  /* RC_MEMSIZE_BIT_1      */
-  RC_MEMSIZE_8_BITS,  /* RC_MEMSIZE_BIT_2      */
-  RC_MEMSIZE_8_BITS,  /* RC_MEMSIZE_BIT_3      */
-  RC_MEMSIZE_8_BITS,  /* RC_MEMSIZE_BIT_4      */
-  RC_MEMSIZE_8_BITS,  /* RC_MEMSIZE_BIT_5      */
-  RC_MEMSIZE_8_BITS,  /* RC_MEMSIZE_BIT_6      */
-  RC_MEMSIZE_8_BITS,  /* RC_MEMSIZE_BIT_7      */
-  RC_MEMSIZE_8_BITS,  /* RC_MEMSIZE_BITCOUNT   */
-  RC_MEMSIZE_16_BITS, /* RC_MEMSIZE_16_BITS_BE */
-  RC_MEMSIZE_32_BITS, /* RC_MEMSIZE_24_BITS_BE */
-  RC_MEMSIZE_32_BITS, /* RC_MEMSIZE_32_BITS_BE */
-  RC_MEMSIZE_32_BITS, /* RC_MEMSIZE_FLOAT      */
-  RC_MEMSIZE_32_BITS, /* RC_MEMSIZE_MBF32      */
-  RC_MEMSIZE_32_BITS  /* RC_MEMSIZE_VARIABLE   */
-};
+static unsigned rc_memref_get_value(rc_memref_t* self, rc_peek_t peek, void* ud) {
+  unsigned value;
 
-char rc_memref_shared_size(char size) {
-  const size_t index = (size_t)size;
-  if (index >= sizeof(rc_memref_shared_sizes) / sizeof(rc_memref_shared_sizes[0]))
-    return size;
-
-  return rc_memref_shared_sizes[index];
-}
-
-static unsigned rc_peek_value(unsigned address, char size, rc_peek_t peek, void* ud) {
   if (!peek)
     return 0;
 
-  switch (size)
+  switch (self->size)
   {
+    case RC_MEMSIZE_BIT_0:
+      value = (peek(self->address, 1, ud) >> 0) & 1;
+      break;
+
+    case RC_MEMSIZE_BIT_1:
+      value = (peek(self->address, 1, ud) >> 1) & 1;
+      break;
+
+    case RC_MEMSIZE_BIT_2:
+      value = (peek(self->address, 1, ud) >> 2) & 1;
+      break;
+
+    case RC_MEMSIZE_BIT_3:
+      value = (peek(self->address, 1, ud) >> 3) & 1;
+      break;
+
+    case RC_MEMSIZE_BIT_4:
+      value = (peek(self->address, 1, ud) >> 4) & 1;
+      break;
+
+    case RC_MEMSIZE_BIT_5:
+      value = (peek(self->address, 1, ud) >> 5) & 1;
+      break;
+
+    case RC_MEMSIZE_BIT_6:
+      value = (peek(self->address, 1, ud) >> 6) & 1;
+      break;
+
+    case RC_MEMSIZE_BIT_7:
+      value = (peek(self->address, 1, ud) >> 7) & 1;
+      break;
+
+    case RC_MEMSIZE_LOW:
+      value = peek(self->address, 1, ud) & 0x0f;
+      break;
+
+    case RC_MEMSIZE_HIGH:
+      value = (peek(self->address, 1, ud) >> 4) & 0x0f;
+      break;
+
     case RC_MEMSIZE_8_BITS:
-      return peek(address, 1, ud);
+      value = peek(self->address, 1, ud);
+      break;
 
     case RC_MEMSIZE_16_BITS:
-      return peek(address, 2, ud);
+      value = peek(self->address, 2, ud);
+      break;
+
+    case RC_MEMSIZE_24_BITS:
+      /* peek 4 bytes - don't expect the caller to understand 24-bit numbers */
+      value = peek(self->address, 4, ud) & 0x00FFFFFF;
+      break;
 
     case RC_MEMSIZE_32_BITS:
-      return peek(address, 4, ud);
+      value = peek(self->address, 4, ud);
+      break;
 
     default:
-    {
-      unsigned value;
-      const size_t index = (size_t)size;
-      if (index >= sizeof(rc_memref_shared_sizes) / sizeof(rc_memref_shared_sizes[0]))
-        return 0;
-
-      /* fetch the larger value and mask off the bits associated to the specified size
-       * for correct deduction of prior value. non-prior memrefs should already be using
-       * shared size memrefs to minimize the total number of memory reads required. */
-      value = rc_peek_value(address, rc_memref_shared_sizes[index], peek, ud);
-      return value & rc_memref_masks[index];
-    }
+      value = 0;
+      break;
   }
+
+  return value;
 }
 
-void rc_update_memref_value(rc_memref_value_t* memref, unsigned new_value) {
-  if (memref->value == new_value) {
-    memref->changed = 0;
-  }
-  else {
-    memref->prior = memref->value;
-    memref->value = new_value;
-    memref->changed = 1;
-  }
+void rc_update_memref_value(rc_memref_value_t* memref, rc_peek_t peek, void* ud) {
+  memref->previous = memref->value;
+  memref->value = rc_memref_get_value(&memref->memref, peek, ud);
+  if (memref->value != memref->previous)
+    memref->prior = memref->previous;
 }
 
-void rc_update_memref_values(rc_memref_t* memref, rc_peek_t peek, void* ud) {
+void rc_update_memref_values(rc_memref_value_t* memref, rc_peek_t peek, void* ud) {
   while (memref) {
-    /* indirect memory references are not shared and will be updated in rc_get_memref_value */
-    if (!memref->value.is_indirect)
-      rc_update_memref_value(&memref->value, rc_peek_value(memref->address, memref->value.size, peek, ud));
-
+    if (memref->memref.address != MEMREF_PLACEHOLDER_ADDRESS)
+      rc_update_memref_value(memref, peek, ud);
     memref = memref->next;
   }
 }
 
-void rc_init_parse_state_memrefs(rc_parse_state_t* parse, rc_memref_t** memrefs) {
+void rc_init_parse_state_memrefs(rc_parse_state_t* parse, rc_memref_value_t** memrefs) {
   parse->first_memref = memrefs;
   *memrefs = 0;
 }
 
-static unsigned rc_get_memref_value_value(rc_memref_value_t* memref, int operand_type) {
-  switch (operand_type)
-  {
-    /* most common case explicitly first, even though it could be handled by default case.
-     * this helps the compiler to optimize if it turns the switch into a series of if/elses */
-    case RC_OPERAND_ADDRESS:
-      return memref->value;
+rc_memref_value_t* rc_get_indirect_memref(rc_memref_value_t* memref, rc_eval_state_t* eval_state) {
+  unsigned new_address;
 
-    case RC_OPERAND_DELTA:
-      if (!memref->changed) {
-        /* fallthrough */
-    default:
-        return memref->value;
-      }
-      /* fallthrough */
-    case RC_OPERAND_PRIOR:
-      return memref->prior;
-  }
-}
+  if (eval_state->add_address == 0)
+    return memref;
 
-unsigned rc_get_memref_value(rc_memref_t* memref, int operand_type, rc_eval_state_t* eval_state) {
-  /* if this is an indirect reference, handle the indirection. */
-  if (memref->value.is_indirect) {
-    const unsigned new_address = memref->address + eval_state->add_address;
-    rc_update_memref_value(&memref->value, rc_peek_value(new_address, memref->value.size, eval_state->peek, eval_state->peek_userdata));
+  if (!memref->memref.is_indirect)
+    return memref;
+
+  new_address = memref->memref.address + eval_state->add_address;
+
+  /* an extra rc_memref_value_t is allocated for offset calculations */
+  memref = memref->next;
+
+  /* if the adjusted address has changed, update the record */
+  if (memref->memref.address != new_address) {
+    memref->memref.address = new_address;
+    rc_update_memref_value(memref, eval_state->peek, eval_state->peek_userdata);
   }
 
-  return rc_get_memref_value_value(&memref->value, operand_type);
+  return memref;
 }

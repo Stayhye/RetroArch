@@ -14,8 +14,8 @@
  *  If not, see <http://www.gnu.org/licenses/>.
  */
 
-#if defined(__PSL1GHT__) || defined(__PS3__)
-#include <defines/ps3_defines.h>
+#if defined(__CELLOS_LV2__) || defined(__PSL1GHT__)
+#include "../defines/ps3_defines.h"
 #endif
 
 #include <stdio.h>
@@ -37,22 +37,10 @@
 #error "An UDP port for the PC logging server was not set in the Makefile, cannot continue."
 #endif
 
-#ifdef ORBIS
-void logger_init(void)
-{
-   debugNetInit(PC_DEVELOPMENT_IP_ADDRESS,PC_DEVELOPMENT_UDP_PORT,3);
-
-}
-void logger_shutdown(void)
-{
-   debugNetFinish();
-}
-#else
-/* TODO/FIXME - static global variables */
 static int g_sid;
 static struct sockaddr_in target;
 
-void logger_init(void)
+void logger_init (void)
 {
    socket_target_t in_target;
    const char *server = PC_DEVELOPMENT_IP_ADDRESS;
@@ -77,7 +65,7 @@ void logger_init(void)
    socket_set_target(&target, &in_target);
 }
 
-void logger_shutdown(void)
+void logger_shutdown (void)
 {
    if (socket_close(g_sid) < 0)
       printf("Could not close socket.\n");
@@ -109,4 +97,3 @@ void logger_send_v(const char *__format, va_list args)
          (struct sockaddr*)&target,
          sizeof(target));
 }
-#endif

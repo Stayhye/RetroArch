@@ -129,11 +129,7 @@ public final class UserPreferences
 		final SharedPreferences prefs = getPreferences(ctx);
 
 		config.setString("libretro_directory", coreDir);
-
-		int samplingRate = getOptimalSamplingRate(ctx);
-		if (samplingRate != -1) {
-			config.setInt("audio_out_rate", samplingRate);
-		}
+		config.setInt("audio_out_rate", getOptimalSamplingRate(ctx));
 
 		try
 		{
@@ -156,10 +152,7 @@ public final class UserPreferences
 		// Refactor this entire mess and make this usable for per-core config
 		if (Build.VERSION.SDK_INT >= 17 && prefs.getBoolean("audio_latency_auto", true))
 		{
-			int bufferSize = getLowLatencyBufferSize(ctx);
-			if (bufferSize != -1) {
-				config.setInt("audio_block_frames", bufferSize);
-			}
+			config.setInt("audio_block_frames", getLowLatencyBufferSize(ctx));
 		}
 
 		try
@@ -257,13 +250,9 @@ public final class UserPreferences
 	private static int getLowLatencyOptimalSamplingRate(Context ctx)
 	{
 		AudioManager manager = (AudioManager) ctx.getSystemService(Context.AUDIO_SERVICE);
-		String value = manager.getProperty(AudioManager.PROPERTY_OUTPUT_SAMPLE_RATE);
 
-		if(value == null || value.isEmpty()) {
-			return -1;
-		}
-
-		return Integer.parseInt(value);
+		return Integer.parseInt(manager
+				.getProperty(AudioManager.PROPERTY_OUTPUT_SAMPLE_RATE));
 	}
 
 	/**
@@ -277,13 +266,8 @@ public final class UserPreferences
 	private static int getLowLatencyBufferSize(Context ctx)
 	{
 		AudioManager manager = (AudioManager) ctx.getSystemService(Context.AUDIO_SERVICE);
-		String value = manager.getProperty(AudioManager.PROPERTY_OUTPUT_FRAMES_PER_BUFFER);
-
-		if(value == null || value.isEmpty()) {
-			return -1;
-		}
-
-		int buffersize = Integer.parseInt(value);
+		int buffersize = Integer.parseInt(manager
+				.getProperty(AudioManager.PROPERTY_OUTPUT_FRAMES_PER_BUFFER));
 		Log.i(TAG, "Queried ideal buffer size (frames): " + buffersize);
 		return buffersize;
 	}

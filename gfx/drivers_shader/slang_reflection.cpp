@@ -54,9 +54,20 @@ static const char *semantic_uniform_names[] = {
    "FrameDirection",
 };
 
+slang_reflection::slang_reflection()
+{
+   unsigned i;
+
+   for (i = 0; i < SLANG_NUM_TEXTURE_SEMANTICS; i++)
+      semantic_textures[i].resize(
+            slang_texture_semantic_is_array(
+               static_cast<slang_texture_semantic>(i))
+            ? 0 : 1);
+}
+
 static slang_texture_semantic slang_name_to_texture_semantic(
-      const std::unordered_map<std::string, slang_texture_semantic_map> &semantic_map,
-      const std::string &name, unsigned *index)
+      const unordered_map<string, slang_texture_semantic_map> &semantic_map,
+      const string &name, unsigned *index)
 {
    auto itr = semantic_map.find(name);
    if (itr != end(semantic_map))
@@ -70,8 +81,8 @@ static slang_texture_semantic slang_name_to_texture_semantic(
 }
 
 static slang_texture_semantic slang_uniform_name_to_texture_semantic(
-      const std::unordered_map<std::string, slang_texture_semantic_map> &semantic_map,
-      const std::string &name, unsigned *index)
+      const unordered_map<string, slang_texture_semantic_map> &semantic_map,
+      const string &name, unsigned *index)
 {
    auto itr = semantic_map.find(name);
    if (itr != end(semantic_map))
@@ -85,8 +96,8 @@ static slang_texture_semantic slang_uniform_name_to_texture_semantic(
 }
 
 static slang_semantic slang_uniform_name_to_semantic(
-      const std::unordered_map<std::string, slang_semantic_map> &semantic_map,
-      const std::string &name, unsigned *index)
+      const unordered_map<string, slang_semantic_map> &semantic_map,
+      const string &name, unsigned *index)
 {
    unsigned i = 0;
    auto itr   = semantic_map.find(name);
@@ -277,7 +288,7 @@ static bool add_active_buffer_ranges(
    {
       unsigned sem_index             = 0;
       unsigned tex_sem_index         = 0;
-      const std::string &name        = compiler.get_member_name(
+      const string &name             = compiler.get_member_name(
             resource.base_type_id, ranges[i].index);
       const SPIRType &type           = compiler.get_type(
             compiler.get_type(resource.base_type_id).member_types[
@@ -341,18 +352,6 @@ static bool add_active_buffer_ranges(
       }
    }
    return true;
-}
-
-
-slang_reflection::slang_reflection()
-{
-   unsigned i;
-
-   for (i = 0; i < SLANG_NUM_TEXTURE_SEMANTICS; i++)
-      semantic_textures[i].resize(
-            slang_texture_semantic_is_array(
-               static_cast<slang_texture_semantic>(i))
-            ? 0 : 1);
 }
 
 bool slang_reflect(
@@ -600,10 +599,7 @@ bool slang_reflect(
       }
       else if (index == SLANG_INVALID_TEXTURE_SEMANTIC)
       {
-         RARCH_ERR("[slang]: Texture name '%s' not found in semantic map, "
-                   "Probably the texture name or pass alias is not defined "
-                   "in the preset (Non-semantic textures not supported yet)\n", 
-                   fragment.sampled_images[i].name.c_str());
+         RARCH_ERR("[slang]: Non-semantic textures not supported yet.\n");
          return false;
       }
 

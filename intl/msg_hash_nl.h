@@ -6,7 +6,7 @@
 #pragma warning(disable:4566)
 #endif
 
-/* Top-Level Menu */
+/* Top-level Menu */
 
 MSG_HASH(
    MENU_ENUM_LABEL_VALUE_MAIN_MENU,
@@ -33,20 +33,8 @@ MSG_HASH(
    "Muziek"
    )
 MSG_HASH(
-   MENU_ENUM_LABEL_VALUE_VIDEO_TAB,
-   "Video's"
-   )
-MSG_HASH(
-   MENU_ENUM_LABEL_VALUE_EXPLORE_TAB,
-   "Ontdekken"
-   )
-MSG_HASH(
-   MENU_ENUM_LABEL_VALUE_CONTENTLESS_CORES_TAB,
-   "Losstaande Cores"
-   )
-MSG_HASH(
    MENU_ENUM_LABEL_VALUE_ADD_TAB,
-   "Importeer content"
+   "Importeer inhoud"
    )
 
 /* Main Menu */
@@ -56,102 +44,52 @@ MSG_HASH(
    "Snelmenu"
    )
 MSG_HASH(
-   MENU_ENUM_SUBLABEL_CONTENT_SETTINGS,
-   "Snelle toegang tot alle relevante in-game instellingen."
-   )
-MSG_HASH(
    MENU_ENUM_LABEL_VALUE_CORE_LIST,
-   "Laad core"
+   "Core Laden"
    )
 MSG_HASH(
    MENU_ENUM_SUBLABEL_CORE_LIST,
-   "Selecteer welke core te gebruiken."
+   "Selecteer welke core je wilt gebruiken."
    )
 MSG_HASH(
    MENU_ENUM_LABEL_VALUE_LOAD_CONTENT_LIST,
-   "Laad content"
+   "Laad Inhoud"
    )
 MSG_HASH(
    MENU_ENUM_SUBLABEL_LOAD_CONTENT_LIST,
-   "Selecteer welke content te starten."
+   "Selecteer de inhoud om op te starten."
    )
 MSG_HASH(
    MENU_ENUM_LABEL_VALUE_LOAD_DISC,
-   "Laad Disk"
+   "Laad Disc"
    )
-MSG_HASH(
-   MENU_ENUM_SUBLABEL_LOAD_DISC,
-   "Laad een fysieke mediadisk. Selecteer eerst de core (Laad Core) die met de disk zal worden gebruikt."
-   )
-MSG_HASH(
-   MENU_ENUM_LABEL_VALUE_DUMP_DISC,
-   "Dump Disk"
-   )
-MSG_HASH( /* FIXME Is a specific image format used? Is it determined automatically? User choice? */
-   MENU_ENUM_SUBLABEL_DUMP_DISC,
-   "Dump de fysieke mediadisk naar interne opslag. Het wordt opgeslagen als een image."
-   )
-#ifdef HAVE_LAKKA
-MSG_HASH(
-   MENU_ENUM_LABEL_VALUE_EJECT_DISC,
-   "Schijf Uitwerpen"
-   )
-MSG_HASH(
-   MENU_ENUM_SUBLABEL_EJECT_DISC,
-   "Schijf uitwerpen uit fysieke CD/DVD schijf."
-   )
-#endif
 MSG_HASH(
    MENU_ENUM_LABEL_VALUE_PLAYLISTS_TAB,
    "Afspeellijsten"
    )
 MSG_HASH(
    MENU_ENUM_SUBLABEL_PLAYLISTS_TAB,
-   "Gescande content die overeenkomt met de database zal hier verschijnen."
+   "Gescande inhoud zal hier getoond worden."
    )
 MSG_HASH(
    MENU_ENUM_LABEL_VALUE_ADD_CONTENT_LIST,
-   "Importeer Inhoud"
-   )
-MSG_HASH(
-   MENU_ENUM_SUBLABEL_ADD_CONTENT_LIST,
-   "Afspeellijsten maken en bijwerken door inhoud te scannen."
-   )
-MSG_HASH(
-   MENU_ENUM_LABEL_VALUE_SHOW_WIMP,
-   "Bureaubladmenu weergeven"
-   )
-MSG_HASH(
-   MENU_ENUM_SUBLABEL_SHOW_WIMP,
-   "Open het traditionele bureaublad menu."
+   "Inhoud toevoegen"
    )
 MSG_HASH(
    MENU_ENUM_LABEL_VALUE_MENU_DISABLE_KIOSK_MODE,
-   "Zet Kiosk Modus uit (Opnieuw Opstarten Benodigd)"
+   "Kioskmodus Deactiveren"
    )
 MSG_HASH(
-   MENU_ENUM_SUBLABEL_MENU_DISABLE_KIOSK_MODE,
-   "Toon alle configuratie gerelateerde instellingen."
-   )
-MSG_HASH(
-   MENU_ENUM_SUBLABEL_ONLINE_UPDATER,
-   "Download add-ons, componenten en inhoud voor RetroArch."
+   MENU_ENUM_LABEL_VALUE_ONLINE_UPDATER,
+   "Online bijwerken"
    )
 MSG_HASH(
    MENU_ENUM_LABEL_VALUE_NETPLAY,
    "Netplay Activeren"
    )
 MSG_HASH(
-   MENU_ENUM_SUBLABEL_NETPLAY,
-   "Doe mee of organiseer een netplay-sessie."
-   )
-MSG_HASH(
    MENU_ENUM_LABEL_VALUE_SETTINGS,
    "Instellingen"
-   )
-MSG_HASH(
-   MENU_ENUM_SUBLABEL_SETTINGS,
-   "Configureer het programma."
    )
 MSG_HASH(
    MENU_ENUM_LABEL_VALUE_INFORMATION_LIST,
@@ -159,7 +97,7 @@ MSG_HASH(
    )
 MSG_HASH(
    MENU_ENUM_SUBLABEL_INFORMATION_LIST_LIST,
-   "Toon systeeminformatie."
+   "Toon core, netwerk en systeem informatie."
    )
 MSG_HASH(
    MENU_ENUM_LABEL_VALUE_CONFIGURATIONS_LIST,
@@ -182,10 +120,6 @@ MSG_HASH(
    "RetroArch Opnieuw Opstarten"
    )
 MSG_HASH(
-   MENU_ENUM_SUBLABEL_RESTART_RETROARCH,
-   "Programma herstarten."
-   )
-MSG_HASH(
    MENU_ENUM_LABEL_VALUE_QUIT_RETROARCH,
    "RetroArch Afsluiten"
    )
@@ -197,28 +131,8 @@ MSG_HASH(
 /* Main Menu > Load Core */
 
 MSG_HASH(
-   MENU_ENUM_LABEL_VALUE_DOWNLOAD_CORE,
-   "Een Core Downloaden"
-   )
-MSG_HASH(
    MENU_ENUM_SUBLABEL_DOWNLOAD_CORE,
-   "Download en installeer een core van de online updater."
-   )
-MSG_HASH(
-   MENU_ENUM_LABEL_VALUE_SIDELOAD_CORE_LIST,
-   "Installer of Herstel een Core"
-   )
-MSG_HASH(
-   MENU_ENUM_SUBLABEL_SIDELOAD_CORE_LIST,
-   "Installeer of herstel een core vanuit de 'Downloads' map."
-   )
-MSG_HASH( /* FIXME Maybe add a description? */
-   MENU_ENUM_LABEL_VALUE_START_VIDEO_PROCESSOR,
-   "Start Videoprocessor"
-   )
-MSG_HASH( /* FIXME Maybe add a description? */
-   MENU_ENUM_LABEL_VALUE_START_NET_RETROPAD,
-   "Start Externe RetroPad"
+   "Installeer een core vanaf de online updater."
    )
 
 /* Main Menu > Load Content */
@@ -243,131 +157,27 @@ MSG_HASH(
    "Favorieten"
    )
 MSG_HASH(
-   MENU_ENUM_SUBLABEL_GOTO_FAVORITES,
-   "Inhoud die u aan 'Favorieten' heeft toegevoegd, wordt hier weergegeven."
-   )
-MSG_HASH(
    MENU_ENUM_LABEL_VALUE_GOTO_MUSIC,
    "Muziek"
-   )
-MSG_HASH(
-   MENU_ENUM_SUBLABEL_GOTO_MUSIC,
-   "Muziek die eerder is afgespeeld, wordt hier weergegeven."
    )
 MSG_HASH(
    MENU_ENUM_LABEL_VALUE_GOTO_IMAGES,
    "Afbeeldingen"
    )
-MSG_HASH(
-   MENU_ENUM_SUBLABEL_GOTO_IMAGES,
-   "Afbeeldingen die eerder zijn bekeken, worden hier weergegeven."
-   )
-MSG_HASH(
-   MENU_ENUM_LABEL_VALUE_GOTO_VIDEO,
-   "Video's"
-   )
-MSG_HASH(
-   MENU_ENUM_SUBLABEL_GOTO_VIDEO,
-   "Video's die eerder zijn afgespeeld, worden hier weergegeven."
-   )
-MSG_HASH(
-   MENU_ENUM_LABEL_VALUE_GOTO_EXPLORE,
-   "Ontdekken"
-   )
-MSG_HASH(
-   MENU_ENUM_SUBLABEL_GOTO_EXPLORE,
-   "Bekijk alle inhoud die overeenkomt met de database via een gecategoriseerde zoekinterface."
-   )
-MSG_HASH(
-   MENU_ENUM_LABEL_VALUE_GOTO_CONTENTLESS_CORES,
-   "Losstaande Cores"
-   )
-MSG_HASH(
-   MENU_ENUM_SUBLABEL_GOTO_CONTENTLESS_CORES,
-   "Geïnstalleerde cores die kunnen werken zonder inhoud te laden verschijnen hier."
-   )
 
 /* Main Menu > Online Updater */
 
 MSG_HASH(
-   MENU_ENUM_LABEL_VALUE_UPDATE_INSTALLED_CORES,
-   "Geïnstalleerde Cores Bijwerken"
-   )
-MSG_HASH(
-   MENU_ENUM_SUBLABEL_UPDATE_INSTALLED_CORES,
-   "Werk alle geïnstalleerde cores bij naar de nieuwste beschikbare versie."
-   )
-MSG_HASH(
-   MENU_ENUM_LABEL_VALUE_SWITCH_INSTALLED_CORES_PFD,
-   "Schakel Cores over naar Play Store Versies"
-   )
-MSG_HASH(
-   MENU_ENUM_SUBLABEL_SWITCH_INSTALLED_CORES_PFD,
-   "Vervang alle oudere en handmatig geïnstalleerde cores door de nieuwste versies uit de Play Store, indien beschikbaar."
-   )
-MSG_HASH(
-   MENU_ENUM_LABEL_VALUE_THUMBNAILS_UPDATER_LIST,
-   "Miniatuurbijwerker"
-   )
-MSG_HASH(
-   MENU_ENUM_SUBLABEL_THUMBNAILS_UPDATER_LIST,
-   "Download het volledige miniatuurpakket voor het geselecteerde systeem."
-   )
-MSG_HASH(
-   MENU_ENUM_LABEL_VALUE_PL_THUMBNAILS_UPDATER_LIST,
-   "Afspeellijst Miniatuurbijwerker"
-   )
-MSG_HASH(
-   MENU_ENUM_SUBLABEL_PL_THUMBNAILS_UPDATER_LIST,
-   "Download miniaturen voor items in de geselecteerde afspeellijst."
-   )
-MSG_HASH(
    MENU_ENUM_LABEL_VALUE_DOWNLOAD_CORE_CONTENT,
-   "Inhoud-downloader"
-   )
-MSG_HASH(
-   MENU_ENUM_LABEL_VALUE_DOWNLOAD_CORE_SYSTEM_FILES,
-   "Core-systeembestanden Downloader"
-   )
-MSG_HASH(
-   MENU_ENUM_SUBLABEL_DOWNLOAD_CORE_SYSTEM_FILES,
-   "Download hulpsysteembestanden die zijn nodig voor correcte/optimale core operatie."
+   "Download Inhoud"
    )
 MSG_HASH(
    MENU_ENUM_LABEL_VALUE_UPDATE_CORE_INFO_FILES,
-   "Core Info Bestanden Bijwerken"
-   )
-MSG_HASH(
-   MENU_ENUM_LABEL_VALUE_UPDATE_ASSETS,
-   "Assets Bijwerken"
+   "Update Core Info Bestanden"
    )
 MSG_HASH(
    MENU_ENUM_LABEL_VALUE_UPDATE_AUTOCONFIG_PROFILES,
-   "Controllerprofielen Bijwerken"
-   )
-MSG_HASH(
-   MENU_ENUM_LABEL_VALUE_UPDATE_CHEATS,
-   "Cheats Bijwerken"
-   )
-MSG_HASH(
-   MENU_ENUM_LABEL_VALUE_UPDATE_DATABASES,
-   "Databases Bijwerken"
-   )
-MSG_HASH(
-   MENU_ENUM_LABEL_VALUE_UPDATE_OVERLAYS,
-   "Overlays Bijwerken"
-   )
-MSG_HASH(
-   MENU_ENUM_LABEL_VALUE_UPDATE_GLSL_SHADERS,
-   "GLSL Shaders Bijwerken"
-   )
-MSG_HASH(
-   MENU_ENUM_LABEL_VALUE_UPDATE_CG_SHADERS,
-   "Cg Shaders Bijwerken"
-   )
-MSG_HASH(
-   MENU_ENUM_LABEL_VALUE_UPDATE_SLANG_SHADERS,
-   "Slang Shaders Bijwerken"
+   "Update Autoconfiguratie Profielen"
    )
 
 /* Main Menu > Information */
@@ -377,71 +187,43 @@ MSG_HASH(
    "Core Informatie"
    )
 MSG_HASH(
-   MENU_ENUM_SUBLABEL_CORE_INFORMATION,
-   "Bekijk informatie betreffende de applicatie/core."
-   )
-MSG_HASH(
-   MENU_ENUM_LABEL_VALUE_DISC_INFORMATION,
-   "Schijf Informatie"
-   )
-MSG_HASH(
-   MENU_ENUM_SUBLABEL_DISC_INFORMATION,
-   "Informatie over ingevoegde media-schijven weergeven."
-   )
-MSG_HASH(
    MENU_ENUM_LABEL_VALUE_NETWORK_INFORMATION,
    "Netwerk Informatie"
    )
 MSG_HASH(
-   MENU_ENUM_SUBLABEL_NETWORK_INFORMATION,
-   "Toon netwerkinterface(s) en bijbehorende IP-adressen."
-   )
-MSG_HASH(
    MENU_ENUM_LABEL_VALUE_SYSTEM_INFORMATION,
-   "Systeeminformatie"
+   "Systeem Informatie"
    )
 MSG_HASH(
    MENU_ENUM_SUBLABEL_SYSTEM_INFORMATION,
-   "Bekijk informatie bepaald voor het apparaat."
+   "Laat apparaat-specifieke informatie zien."
    )
 MSG_HASH(
    MENU_ENUM_LABEL_VALUE_DATABASE_MANAGER,
-   "Database Beheerder"
-   )
-MSG_HASH(
-   MENU_ENUM_SUBLABEL_DATABASE_MANAGER,
-   "Databases bekijken."
+   "Database Beheer"
    )
 MSG_HASH(
    MENU_ENUM_LABEL_VALUE_CURSOR_MANAGER,
-   "Cursor Beheerder"
-   )
-MSG_HASH(
-   MENU_ENUM_SUBLABEL_CURSOR_MANAGER,
-   "Vorige zoekopdrachten bekijken."
+   "Cursor Beheer"
    )
 
 /* Main Menu > Information > Core Information */
 
 MSG_HASH(
    MENU_ENUM_LABEL_VALUE_CORE_INFO_CORE_NAME,
-   "Core Naam"
-   )
-MSG_HASH(
-   MENU_ENUM_LABEL_VALUE_CORE_INFO_CORE_VERSION,
-   "Core Versie"
+   "Core naam"
    )
 MSG_HASH(
    MENU_ENUM_LABEL_VALUE_CORE_INFO_SYSTEM_NAME,
-   "Systeemnaam"
+   "Systeem naam"
    )
 MSG_HASH(
    MENU_ENUM_LABEL_VALUE_CORE_INFO_SYSTEM_MANUFACTURER,
-   "Systeemfabrikant"
+   "Systeem fabrikant"
    )
 MSG_HASH(
    MENU_ENUM_LABEL_VALUE_CORE_INFO_CATEGORIES,
-   "Categorieën"
+   "Categorieen"
    )
 MSG_HASH(
    MENU_ENUM_LABEL_VALUE_CORE_INFO_AUTHORS,
@@ -449,71 +231,31 @@ MSG_HASH(
    )
 MSG_HASH(
    MENU_ENUM_LABEL_VALUE_CORE_INFO_PERMISSIONS,
-   "Machtigingen"
+   "Permissies"
    )
 MSG_HASH(
    MENU_ENUM_LABEL_VALUE_CORE_INFO_LICENSES,
-   "Licentie"
+   "Licentie(s)"
    )
 MSG_HASH(
    MENU_ENUM_LABEL_VALUE_CORE_INFO_SUPPORTED_EXTENSIONS,
-   "Ondersteunde Extensies"
+   "Ondersteunde extensies"
    )
 MSG_HASH(
-   MENU_ENUM_LABEL_VALUE_CORE_INFO_REQUIRED_HW_API,
-   "Vereiste Graphics API"
+   MENU_ENUM_LABEL_VALUE_MISSING,
+   "Ontbrekend"
    )
 MSG_HASH(
-   MENU_ENUM_LABEL_VALUE_CORE_INFO_SAVESTATE_SUPPORT_LEVEL,
-   "Slagstaat Ondersteuning"
+   MENU_ENUM_LABEL_VALUE_PRESENT,
+   "Aanwezig"
    )
 MSG_HASH(
-   MENU_ENUM_LABEL_VALUE_CORE_INFO_SAVESTATE_DISABLED,
-   "Geen"
+   MENU_ENUM_LABEL_VALUE_OPTIONAL,
+   "Optioneel"
    )
 MSG_HASH(
-   MENU_ENUM_LABEL_VALUE_CORE_INFO_SAVESTATE_BASIC,
-   "Basis (Opslaan/Laden)"
-   )
-MSG_HASH(
-   MENU_ENUM_LABEL_VALUE_CORE_INFO_SAVESTATE_SERIALIZED,
-   "Geserialiseerd (Opslaan/Laden, Terugspoelen)"
-   )
-MSG_HASH(
-   MENU_ENUM_LABEL_VALUE_CORE_INFO_SAVESTATE_DETERMINISTIC,
-   "Deterministisch (Opslaan/Laden, Terugspoelen, Run-Ahead, Netplay)"
-   )
-MSG_HASH(
-   MENU_ENUM_LABEL_VALUE_MISSING_REQUIRED,
-   "Ontbrekend, Noodzakelijk:"
-   )
-MSG_HASH(
-   MENU_ENUM_LABEL_VALUE_MISSING_OPTIONAL,
-   "Ontbrekend, Optioneel:"
-   )
-MSG_HASH(
-   MENU_ENUM_LABEL_VALUE_PRESENT_REQUIRED,
-   "Aanwezig, Benodigd:"
-   )
-MSG_HASH(
-   MENU_ENUM_LABEL_VALUE_PRESENT_OPTIONAL,
-   "Aanwezig, Optioneel:"
-   )
-MSG_HASH(
-   MENU_ENUM_LABEL_VALUE_CORE_LOCK,
-   "Geïnstalleerde Core Vergrendelen"
-   )
-MSG_HASH(
-   MENU_ENUM_SUBLABEL_CORE_LOCK,
-   "Voorkom wijziging van de huidige geïnstalleerde core. Kan worden gebruikt om ongewenste updates te voorkomen wanneer inhoud een specifieke core-versie vereist (bijv. Arcade ROM-sets)."
-   )
-MSG_HASH(
-   MENU_ENUM_LABEL_VALUE_CORE_SET_STANDALONE_EXEMPT,
-   "Uitsluiten van 'Losstaande Cores' menu"
-   )
-MSG_HASH(
-   MENU_ENUM_SUBLABEL_CORE_SET_STANDALONE_EXEMPT,
-   "Voorkomen dat deze core wordt weergegeven in het 'Losstaande Cores' tabblad/menu. Alleen toepasbaar als de weergavemodus is op 'Aangepast' ingesteld."
+   MENU_ENUM_LABEL_VALUE_REQUIRED,
+   "Vereist"
    )
 MSG_HASH(
    MENU_ENUM_LABEL_VALUE_CORE_DELETE,
@@ -522,30 +264,6 @@ MSG_HASH(
 MSG_HASH(
    MENU_ENUM_SUBLABEL_CORE_DELETE,
    "Verwijder deze core permanent."
-   )
-MSG_HASH(
-   MENU_ENUM_LABEL_VALUE_CORE_CREATE_BACKUP,
-   "Back-up Core"
-   )
-MSG_HASH(
-   MENU_ENUM_SUBLABEL_CORE_CREATE_BACKUP,
-   "Maak een gearchiveerde back-up van de momenteel geïnstalleerde core."
-   )
-MSG_HASH(
-   MENU_ENUM_LABEL_VALUE_CORE_RESTORE_BACKUP_LIST,
-   "Back-up Herstellen"
-   )
-MSG_HASH(
-   MENU_ENUM_SUBLABEL_CORE_RESTORE_BACKUP_LIST,
-   "Installeer een eerdere versie van de core uit een lijst met gearchiveerde back-ups."
-   )
-MSG_HASH(
-   MENU_ENUM_LABEL_VALUE_CORE_DELETE_BACKUP_LIST,
-   "Back-up Verwijderen"
-   )
-MSG_HASH(
-   MENU_ENUM_SUBLABEL_CORE_DELETE_BACKUP_LIST,
-   "Verwijder een bestand uit de lijst met gearchiveerde back-ups."
    )
 
 /* Main Menu > Information > System Information */
@@ -559,36 +277,24 @@ MSG_HASH(
    "Git versie"
    )
 MSG_HASH( /* FIXME Should be MENU_LABEL_VALUE */
-   MSG_COMPILER,
-   "Compilator"
-   )
-MSG_HASH(
-   MENU_ENUM_LABEL_VALUE_SYSTEM_INFO_CPU_MODEL,
-   "CPU model"
+   MSG_UNKNOWN_COMPILER,
+   "Onbekende compiler"
    )
 MSG_HASH(
    MENU_ENUM_LABEL_VALUE_SYSTEM_INFO_CPU_FEATURES,
    "CPU Eigenschappen"
    )
-MSG_HASH( /* FIXME Colon should be handled in menu_display.c like the rest */
+MSG_HASH(
    MENU_ENUM_LABEL_VALUE_CPU_ARCHITECTURE,
    "CPU Architectuur:"
    )
-MSG_HASH( /* FIXME Colon should be handled in menu_display.c like the rest */
-   MENU_ENUM_LABEL_VALUE_CPU_CORES,
-   "CPU Kernen:"
-   )
-MSG_HASH(
-   MENU_ENUM_SUBLABEL_CPU_CORES,
-   "Hoeveelheid kernen die de CPU heeft."
-   )
 MSG_HASH(
    MENU_ENUM_LABEL_VALUE_SYSTEM_INFO_FRONTEND_IDENTIFIER,
-   "Front-end identificatie"
+   "Frontend identificatie"
    )
-MSG_HASH( /* FIXME Maybe add a description? */
+MSG_HASH(
    MENU_ENUM_LABEL_VALUE_SYSTEM_INFO_RETRORATING_LEVEL,
-   "RetroRating Niveau"
+   "RetroRating niveau"
    )
 MSG_HASH(
    MENU_ENUM_LABEL_VALUE_SYSTEM_INFO_POWER_SOURCE,
@@ -601,10 +307,6 @@ MSG_HASH(
 MSG_HASH(
    MENU_ENUM_LABEL_VALUE_SYSTEM_INFO_DISPLAY_METRIC_MM_HEIGHT,
    "Display metric hoogte (mm)"
-   )
-MSG_HASH(
-   MENU_ENUM_LABEL_VALUE_SYSTEM_INFO_DISPLAY_METRIC_DPI,
-   "DPI Weergeven"
    )
 MSG_HASH(
    MENU_ENUM_LABEL_VALUE_SYSTEM_INFO_LIBRETRODB_SUPPORT,
@@ -624,7 +326,7 @@ MSG_HASH(
    )
 MSG_HASH(
    MENU_ENUM_LABEL_VALUE_SYSTEM_INFO_NETWORK_REMOTE_SUPPORT,
-   "Ondersteuning voor Netwerkcontrollers"
+   "Network Gamepad ondersteuning"
    )
 MSG_HASH(
    MENU_ENUM_LABEL_VALUE_SYSTEM_INFO_COCOA_SUPPORT,
@@ -659,10 +361,6 @@ MSG_HASH(
    "Vulkan ondersteuning"
    )
 MSG_HASH(
-   MENU_ENUM_LABEL_VALUE_SYSTEM_INFO_METAL_SUPPORT,
-   "Metalen Ondersteuning"
-   )
-MSG_HASH(
    MENU_ENUM_LABEL_VALUE_SYSTEM_INFO_OPENGL_SUPPORT,
    "OpenGL ondersteuning"
    )
@@ -672,7 +370,7 @@ MSG_HASH(
    )
 MSG_HASH(
    MENU_ENUM_LABEL_VALUE_SYSTEM_INFO_THREADING_SUPPORT,
-   "Draad-ondersteuning"
+   "Threading ondersteuning"
    )
 MSG_HASH(
    MENU_ENUM_LABEL_VALUE_SYSTEM_INFO_KMS_SUPPORT,
@@ -767,10 +465,6 @@ MSG_HASH(
    "Dynamic library ondersteuning"
    )
 MSG_HASH(
-   MENU_ENUM_LABEL_VALUE_SYSTEM_INFO_DYNAMIC_SUPPORT,
-   "Dynamisch Runtime Laden van libretro Bibliotheek"
-   )
-MSG_HASH(
    MENU_ENUM_LABEL_VALUE_SYSTEM_INFO_CG_SUPPORT,
    "Cg ondersteuning"
    )
@@ -811,6 +505,10 @@ MSG_HASH(
    "Netplay (peer-to-peer) ondersteuning"
    )
 MSG_HASH(
+   MENU_ENUM_LABEL_VALUE_SYSTEM_INFO_PYTHON_SUPPORT,
+   "Python (script ondersteuning in shaders) ondersteuning"
+   )
+MSG_HASH(
    MENU_ENUM_LABEL_VALUE_SYSTEM_INFO_V4L2_SUPPORT,
    "Video4Linux2 ondersteuning"
    )
@@ -829,64 +527,8 @@ MSG_HASH(
 /* Main Menu > Information > Database Manager > Information */
 
 MSG_HASH(
-   MENU_ENUM_LABEL_VALUE_RDB_ENTRY_NAME,
-   "Naam"
-   )
-MSG_HASH(
    MENU_ENUM_LABEL_VALUE_RDB_ENTRY_DESCRIPTION,
    "Omschrijving"
-   )
-MSG_HASH(
-   MENU_ENUM_LABEL_VALUE_RDB_ENTRY_ACHIEVEMENTS,
-   "Achievements Lijst"
-   )
-MSG_HASH(
-   MENU_ENUM_LABEL_VALUE_RDB_ENTRY_CATEGORY,
-   "Categorie"
-   )
-MSG_HASH(
-   MENU_ENUM_LABEL_VALUE_RDB_ENTRY_LANGUAGE,
-   "Taal"
-   )
-MSG_HASH(
-   MENU_ENUM_LABEL_VALUE_RDB_ENTRY_REGION,
-   "Regio"
-   )
-MSG_HASH(
-   MENU_ENUM_LABEL_VALUE_RDB_ENTRY_CONSOLE_EXCLUSIVE,
-   "Console-exclusief"
-   )
-MSG_HASH(
-   MENU_ENUM_LABEL_VALUE_RDB_ENTRY_PLATFORM_EXCLUSIVE,
-   "Platform-exclusief"
-   )
-MSG_HASH(
-   MENU_ENUM_LABEL_VALUE_RDB_ENTRY_CONTROLS,
-   "Besturingselementen"
-   )
-MSG_HASH(
-   MENU_ENUM_LABEL_VALUE_RDB_ENTRY_ARTSTYLE,
-   "Kunststijl"
-   )
-MSG_HASH(
-   MENU_ENUM_LABEL_VALUE_RDB_ENTRY_NARRATIVE,
-   "Verhaal"
-   )
-MSG_HASH(
-   MENU_ENUM_LABEL_VALUE_RDB_ENTRY_PERSPECTIVE,
-   "Perspectief"
-   )
-MSG_HASH(
-   MENU_ENUM_LABEL_VALUE_RDB_ENTRY_SETTING,
-   "Instelling"
-   )
-MSG_HASH(
-   MENU_ENUM_LABEL_VALUE_RDB_ENTRY_VISUAL,
-   "Visueel"
-   )
-MSG_HASH(
-   MENU_ENUM_LABEL_VALUE_RDB_ENTRY_VEHICULAR,
-   "Voertuigtype"
    )
 MSG_HASH(
    MENU_ENUM_LABEL_VALUE_RDB_ENTRY_PUBLISHER,
@@ -901,60 +543,12 @@ MSG_HASH(
    "Afkomst"
    )
 MSG_HASH(
-   MENU_ENUM_LABEL_VALUE_RDB_ENTRY_TGDB_RATING,
-   "TGDB-Beoordeling"
-   )
-MSG_HASH(
-   MENU_ENUM_LABEL_VALUE_RDB_ENTRY_FAMITSU_MAGAZINE_RATING,
-   "Famitsu Magazine Beoordeling"
-   )
-MSG_HASH(
-   MENU_ENUM_LABEL_VALUE_RDB_ENTRY_EDGE_MAGAZINE_REVIEW,
-   "Edge Magazine Beoordeling"
-   )
-MSG_HASH(
-   MENU_ENUM_LABEL_VALUE_RDB_ENTRY_EDGE_MAGAZINE_RATING,
-   "Edge Magazine Beoordeling"
-   )
-MSG_HASH(
-   MENU_ENUM_LABEL_VALUE_RDB_ENTRY_EDGE_MAGAZINE_ISSUE,
-   "Edge Magazine Nummer"
-   )
-MSG_HASH(
    MENU_ENUM_LABEL_VALUE_RDB_ENTRY_RELEASE_MONTH,
-   "Verschijningsdatum Maand"
+   "Release datum Maand"
    )
 MSG_HASH(
    MENU_ENUM_LABEL_VALUE_RDB_ENTRY_RELEASE_YEAR,
-   "Verschijningsdatum Jaar"
-   )
-MSG_HASH(
-   MENU_ENUM_LABEL_VALUE_RDB_ENTRY_BBFC_RATING,
-   "BBFC Beoordeling"
-   )
-MSG_HASH(
-   MENU_ENUM_LABEL_VALUE_RDB_ENTRY_ESRB_RATING,
-   "ESRB Beoordeling"
-   )
-MSG_HASH(
-   MENU_ENUM_LABEL_VALUE_RDB_ENTRY_ELSPA_RATING,
-   "ELSPA Beoordeling"
-   )
-MSG_HASH(
-   MENU_ENUM_LABEL_VALUE_RDB_ENTRY_PEGI_RATING,
-   "PEGI Beoordeling"
-   )
-MSG_HASH(
-   MENU_ENUM_LABEL_VALUE_RDB_ENTRY_ENHANCEMENT_HW,
-   "Hardware-verbeteringen"
-   )
-MSG_HASH(
-   MENU_ENUM_LABEL_VALUE_RDB_ENTRY_CERO_RATING,
-   "CERO Beoordeling"
-   )
-MSG_HASH(
-   MENU_ENUM_LABEL_VALUE_RDB_ENTRY_SERIAL,
-   "Serienummer"
+   "Release datum Jaar"
    )
 MSG_HASH(
    MENU_ENUM_LABEL_VALUE_RDB_ENTRY_ANALOG,
@@ -973,7 +567,7 @@ MSG_HASH(
 
 MSG_HASH(
    MENU_ENUM_LABEL_VALUE_CONFIGURATIONS,
-   "Configuratie Laden"
+   "Configuratie laden"
    )
 MSG_HASH(
    MENU_ENUM_LABEL_VALUE_RESET_TO_DEFAULT_CONFIG,
@@ -996,7 +590,7 @@ MSG_HASH(
 
 MSG_HASH(
    MENU_ENUM_LABEL_VALUE_HELP_CONTROLS,
-   "Basis Menubesturing"
+   "Basis Menu Besturing"
    )
 
 /* Main Menu > Help > Basic Menu Controls */
@@ -1015,7 +609,7 @@ MSG_HASH(
    )
 MSG_HASH(
    MENU_ENUM_LABEL_VALUE_BASIC_MENU_CONTROLS_TOGGLE_MENU,
-   "Schakel menu in/uit"
+   "Menu Schakelaar"
    )
 MSG_HASH(
    MENU_ENUM_LABEL_VALUE_BASIC_MENU_CONTROLS_QUIT,
@@ -1029,44 +623,12 @@ MSG_HASH(
 /* Settings */
 
 MSG_HASH(
-   MENU_ENUM_LABEL_VALUE_DRIVER_SETTINGS,
-   "Stuurprogramma's"
-   )
-MSG_HASH(
-   MENU_ENUM_SUBLABEL_DRIVER_SETTINGS,
-   "Wijzig stuurprogramma's die door het systeem worden gebruikt."
-   )
-MSG_HASH(
-   MENU_ENUM_SUBLABEL_VIDEO_SETTINGS,
-   "Instellingen voor video-uitvoer wijzigen."
-   )
-MSG_HASH(
    MENU_ENUM_LABEL_VALUE_AUDIO_SETTINGS,
    "Geluid"
    )
 MSG_HASH(
-   MENU_ENUM_SUBLABEL_AUDIO_SETTINGS,
-   "Instellingen voor audio-uitvoer wijzigen."
-   )
-MSG_HASH(
    MENU_ENUM_LABEL_VALUE_INPUT_SETTINGS,
    "Invoer"
-   )
-MSG_HASH(
-   MENU_ENUM_SUBLABEL_INPUT_SETTINGS,
-   "Wijzig controller-, toetsenbord- en muisinstellingen."
-   )
-MSG_HASH(
-   MENU_ENUM_LABEL_VALUE_LATENCY_SETTINGS,
-   "Vertraging"
-   )
-MSG_HASH(
-   MENU_ENUM_SUBLABEL_LATENCY_SETTINGS,
-   "Wijzig de instellingen met betrekking tot video, audio en invoervertraging."
-   )
-MSG_HASH(
-   MENU_ENUM_SUBLABEL_CORE_SETTINGS,
-   "Core-instellingen wijzigen."
    )
 MSG_HASH(
    MENU_ENUM_LABEL_VALUE_CONFIGURATION_SETTINGS,
@@ -1077,88 +639,32 @@ MSG_HASH(
    "Wijzig standaard instellingen voor configuratiebestanden."
    )
 MSG_HASH(
-   MENU_ENUM_LABEL_VALUE_SAVING_SETTINGS,
-   "Opslaan"
-   )
-MSG_HASH(
-   MENU_ENUM_SUBLABEL_SAVING_SETTINGS,
-   "Instellingen voor opslaan wijzigen."
-   )
-MSG_HASH(
    MENU_ENUM_LABEL_VALUE_LOGGING_SETTINGS,
    "Loggen"
-   )
-MSG_HASH(
-   MENU_ENUM_SUBLABEL_LOGGING_SETTINGS,
-   "Logboekinstellingen wijzigen."
    )
 MSG_HASH(
    MENU_ENUM_LABEL_VALUE_MENU_FILE_BROWSER_SETTINGS,
    "Bestandbeheer"
    )
 MSG_HASH(
-   MENU_ENUM_SUBLABEL_MENU_FILE_BROWSER_SETTINGS,
-   "Wijzig instellingen van bestandsbrowser."
-   )
-MSG_HASH(
-   MENU_ENUM_SUBLABEL_FRAME_THROTTLE_SETTINGS,
-   "Instellingen voor terugspoelen, snel vooruitspoelen en slow motion wijzigen."
-   )
-MSG_HASH(
    MENU_ENUM_LABEL_VALUE_RECORDING_SETTINGS,
    "Opname"
-   )
-MSG_HASH(
-   MENU_ENUM_SUBLABEL_RECORDING_SETTINGS,
-   "Opnameinstellingen wijzigen."
    )
 MSG_HASH(
    MENU_ENUM_LABEL_VALUE_ONSCREEN_DISPLAY_SETTINGS,
    "Onscreen Weergave"
    )
 MSG_HASH(
-   MENU_ENUM_SUBLABEL_ONSCREEN_DISPLAY_SETTINGS,
-   "Wijzig de scherm- en toetsenbord-overlay, en instellingen voor meldingen op het scherm."
-   )
-MSG_HASH(
    MENU_ENUM_LABEL_VALUE_USER_INTERFACE_SETTINGS,
    "Gebruikersinterface"
-   )
-MSG_HASH(
-   MENU_ENUM_SUBLABEL_USER_INTERFACE_SETTINGS,
-   "Instellingen voor de gebruikersinterface wijzigen."
-   )
-MSG_HASH(
-   MENU_ENUM_LABEL_VALUE_AI_SERVICE_SETTINGS,
-   "AI-Service"
-   )
-MSG_HASH(
-   MENU_ENUM_SUBLABEL_AI_SERVICE_SETTINGS,
-   "Wijzig de instellingen voor de AI-Service (Vertaling/TTS/Misc)."
-   )
-MSG_HASH(
-   MENU_ENUM_LABEL_VALUE_ACCESSIBILITY_SETTINGS,
-   "Toegankelijkheid"
-   )
-MSG_HASH(
-   MENU_ENUM_SUBLABEL_ACCESSIBILITY_SETTINGS,
-   "Wijzig de instellingen voor de Toegankelijkheidsverteller."
    )
 MSG_HASH(
    MENU_ENUM_LABEL_VALUE_POWER_MANAGEMENT_SETTINGS,
    "Energiebeheer"
    )
 MSG_HASH(
-   MENU_ENUM_SUBLABEL_POWER_MANAGEMENT_SETTINGS,
-   "Instellingen voor stroombeheer wijzigen."
-   )
-MSG_HASH(
    MENU_ENUM_LABEL_VALUE_RETRO_ACHIEVEMENTS_SETTINGS,
    "Achievements Lijst"
-   )
-MSG_HASH(
-   MENU_ENUM_SUBLABEL_RETRO_ACHIEVEMENTS_SETTINGS,
-   "Wijzig prestatie-instellingen."
    )
 MSG_HASH(
    MENU_ENUM_LABEL_VALUE_NETWORK_SETTINGS,
@@ -1166,364 +672,67 @@ MSG_HASH(
    )
 MSG_HASH(
    MENU_ENUM_SUBLABEL_NETWORK_SETTINGS,
-   "Wijzig server- en netwerkinstellingen."
+   "Server en netwerk instellingen configureren."
    )
 MSG_HASH(
    MENU_ENUM_LABEL_VALUE_PLAYLIST_SETTINGS,
    "Afspeellijsten"
    )
 MSG_HASH(
-   MENU_ENUM_SUBLABEL_PLAYLIST_SETTINGS,
-   "Wijzig afspeellijstinstellingen."
-   )
-MSG_HASH(
    MENU_ENUM_LABEL_VALUE_USER_SETTINGS,
    "Gebruiker"
-   )
-MSG_HASH(
-   MENU_ENUM_SUBLABEL_USER_SETTINGS,
-   "Wijzig account-, gebruikersnaam- en taalinstellingen."
    )
 MSG_HASH(
    MENU_ENUM_LABEL_VALUE_DIRECTORY_SETTINGS,
    "Map"
    )
-MSG_HASH(
-   MENU_ENUM_SUBLABEL_DIRECTORY_SETTINGS,
-   "Wijzig de standaardmappen waar bestanden zich bevinden."
-   )
-
-#ifdef HAVE_MIST
-MSG_HASH(
-   MENU_ENUM_SUBLABEL_STEAM_SETTINGS,
-   "Wijzig de instellingen met betrekking tot Steam."
-   )
-#endif
 
 /* Settings > Drivers */
 
-MSG_HASH(
-   MENU_ENUM_LABEL_VALUE_INPUT_DRIVER,
-   "Invoer"
-   )
-MSG_HASH(
-   MENU_ENUM_SUBLABEL_INPUT_DRIVER,
-   "Invoersstuurprogramma om te gebruiken. Sommige videostuurprogramma's dwingen een ander ingangsstuurprogramma af."
-   )
-MSG_HASH(
-   MENU_ENUM_SUBLABEL_JOYPAD_DRIVER,
-   "Controllerstuurprogramma om te gebruiken."
-   )
-MSG_HASH(
-   MENU_ENUM_SUBLABEL_VIDEO_DRIVER,
-   "Videostuurprogramma om te gebruiken."
-   )
-MSG_HASH(
-   MENU_ENUM_LABEL_VALUE_AUDIO_DRIVER,
-   "Geluid"
-   )
-MSG_HASH(
-   MENU_ENUM_SUBLABEL_AUDIO_DRIVER,
-   "Audiostuurprogramma om te gebruiken."
-   )
-MSG_HASH(
-   MENU_ENUM_SUBLABEL_AUDIO_RESAMPLER_DRIVER,
-   "Audio resampler stuurprogramma om te gebruiken."
-   )
-MSG_HASH(
-   MENU_ENUM_SUBLABEL_CAMERA_DRIVER,
-   "Camerastuurprogramma om te gebruiken."
-   )
-MSG_HASH(
-   MENU_ENUM_SUBLABEL_BLUETOOTH_DRIVER,
-   "Bluetooth-stuurprogramma te gebruiken."
-   )
-MSG_HASH(
-   MENU_ENUM_SUBLABEL_WIFI_DRIVER,
-   "WiFi-stuurprogramma om te gebruiken."
-   )
 MSG_HASH(
    MENU_ENUM_LABEL_VALUE_LOCATION_DRIVER,
    "Locatie Driver"
    )
 MSG_HASH(
-   MENU_ENUM_SUBLABEL_LOCATION_DRIVER,
-   "Locatiestuurprogramma om te gebruiken."
-   )
-MSG_HASH(
-   MENU_ENUM_SUBLABEL_MENU_DRIVER,
-   "Menustuurprogramma om te gebruiken."
-   )
-MSG_HASH(
    MENU_ENUM_LABEL_VALUE_RECORD_DRIVER,
    "Opname Driver"
-   )
-MSG_HASH(
-   MENU_ENUM_SUBLABEL_RECORD_DRIVER,
-   "Record-stuurprogramma om te gebruiken."
-   )
-MSG_HASH(
-   MENU_ENUM_SUBLABEL_MIDI_DRIVER,
-   "MIDI-stuurprogramma om te gebruiken."
    )
 
 /* Settings > Video */
 
 MSG_HASH(
-   MENU_ENUM_SUBLABEL_CRT_SWITCHRES_SETTINGS,
-   "Voer native, lage-resolutie signalen uit voor gebruik met CRT-schermen."
-   )
-MSG_HASH(
-   MENU_ENUM_LABEL_VALUE_VIDEO_OUTPUT_SETTINGS,
-   "Uitvoer"
-   )
-MSG_HASH(
-   MENU_ENUM_SUBLABEL_VIDEO_OUTPUT_SETTINGS,
-   "Instellingen voor video-uitvoer wijzigen."
-   )
-MSG_HASH(
-   MENU_ENUM_LABEL_VALUE_VIDEO_FULLSCREEN_MODE_SETTINGS,
-   "Modus volledig scherm"
-   )
-MSG_HASH(
-   MENU_ENUM_SUBLABEL_VIDEO_FULLSCREEN_MODE_SETTINGS,
-   "Instellingen voor modus volledig scherm wijzigen."
-   )
-MSG_HASH(
-   MENU_ENUM_LABEL_VALUE_VIDEO_WINDOWED_MODE_SETTINGS,
-   "Venstermodus"
-   )
-MSG_HASH(
-   MENU_ENUM_SUBLABEL_VIDEO_WINDOWED_MODE_SETTINGS,
-   "Instellingen voor venstermodus wijzigen."
-   )
-MSG_HASH(
-   MENU_ENUM_LABEL_VALUE_VIDEO_SCALING_SETTINGS,
-   "Schalen"
-   )
-MSG_HASH(
-   MENU_ENUM_SUBLABEL_VIDEO_SCALING_SETTINGS,
-   "Video-schalen instellingen wijzigen."
-   )
-MSG_HASH(
-   MENU_ENUM_SUBLABEL_VIDEO_HDR_SETTINGS,
-   "Wijzig HDR-instellingen."
-   )
-MSG_HASH(
    MENU_ENUM_LABEL_VALUE_VIDEO_SYNCHRONIZATION_SETTINGS,
    "Audio Synchronizatie"
    )
 MSG_HASH(
-   MENU_ENUM_SUBLABEL_VIDEO_SYNCHRONIZATION_SETTINGS,
-   "Video-synchronisatie instellingen wijzigen."
-   )
-MSG_HASH(
    MENU_ENUM_LABEL_VALUE_SUSPEND_SCREENSAVER_ENABLE,
-   "Onderbreek schermbeveiliging"
-   )
-MSG_HASH(
-   MENU_ENUM_SUBLABEL_SUSPEND_SCREENSAVER_ENABLE,
-   "Voorkom het inschakelen van schermbeveiliging op je systeem."
-   )
-MSG_HASH(
-   MENU_ENUM_LABEL_VALUE_VIDEO_THREADED,
-   "Video met Schroefdraad"
+   "Onderbreek Screensaver"
    )
 MSG_HASH(
    MENU_ENUM_SUBLABEL_VIDEO_THREADED,
-   "Verbetert prestaties ten koste van latentie en vloeiendheid van het beeld. Gebruik dit alleen wanneer het afspelen op volle snelheid niet anders mogelijk is."
+   "Verbetert prestaties ten kosten van latentie en meer video stotteringen. Gebruik dit enkel als het niet mogelijk is om full speed te bereiken zonder dit te activeren."
    )
 MSG_HASH(
    MENU_ENUM_LABEL_VALUE_VIDEO_BLACK_FRAME_INSERTION,
    "Zwarte Frame Injectie"
    )
 MSG_HASH(
-   MENU_ENUM_SUBLABEL_VIDEO_BLACK_FRAME_INSERTION,
-   "Voegt een zwarte frame toe tussen frames. Kan ghosting voorkomen op monitoren met een hoge vernieuwingsfrequentie."
-   )
-MSG_HASH(
    MENU_ENUM_LABEL_VALUE_VIDEO_GPU_SCREENSHOT,
    "GPU Screenshots Activeren"
    )
-MSG_HASH(
-   MENU_ENUM_SUBLABEL_VIDEO_GPU_SCREENSHOT,
-   "Indien beschikbaar nemen screenshots GPU-geschaduwd materiaal op."
-   )
-MSG_HASH(
-   MENU_ENUM_LABEL_VALUE_VIDEO_SMOOTH,
-   "Bilineaire Filtering"
-   )
-MSG_HASH(
-   MENU_ENUM_SUBLABEL_VIDEO_SMOOTH,
-   "Voeg een lichte vervaging toe aan de afbeelding om harde pixelranden te verzachten. Deze optie heeft weinig invloed op de prestaties."
-   )
-#if defined(DINGUX)
-MSG_HASH(
-   MENU_ENUM_LABEL_VALUE_VIDEO_DINGUX_IPU_FILTER_TYPE,
-   "Beeldinterpolatie"
-   )
-MSG_HASH(
-   MENU_ENUM_SUBLABEL_VIDEO_DINGUX_IPU_FILTER_TYPE,
-   "Specificeer de methode voor beeldinterpolatie wanneer content door de interne IPU wordt geschaald. 'Bicubisch' of 'Bilineair' worden aangeraden bij gebruik van CPU-aangedreven videofilters. Deze instelling heeft geen impact op prestaties."
-   )
-MSG_HASH(
-   MENU_ENUM_LABEL_VALUE_VIDEO_DINGUX_IPU_FILTER_BICUBIC,
-   "Bicubisch"
-   )
-MSG_HASH(
-   MENU_ENUM_LABEL_VALUE_VIDEO_DINGUX_IPU_FILTER_BILINEAR,
-   "Bilineair"
-   )
-MSG_HASH(
-   MENU_ENUM_LABEL_VALUE_VIDEO_DINGUX_IPU_FILTER_NEAREST,
-   "Naaste-buur"
-   )
-#if defined(RS90) || defined(MIYOO)
-MSG_HASH(
-   MENU_ENUM_LABEL_VALUE_VIDEO_DINGUX_RS90_SOFTFILTER_TYPE,
-   "Beeldinterpolatie"
-   )
-MSG_HASH(
-   MENU_ENUM_SUBLABEL_VIDEO_DINGUX_RS90_SOFTFILTER_TYPE,
-   "Specificeer beeldinterpolatiemethode wanneer 'Schalen in gehele getallen' is uitgeschakeld. 'Naaste buur' heeft de minste impact op prestaties."
-   )
-MSG_HASH(
-   MENU_ENUM_LABEL_VALUE_VIDEO_DINGUX_RS90_SOFTFILTER_POINT,
-   "Naaste-buur"
-   )
-MSG_HASH(
-   MENU_ENUM_LABEL_VALUE_VIDEO_DINGUX_RS90_SOFTFILTER_BRESENHAM_HORZ,
-   "Semi-Lineaire"
-   )
-#endif
-#endif
-MSG_HASH(
-   MENU_ENUM_LABEL_VALUE_VIDEO_SHADER_DELAY,
-   "Auto-Shader Vertraging"
-   )
-MSG_HASH(
-   MENU_ENUM_SUBLABEL_VIDEO_SHADER_DELAY,
-   "Vertraag automatisch ladende shaders (in ms). Kan grafische storingen omzeilen bij gebruik van 'schermgrijping'-software."
-   )
-MSG_HASH(
-   MENU_ENUM_LABEL_VALUE_VIDEO_FILTER,
-   "Videofilters"
-   )
-MSG_HASH(
-   MENU_ENUM_SUBLABEL_VIDEO_FILTER,
-   "Pas een CPU-aangedreven videofilter toe. Dit kan hoge prestatiekosten met zich meebrengen. Sommige videofilters werken mogelijk alleen voor cores die 32-bits of 16-bits kleuren gebruiken."
-   )
-MSG_HASH(
-   MENU_ENUM_LABEL_VALUE_VIDEO_FILTER_REMOVE,
-   "Video Filter Verwijderen"
-   )
-MSG_HASH(
-   MENU_ENUM_SUBLABEL_VIDEO_FILTER_REMOVE,
-   "Laad elk actief CPU-aangedreven videofilter af."
-   )
-MSG_HASH(
-   MENU_ENUM_LABEL_VALUE_VIDEO_NOTCH_WRITE_OVER,
-   "Schakel volledig scherm over notch in op Android-apparaten"
-)
 
 /* Settings > Video > CRT SwitchRes */
 
 MSG_HASH(
-   MENU_ENUM_SUBLABEL_CRT_SWITCH_RESOLUTION,
-   "Alleen voor CRT-schermen. Pogingen om exacte core-/spelresolutie en verversingssnelheid te gebruiken."
-   )
-MSG_HASH(
-   MENU_ENUM_LABEL_VALUE_CRT_SWITCH_RESOLUTION_SUPER,
-   "CRT Super Resolutie"
-   )
-MSG_HASH(
-   MENU_ENUM_SUBLABEL_CRT_SWITCH_RESOLUTION_SUPER,
-   "Schakel tussen native en ultrabrede superresoluties."
-   )
-MSG_HASH(
    MENU_ENUM_LABEL_VALUE_CRT_SWITCH_X_AXIS_CENTERING,
    "X-As Centering"
-   )
-MSG_HASH(
-   MENU_ENUM_SUBLABEL_CRT_SWITCH_X_AXIS_CENTERING,
-   "Blader door deze opties als de afbeelding niet goed op het scherm is gecentreerd."
-   )
-MSG_HASH(
-   MENU_ENUM_LABEL_VALUE_CRT_SWITCH_PORCH_ADJUST,
-   "TV-Veranda Aanpassen"
-   )
-MSG_HASH(
-   MENU_ENUM_SUBLABEL_CRT_SWITCH_PORCH_ADJUST,
-   "Doorloop deze opties om de veranda-instellingen aan te passen om de afbeeldingsgrootte te wijzigen."
-   )
-MSG_HASH(
-   MENU_ENUM_LABEL_VALUE_CRT_SWITCH_HIRES_MENU,
-   "Hoge-resolutie menu gebruiken"
-   )
-MSG_HASH(
-   MENU_ENUM_SUBLABEL_CRT_SWITCH_HIRES_MENU,
-   "Schakel over naar een hoog-resolutiemodel voor gebruik met hoge-resolutie menu's wanneer er geen inhoud wordt geladen."
-   )
-MSG_HASH(
-   MENU_ENUM_LABEL_VALUE_CRT_SWITCH_RESOLUTION_USE_CUSTOM_REFRESH_RATE,
-   "Aangepaste Vernieuwingsfrequentie"
-   )
-MSG_HASH(
-   MENU_ENUM_SUBLABEL_CRT_SWITCH_RESOLUTION_USE_CUSTOM_REFRESH_RATE,
-   "Gebruik indien nodig een aangepaste vernieuwingsfrequentie die is opgegeven in het configuratiebestand."
    )
 
 /* Settings > Video > Output */
 
 MSG_HASH(
-   MENU_ENUM_SUBLABEL_VIDEO_MONITOR_INDEX,
-   "Selecteer welk beeldscherm er gebruikt moet worden."
-   )
-#if defined (WIIU)
-MSG_HASH(
-   MENU_ENUM_LABEL_VALUE_VIDEO_WIIU_PREFER_DRC,
-   "Optimaliseren voor Wii U GamePad (Opnieuw Opstarten Vereist)"
-   )
-MSG_HASH(
-   MENU_ENUM_SUBLABEL_VIDEO_WIIU_PREFER_DRC,
-   "Gebruik een exacte 2x schaal van de GamePad als de weergave. Uitschakelen om op de oorspronkelijke TV-resolutie weer te geven."
-   )
-#endif
-MSG_HASH(
    MENU_ENUM_LABEL_VALUE_VIDEO_ROTATION,
    "Rotatie"
-   )
-MSG_HASH(
-   MENU_ENUM_SUBLABEL_VIDEO_ROTATION,
-   "Dwingt een bepaalde rotatie van de video. De rotatie wordt opgeteld bij rotaties die de core instelt."
-   )
-MSG_HASH(
-   MENU_ENUM_LABEL_VALUE_SCREEN_ORIENTATION,
-   "Schermoriëntatie"
-   )
-MSG_HASH(
-   MENU_ENUM_SUBLABEL_SCREEN_ORIENTATION,
-   "Dwingt een bepaalde oriëntatie van het scherm af van het besturingssysteem."
-   )
-MSG_HASH(
-   MENU_ENUM_SUBLABEL_VIDEO_GPU_INDEX,
-   "Selecteer de grafische kaart die gebruikt moet worden."
-   )
-MSG_HASH(
-   MENU_ENUM_LABEL_VALUE_VIDEO_WINDOW_OFFSET_X,
-   "Scherm Horizontale Offset"
-   )
-MSG_HASH(
-   MENU_ENUM_SUBLABEL_VIDEO_WINDOW_OFFSET_X,
-   "Forceert een bepaalde offset horizontaal naar de video. De offset wordt globaal toegepast."
-   )
-MSG_HASH(
-   MENU_ENUM_LABEL_VALUE_VIDEO_WINDOW_OFFSET_Y,
-   "Scherm Verticale Offset"
-   )
-MSG_HASH(
-   MENU_ENUM_SUBLABEL_VIDEO_WINDOW_OFFSET_Y,
-   "Forceert een bepaalde offset verticaal naar de video. De offset wordt globaal toegepast."
    )
 MSG_HASH(
    MENU_ENUM_LABEL_VALUE_VIDEO_REFRESH_RATE,
@@ -1531,84 +740,22 @@ MSG_HASH(
    )
 MSG_HASH(
    MENU_ENUM_SUBLABEL_VIDEO_REFRESH_RATE,
-   "Verticale verversingssnelheid van uw scherm. Wordt gebruikt om een geschikte audio-ingangssnelheid te berekenen.\nDit wordt genegeerd als 'Bedrade Video' is ingeschakeld."
+   "Verticale refresh rate van je scherm. Wordt gebruikt om een toepasselijke audio input rate te calculeren. LET OP: Deze optie wordt genegeerd als 'Threaded Video' is ingeschakeld."
    )
 MSG_HASH(
    MENU_ENUM_LABEL_VALUE_VIDEO_REFRESH_RATE_AUTO,
    "Geschatte Scherm Framerate"
    )
 MSG_HASH(
-   MENU_ENUM_SUBLABEL_VIDEO_REFRESH_RATE_AUTO,
-   "De nauwkeurig geschatte vernieuwingsfrequentie van het scherm in Hz."
-   )
-MSG_HASH(
-   MENU_ENUM_LABEL_VALUE_VIDEO_REFRESH_RATE_POLLED,
-   "Stel Display-Gerapporteerde Vernieuwingsfrequentie In"
-   )
-MSG_HASH(
-   MENU_ENUM_SUBLABEL_VIDEO_REFRESH_RATE_POLLED,
-   "De vernieuwingsfrequentie zoals gerapporteerd door het beeldschermstuurprogramma."
-   )
-#if defined(DINGUX) && defined(DINGUX_BETA)
-MSG_HASH(
-   MENU_ENUM_LABEL_VALUE_VIDEO_DINGUX_REFRESH_RATE,
-   "Verticale Refresh Rate"
-   )
-MSG_HASH(
-   MENU_ENUM_SUBLABEL_VIDEO_DINGUX_REFRESH_RATE,
-   "Stel verticale-verversingssnelheid van het scherm in. '50 Hz' zal een soepele video inschakelen bij het uitvoeren van PAL-inhoud."
-   )
-#endif
-MSG_HASH(
    MENU_ENUM_LABEL_VALUE_VIDEO_FORCE_SRGB_DISABLE,
-   "sRGB FBO Geforceerd Uitschakelen"
-   )
-MSG_HASH(
-   MENU_ENUM_SUBLABEL_VIDEO_FORCE_SRGB_DISABLE,
-   "Gewelddadig de sRGB FBO-ondersteuning uit te schakelen. Sommige Intel OpenGL stuurprogramma's op Windows hebben videoproblemen met sRGB FBO's. Als u dit inschakelt, kunt u dit omzeilen."
+   "Handmatig sRGB FBO Deactiveren"
    )
 
 /* Settings > Video > Fullscreen Mode */
 
 MSG_HASH(
    MENU_ENUM_LABEL_VALUE_VIDEO_FULLSCREEN,
-   "Start in Volledig-Scherm Modus"
-   )
-MSG_HASH(
-   MENU_ENUM_SUBLABEL_VIDEO_FULLSCREEN,
-   "Begin in volledig scherm. Kan tijdens looptijd worden gewijzigd. Kan worden overschreven door een opdrachtregelschakelaar."
-   )
-MSG_HASH(
-   MENU_ENUM_LABEL_VALUE_VIDEO_WINDOWED_FULLSCREEN,
-   "Schermvullend venstermodus"
-   )
-MSG_HASH(
-   MENU_ENUM_SUBLABEL_VIDEO_WINDOWED_FULLSCREEN,
-   "Schermvullend venstermodus gebruiken tijdens modus volledig scherm om veranderingen in weergavemodus te voorkomen."
-   )
-MSG_HASH(
-   MENU_ENUM_LABEL_VALUE_VIDEO_FULLSCREEN_X,
-   "Breedte op Volledig Scherm"
-   )
-MSG_HASH(
-   MENU_ENUM_SUBLABEL_VIDEO_FULLSCREEN_X,
-   "Stel de aangepaste breedtegrootte in voor de modus voor volledig scherm zonder venster. Als het is uitgeschakeld, wordt de desktopresolutie gebruikt."
-   )
-MSG_HASH(
-   MENU_ENUM_LABEL_VALUE_VIDEO_FULLSCREEN_Y,
-   "Hoogte op Volledig Scherm"
-   )
-MSG_HASH(
-   MENU_ENUM_SUBLABEL_VIDEO_FULLSCREEN_Y,
-   "Stel de aangepaste hoogtegrootte in voor de modus voor volledig scherm zonder venster. Als het is uitgeschakeld, wordt de desktopresolutie gebruikt."
-   )
-MSG_HASH(
-   MENU_ENUM_LABEL_VALUE_VIDEO_FORCE_RESOLUTION,
-   "Forceer resolutie op UWP"
-   )
-MSG_HASH(
-   MENU_ENUM_SUBLABEL_VIDEO_FORCE_RESOLUTION,
-   "Forceer de resolutie naar de grote van het volledig scherm, een waarde van 3840 x 2160 zal gebruikt worden wanneer 0 is ingesteld."
+   "Gebruik Fullscreen Mode"
    )
 
 /* Settings > Video > Windowed Mode */
@@ -1618,258 +765,65 @@ MSG_HASH(
    "Venster Schalering"
    )
 MSG_HASH(
-   MENU_ENUM_SUBLABEL_VIDEO_WINDOW_SCALE,
-   "Stel de venstergrootte in op de opgegeven veelvoud van de core weergave-grootte."
-   )
-MSG_HASH(
-   MENU_ENUM_LABEL_VALUE_VIDEO_WINDOW_OPACITY,
-   "Venster Zichtbaarheid"
-   )
-MSG_HASH(
-   MENU_ENUM_SUBLABEL_VIDEO_WINDOW_OPACITY,
-   "Het venster transparantie instellen."
-   )
-MSG_HASH(
-   MENU_ENUM_LABEL_VALUE_VIDEO_WINDOW_SHOW_DECORATIONS,
-   "Toon Venster Decoraties"
-   )
-MSG_HASH(
-   MENU_ENUM_SUBLABEL_VIDEO_WINDOW_SHOW_DECORATIONS,
-   "Toon venster titelbalk en grenzen."
-   )
-MSG_HASH(
-   MENU_ENUM_LABEL_VALUE_UI_MENUBAR_ENABLE,
-   "Toon Menubalk"
-   )
-MSG_HASH(
-   MENU_ENUM_SUBLABEL_UI_MENUBAR_ENABLE,
-   "Toon venster menubalk."
-   )
-MSG_HASH(
    MENU_ENUM_LABEL_VALUE_VIDEO_WINDOW_SAVE_POSITION,
    "Onthoudt Venster Positie en Grootte"
-   )
-MSG_HASH(
-   MENU_ENUM_SUBLABEL_VIDEO_WINDOW_SAVE_POSITION,
-   "Toon alle inhoud in een venster met vaste grootte van de afmetingen gespecificeerd door 'Vensterbreedte' en 'Vensterhoogte', en sla de huidige venstergrootte en positie op bij het sluiten van RetroArch. Wanneer uitgeschakeld, zal venstergrootte dynamisch worden ingesteld op basis van de 'Vensterschaal'."
-   )
-MSG_HASH(
-   MENU_ENUM_LABEL_VALUE_VIDEO_WINDOW_CUSTOM_SIZE_ENABLE,
-   "Aangepaste Venstergrootte Gebruiken"
-   )
-MSG_HASH(
-   MENU_ENUM_SUBLABEL_VIDEO_WINDOW_CUSTOM_SIZE_ENABLE,
-   "Toon alle inhoud in een venster met vaste grootte van de afmetingen gespecificeerd door 'Vensterbreedte' en 'Vensterhoogte'. Wanneer uitgeschakeld, zal venstergrootte dynamisch worden ingesteld op basis van de 'Vensterschaal'."
    )
 MSG_HASH(
    MENU_ENUM_LABEL_VALUE_VIDEO_WINDOW_WIDTH,
    "Window Breedte"
    )
 MSG_HASH(
-   MENU_ENUM_SUBLABEL_VIDEO_WINDOW_WIDTH,
-   "Stel de aangepaste breedte in voor het weergavevenster."
-   )
-MSG_HASH(
    MENU_ENUM_LABEL_VALUE_VIDEO_WINDOW_HEIGHT,
    "Window Hoogte"
-   )
-MSG_HASH(
-   MENU_ENUM_SUBLABEL_VIDEO_WINDOW_HEIGHT,
-   "Stel de aangepaste hoogte in voor het weergavevenster."
-   )
-MSG_HASH(
-   MENU_ENUM_LABEL_VALUE_VIDEO_WINDOW_AUTO_WIDTH_MAX,
-   "Maximale Vensterbreedte"
-   )
-MSG_HASH(
-   MENU_ENUM_SUBLABEL_VIDEO_WINDOW_AUTO_WIDTH_MAX,
-   "Stel de maximale breedte van het weergavevenster in bij het aanpassen van de grootte van het formaat op basis van de 'Vensterschaal'."
-   )
-MSG_HASH(
-   MENU_ENUM_LABEL_VALUE_VIDEO_WINDOW_AUTO_HEIGHT_MAX,
-   "Maximale Vensterhoogte"
-   )
-MSG_HASH(
-   MENU_ENUM_SUBLABEL_VIDEO_WINDOW_AUTO_HEIGHT_MAX,
-   "Stel de maximale hoogte in van het weergavevenster bij het aanpassen van de grootte van het formaat op basis van de 'Vensterschaal'."
    )
 
 /* Settings > Video > Scaling */
 
 MSG_HASH(
    MENU_ENUM_LABEL_VALUE_VIDEO_SCALE_INTEGER,
-   "Schalen in gehele getallen"
-   )
-MSG_HASH(
-   MENU_ENUM_SUBLABEL_VIDEO_SCALE_INTEGER,
-   "Schaal het beeld alleen in stappen van gehele getallen. De basisgrootte is afhankelijk van de geometrie en beeldverhouding gemeld door het systeem. Als 'Forceer beeldverhouding' niet is ingesteld, zal X/Y onafhankelijk worden geschaald op basis van gehele getallen."
-   )
-MSG_HASH(
-   MENU_ENUM_LABEL_VALUE_VIDEO_SCALE_INTEGER_OVERSCALE,
-   "Integer Schaal Overschaal"
-   )
-MSG_HASH(
-   MENU_ENUM_SUBLABEL_VIDEO_SCALE_INTEGER_OVERSCALE,
-   "Forceer integer-schaling om naar boven af te ronden op het eerstvolgende integer in plaats van naar beneden af te ronden."
+   "Vierkantige schalering"
    )
 MSG_HASH(
    MENU_ENUM_LABEL_VALUE_VIDEO_ASPECT_RATIO_INDEX,
    "Beeldverhouding"
    )
 MSG_HASH(
-   MENU_ENUM_SUBLABEL_VIDEO_ASPECT_RATIO_INDEX,
-   "Stel beeldverhouding in."
-   )
-MSG_HASH(
-   MENU_ENUM_LABEL_VALUE_VIDEO_ASPECT_RATIO,
-   "Beeldverhouding-configuratie"
-   )
-MSG_HASH(
-   MENU_ENUM_SUBLABEL_VIDEO_ASPECT_RATIO,
-   "Drijvend punt-waarde voor video beeldverhouding (breedte / hoogte)."
-   )
-#if defined(DINGUX)
-MSG_HASH(
-   MENU_ENUM_LABEL_VALUE_VIDEO_DINGUX_IPU_KEEP_ASPECT,
-   "Beeldverhouding behouden"
-   )
-MSG_HASH(
-   MENU_ENUM_SUBLABEL_VIDEO_DINGUX_IPU_KEEP_ASPECT,
-   "Behoud 1:1 pixel hoogte-breedteverhoudingen bij het schalen van inhoud via het interne IPU. Indien uitgeschakeld, worden afbeeldingen uitgelekt om het volledige scherm in te vullen."
-   )
-#endif
-MSG_HASH(
    MENU_ENUM_LABEL_VALUE_VIDEO_VIEWPORT_CUSTOM_X,
-   "Aangepaste Beeldverhouding (X-positie)"
-   )
-MSG_HASH(
-   MENU_ENUM_SUBLABEL_VIDEO_VIEWPORT_CUSTOM_X,
-   "Aangepaste weergave-offset gebruikt voor het definiëren van de X-as positie van de weergave.\nDeze worden genegeerd als 'Integer Schaal' is ingeschakeld."
+   "Handmatige Viewport X Pos."
    )
 MSG_HASH(
    MENU_ENUM_LABEL_VALUE_VIDEO_VIEWPORT_CUSTOM_Y,
-   "Aangepaste Beeldverhouding (Y-positie)"
-   )
-MSG_HASH(
-   MENU_ENUM_SUBLABEL_VIDEO_VIEWPORT_CUSTOM_Y,
-   "Aangepaste weergave-offset gebruikt voor het definiëren van de Y-as positie van de weergave.\nDeze worden genegeerd als 'Integer Schaal' is ingeschakeld."
+   "Handmatige Viewport Y Positie"
    )
 MSG_HASH(
    MENU_ENUM_LABEL_VALUE_VIDEO_VIEWPORT_CUSTOM_WIDTH,
-   "Aangepaste Beeldverhouding (Breedte)"
-   )
-MSG_HASH(
-   MENU_ENUM_SUBLABEL_VIDEO_VIEWPORT_CUSTOM_WIDTH,
-   "Aangepaste weergave-breedte die wordt gebruikt als de Beeldverhouding is ingesteld op 'Aangepaste Beeldverhouding'."
+   "Handmatige Viewport Breedte"
    )
 MSG_HASH(
    MENU_ENUM_LABEL_VALUE_VIDEO_VIEWPORT_CUSTOM_HEIGHT,
-   "Aangepaste Beeldverhouding (Hoogte)"
+   "Handmatige Viewport Hoogte"
    )
 MSG_HASH(
-   MENU_ENUM_SUBLABEL_VIDEO_VIEWPORT_CUSTOM_HEIGHT,
-   "Aangepaste weergave-hoogte die wordt gebruikt als de Beeldverhouding is ingesteld op 'Aangepaste Beeldverhouding'."
-   )
-
-/* Settings > Video > HDR */
-
-MSG_HASH(
-   MENU_ENUM_LABEL_VALUE_VIDEO_HDR_ENABLE,
-   "HDR inschakelen"
-   )
-MSG_HASH(
-   MENU_ENUM_SUBLABEL_VIDEO_HDR_ENABLE,
-   "HDR inschakelen als het scherm dit ondersteunt."
-   )
-MSG_HASH(
-   MENU_ENUM_SUBLABEL_VIDEO_HDR_MAX_NITS,
-   "Stel de piekluminatie in (in cd/m2) die uw scherm kan tonen. Zie RTings voor de piekhoogte van uw display."
-   )
-MSG_HASH(
-   MENU_ENUM_LABEL_VALUE_VIDEO_HDR_PAPER_WHITE_NITS,
-   "Papier-wit-luminatie"
-   )
-MSG_HASH(
-   MENU_ENUM_SUBLABEL_VIDEO_HDR_PAPER_WHITE_NITS,
-   "Stel de luminantie in waarbij papierwit moet zijn, d.w.z. leesbare tekst of luminantie bovenaan het SDR-bereik (Standard Dynamic Range). Handig voor het aanpassen aan verschillende lichtomstandigheden in uw omgeving."
-   )
-MSG_HASH(
-   MENU_ENUM_SUBLABEL_VIDEO_HDR_CONTRAST,
-   "Gamma-/contrastregeling voor HDR. Neemt de kleuren en vergroot het algemene bereik tussen de helderste delen en de donkerste delen van het beeld. Hoe hoger het HDR-contrast is, hoe groter dit verschil wordt, terwijl hoe lager het contrast is, hoe vager het beeld wordt. Het helpt gebruikers de afbeelding naar hun wens af te stemmen en wat volgens hen het beste op hun scherm wordt weergegeven."
-   )
-MSG_HASH(
-   MENU_ENUM_SUBLABEL_VIDEO_HDR_EXPAND_GAMUT,
-   "Als de kleurenruimte wordt naar lineaire-ruimte geconverteerd, besluit dan of we een uitgebreid kleurenspectrum moeten gebruiken om naar HDR10 te gaan."
+   MENU_ENUM_LABEL_VALUE_VIDEO_CROP_OVERSCAN,
+   "Overscan Afsnijden (Herladen Vereist)"
    )
 
 /* Settings > Video > Synchronization */
 
 MSG_HASH(
    MENU_ENUM_LABEL_VALUE_VIDEO_VSYNC,
-   "Verticale synchronisatie (Vsync)"
-   )
-MSG_HASH(
-   MENU_ENUM_LABEL_VALUE_VIDEO_SWAP_INTERVAL_AUTO,
-   "Automatisch"
-   )
-MSG_HASH(
-   MENU_ENUM_LABEL_VALUE_VIDEO_ADAPTIVE_VSYNC,
-   "Adaptieve VSync"
-   )
-MSG_HASH(
-   MENU_ENUM_LABEL_VALUE_VIDEO_FRAME_DELAY,
-   "Frame Vertraging"
-   )
-MSG_HASH(
-   MENU_ENUM_LABEL_VALUE_VIDEO_FRAME_DELAY_AUTO,
-   "Automatisch Frame-vertraging"
-   )
-MSG_HASH(
-   MENU_ENUM_SUBLABEL_VIDEO_FRAME_DELAY_AUTO,
-   "Verlaag de effectieve 'Frame-vertraging' tijdelijk om toekomstige framedalen te voorkomen. Beginpunt is half-framesneltijd wanneer 'Frame-vertraging' 0 is."
+   "Verticale Sync (Vsync)"
    )
 MSG_HASH(
    MENU_ENUM_LABEL_VALUE_VIDEO_HARD_SYNC,
    "Harde GPU Synchronisatie"
    )
-MSG_HASH(
-   MENU_ENUM_SUBLABEL_VIDEO_HARD_SYNC,
-   "Hard-synchronisatie van de CPU en GPU. Vermindert latentie ten koste van prestaties."
-   )
-MSG_HASH(
-   MENU_ENUM_LABEL_VALUE_VIDEO_HARD_SYNC_FRAMES,
-   "Harde GPU Sync Frames"
-   )
-MSG_HASH(
-   MENU_ENUM_LABEL_VALUE_VRR_RUNLOOP_ENABLE,
-   "Synchroniseer met Exacte Content Framerate (G-Sync, FreeSync)"
-   )
-MSG_HASH(
-   MENU_ENUM_SUBLABEL_VRR_RUNLOOP_ENABLE,
-   "Geen afwijking van de core gevraagde timing. Gebruik voor schermen met Variabele Verversingsfrequentie (G-Sync, FreeSync, HDMI 2.1 VRR)."
-   )
 
 /* Settings > Audio */
 
 MSG_HASH(
-   MENU_ENUM_LABEL_VALUE_AUDIO_OUTPUT_SETTINGS,
-   "Uitvoer"
-   )
-MSG_HASH(
-   MENU_ENUM_SUBLABEL_AUDIO_OUTPUT_SETTINGS,
-   "Instellingen voor audio-uitvoer wijzigen."
-   )
-MSG_HASH(
-   MENU_ENUM_SUBLABEL_AUDIO_RESAMPLER_SETTINGS,
-   "Instellingen voor audio-resampler wijzigen."
-   )
-MSG_HASH(
    MENU_ENUM_LABEL_VALUE_AUDIO_SYNCHRONIZATION_SETTINGS,
    "Audio Synchronizatie"
-   )
-MSG_HASH(
-   MENU_ENUM_SUBLABEL_AUDIO_SYNCHRONIZATION_SETTINGS,
-   "Audio-synchronisatie instellingen wijzigen."
    )
 MSG_HASH(
    MENU_ENUM_SUBLABEL_MIDI_SETTINGS,
@@ -1880,10 +834,6 @@ MSG_HASH(
    "Mixer Instellingen"
    )
 MSG_HASH(
-   MENU_ENUM_SUBLABEL_AUDIO_MIXER_SETTINGS,
-   "Instellingen voor de audio-mixer wijzigen."
-   )
-MSG_HASH(
    MENU_ENUM_LABEL_VALUE_MENU_SOUNDS,
    "Menu Geluiden"
    )
@@ -1892,24 +842,8 @@ MSG_HASH(
    "Geluid uitzetten"
    )
 MSG_HASH(
-   MENU_ENUM_LABEL_VALUE_AUDIO_MIXER_MUTE,
-   "Mixer Dempen"
-   )
-MSG_HASH(
-   MENU_ENUM_LABEL_VALUE_AUDIO_FASTFORWARD_MUTE,
-   "Dempen bij Vooruitspoelen"
-   )
-MSG_HASH(
-   MENU_ENUM_SUBLABEL_AUDIO_FASTFORWARD_MUTE,
-   "Audio automatisch dempen bij gebruik van Vooruitspoelen."
-   )
-MSG_HASH(
    MENU_ENUM_LABEL_VALUE_AUDIO_VOLUME,
    "Audio Uitgangsniveau (dB)"
-   )
-MSG_HASH(
-   MENU_ENUM_SUBLABEL_AUDIO_VOLUME,
-   "Audiovolume (in dB). 0 dB is normaal volume en er wordt geen versterking toegepast."
    )
 MSG_HASH(
    MENU_ENUM_LABEL_VALUE_AUDIO_MIXER_VOLUME,
@@ -1924,32 +858,16 @@ MSG_HASH(
    "Audio DSP Plugin"
    )
 MSG_HASH(
-   MENU_ENUM_SUBLABEL_AUDIO_DSP_PLUGIN,
-   "Audio DSP-plug-in die audio verwerkt voordat het naar het stuurprogramma wordt verzonden."
-   )
-MSG_HASH(
    MENU_ENUM_LABEL_VALUE_AUDIO_WASAPI_EXCLUSIVE_MODE,
    "WASAPI Exclusieve mode"
-   )
-MSG_HASH(
-   MENU_ENUM_SUBLABEL_AUDIO_WASAPI_EXCLUSIVE_MODE,
-   "Geef het WASAPI-stuurprogramma de exclusieve controle over het audioapparaat. Indien uitgeschakeld, gebruikt het in plaats daarvan de gedeelde modus."
    )
 MSG_HASH(
    MENU_ENUM_LABEL_VALUE_AUDIO_WASAPI_FLOAT_FORMAT,
    "WASAPI Float formaat"
    )
 MSG_HASH(
-   MENU_ENUM_SUBLABEL_AUDIO_WASAPI_FLOAT_FORMAT,
-   "Gebruik float formaat voor de WASAPI-stuurprogramma, indien ondersteund door uw audioapparaat."
-   )
-MSG_HASH(
    MENU_ENUM_LABEL_VALUE_AUDIO_WASAPI_SH_BUFFER_LENGTH,
    "WASAPI Gedeelde bufferlengte"
-   )
-MSG_HASH(
-   MENU_ENUM_SUBLABEL_AUDIO_WASAPI_SH_BUFFER_LENGTH,
-   "De tussenliggende bufferlengte (in frames) bij gebruik van de WASAPI-stuurprogramma in de gedeelde modus."
    )
 
 /* Settings > Audio > Output */
@@ -1963,16 +881,8 @@ MSG_HASH(
    "Audio Apparaat"
    )
 MSG_HASH(
-   MENU_ENUM_SUBLABEL_AUDIO_DEVICE,
-   "Overschrijf het standaard audioapparaat dat het audiostuurprogramma gebruikt. Dit is afhankelijk van de stuurprogramma."
-   )
-MSG_HASH(
    MENU_ENUM_LABEL_VALUE_AUDIO_LATENCY,
    "Audio Latentie (ms)"
-   )
-MSG_HASH(
-   MENU_ENUM_SUBLABEL_AUDIO_LATENCY,
-   "Gewenste audio-vertraging in milliseconden. Wordt mogelijk niet gehonoreerd als het audiostuurprogramma geen bepaalde vertraging kan bieden."
    )
 
 /* Settings > Audio > Resampler */
@@ -1984,10 +894,6 @@ MSG_HASH(
 MSG_HASH(
    MENU_ENUM_LABEL_VALUE_AUDIO_OUTPUT_RATE,
    "Audio Uitvoer Frequentie (Hz)"
-   )
-MSG_HASH(
-   MENU_ENUM_SUBLABEL_AUDIO_OUTPUT_RATE,
-   "Samplefrequentie audio-uitvoer."
    )
 
 /* Settings > Audio > Synchronization */
@@ -2008,32 +914,12 @@ MSG_HASH(
    MENU_ENUM_LABEL_VALUE_AUDIO_RATE_CONTROL_DELTA,
    "Dynamische Audio Rate Control"
    )
-MSG_HASH(
-   MENU_ENUM_SUBLABEL_AUDIO_RATE_CONTROL_DELTA,
-   "Helpt bij het synchroniseren van onvolkomenheden in timing bij het synchroniseren van audio en video. Houd er rekening mee dat, indien uitgeschakeld, een goede synchronisatie bijna onmogelijk te verkrijgen is."
-   )
 
 /* Settings > Audio > MIDI */
 
 MSG_HASH(
    MENU_ENUM_LABEL_VALUE_MIDI_INPUT,
    "Invoer"
-   )
-MSG_HASH(
-   MENU_ENUM_SUBLABEL_MIDI_INPUT,
-   "Selecteer het invoerapparaat."
-   )
-MSG_HASH(
-   MENU_ENUM_LABEL_VALUE_MIDI_OUTPUT,
-   "Uitvoer"
-   )
-MSG_HASH(
-   MENU_ENUM_SUBLABEL_MIDI_OUTPUT,
-   "Selecteer het uitvoerapparaat."
-   )
-MSG_HASH(
-   MENU_ENUM_SUBLABEL_MIDI_VOLUME,
-   "Stel het uitvoervolume in (%)."
    )
 
 /* Settings > Audio > Mixer Settings > Mixer Stream */
@@ -2043,64 +929,20 @@ MSG_HASH(
    "Afspelen"
    )
 MSG_HASH(
-   MENU_ENUM_SUBLABEL_MIXER_ACTION_PLAY,
-   "Start het afspelen van de audiostream. Eenmaal voltooid, wordt de huidige audiostream uit het geheugen verwijderd."
-   )
-MSG_HASH(
    MENU_ENUM_LABEL_VALUE_MIXER_ACTION_PLAY_LOOPED,
    "Afspelen (Loop)"
-   )
-MSG_HASH(
-   MENU_ENUM_SUBLABEL_MIXER_ACTION_PLAY_LOOPED,
-   "Start het afspelen van de audiostream. Eenmaal voltooid, zal het vanaf het begin een lus maken en de track opnieuw afspelen."
    )
 MSG_HASH(
    MENU_ENUM_LABEL_VALUE_MIXER_ACTION_PLAY_SEQUENTIAL,
    "Afspelen (Sequentieel)"
    )
 MSG_HASH(
-   MENU_ENUM_SUBLABEL_MIXER_ACTION_PLAY_SEQUENTIAL,
-   "Start het afspelen van de audiostream. Eenmaal voltooid, springt het in volgorde naar de volgende audiostream en herhaalt dit gedrag. Handig als afspeelmodus voor albums."
-   )
-MSG_HASH(
-   MENU_ENUM_LABEL_VALUE_MIXER_ACTION_STOP,
-   "Stoppen"
-   )
-MSG_HASH(
    MENU_ENUM_LABEL_VALUE_MIXER_ACTION_REMOVE,
    "Verwijderen"
-   )
-MSG_HASH(
-   MENU_ENUM_SUBLABEL_MIXER_ACTION_REMOVE,
-   "Dit stopt het afspelen van de audiostream en verwijdert deze volledig uit het geheugen."
-   )
-MSG_HASH(
-   MENU_ENUM_SUBLABEL_MIXER_ACTION_VOLUME,
-   "Pas het volume van de audiostream aan."
    )
 
 /* Settings > Audio > Menu Sounds */
 
-MSG_HASH(
-   MENU_ENUM_SUBLABEL_AUDIO_ENABLE_MENU,
-   "Speel gelijktijdige audiostreams af, zelfs in het menu."
-   )
-MSG_HASH(
-   MENU_ENUM_LABEL_VALUE_MENU_SOUND_OK,
-   "Activeer 'OK' Geluid"
-   )
-MSG_HASH(
-   MENU_ENUM_LABEL_VALUE_MENU_SOUND_CANCEL,
-   "Activeer 'Annuleren' Geluid"
-   )
-MSG_HASH(
-   MENU_ENUM_LABEL_VALUE_MENU_SOUND_NOTICE,
-   "Activeer 'Notificatie' Geluid"
-   )
-MSG_HASH(
-   MENU_ENUM_LABEL_VALUE_MENU_SOUND_BGM,
-   "Activeer 'BGM' Geluid"
-   )
 
 /* Settings > Input */
 
@@ -2114,323 +956,48 @@ MSG_HASH(
    )
 MSG_HASH(
    MENU_ENUM_LABEL_VALUE_INPUT_POLL_TYPE_BEHAVIOR,
-   "Polling-gedrag"
-   )
-MSG_HASH(
-   MENU_ENUM_SUBLABEL_INPUT_POLL_TYPE_BEHAVIOR,
-   "Beïnvloed hoe invoer-polling binnen RetroArch wordt gedaan. Als u deze instelt op 'Vroeg' of 'Laat', kan dit leiden tot minder latentie, afhankelijk van uw configuratie."
+   "Poll Type Gedrag"
    )
 MSG_HASH(
    MENU_ENUM_LABEL_VALUE_INPUT_REMAP_BINDS_ENABLE,
-   "Remap de Besturingsemlementen voor Deze Core"
+   "Remap Binds Activeren"
    )
 MSG_HASH(
    MENU_ENUM_LABEL_VALUE_INPUT_AUTODETECT_ENABLE,
    "Autoconfiguratie Activeren"
    )
 MSG_HASH(
-   MENU_ENUM_SUBLABEL_INPUT_AUTODETECT_ENABLE,
-   "Automatisch controllers configureren die een profiel, Plug-and-Play stijl hebben."
-   )
-#if defined(HAVE_DINPUT) || defined(HAVE_WINRAWINPUT)
-#endif
-MSG_HASH(
-   MENU_ENUM_LABEL_VALUE_INPUT_SENSORS_ENABLE,
-   "Hulpsensor-ingang"
-   )
-MSG_HASH(
-   MENU_ENUM_LABEL_VALUE_INPUT_AUTO_MOUSE_GRAB,
-   "Automatische Muisgrijp"
-   )
-MSG_HASH(
-   MENU_ENUM_SUBLABEL_INPUT_AUTO_MOUSE_GRAB,
-   "Muisgrijp inschakelen bij applicatie-focus."
-   )
-MSG_HASH(
-   MENU_ENUM_LABEL_VALUE_INPUT_AUTO_GAME_FOCUS_OFF,
-   "UIT"
-   )
-MSG_HASH(
-   MENU_ENUM_LABEL_VALUE_INPUT_AUTO_GAME_FOCUS_ON,
-   "AAN"
-   )
-MSG_HASH(
-   MENU_ENUM_LABEL_VALUE_INPUT_BUTTON_AXIS_THRESHOLD,
-   "Invoerknop Axis Drempel"
-   )
-MSG_HASH(
-   MENU_ENUM_SUBLABEL_INPUT_BUTTON_AXIS_THRESHOLD,
-   "Hoe ver een as moet worden gekanteld om te resulteren in een druk op de knop bij het gebruik van 'Analoog tot Digitaal'."
-   )
-MSG_HASH(
-   MENU_ENUM_LABEL_VALUE_INPUT_ANALOG_DEADZONE,
-   "Analoge Deadzone"
-   )
-MSG_HASH(
-   MENU_ENUM_SUBLABEL_INPUT_ANALOG_DEADZONE,
-   "Analoge stick bewegingen onder de deadzone waarde negeren."
-   )
-MSG_HASH(
-   MENU_ENUM_LABEL_VALUE_INPUT_ANALOG_SENSITIVITY,
-   "Analoge Gevoeligheid"
-   )
-MSG_HASH(
-   MENU_ENUM_SUBLABEL_INPUT_ANALOG_SENSITIVITY,
-   "Pas de gevoeligheid van analoge sticks aan."
-   )
-MSG_HASH(
-   MENU_ENUM_LABEL_VALUE_INPUT_BIND_TIMEOUT,
-   "Binding-Timeout"
-   )
-MSG_HASH(
-   MENU_ENUM_SUBLABEL_INPUT_BIND_TIMEOUT,
-   "Aantal seconden om te wachten tot je doorgaat naar de volgende binding."
-   )
-MSG_HASH(
-   MENU_ENUM_LABEL_VALUE_INPUT_BIND_HOLD,
-   "Binding-Houd"
-   )
-MSG_HASH(
-   MENU_ENUM_SUBLABEL_INPUT_BIND_HOLD,
-   "Aantal seconden om een invoer vast te houden om deze te binden."
-   )
-MSG_HASH(
-   MENU_ENUM_LABEL_VALUE_INPUT_TURBO_PERIOD,
-   "Turbo Periode"
-   )
-MSG_HASH(
-   MENU_ENUM_LABEL_VALUE_INPUT_TURBO_MODE,
-   "Turbo Modus"
-   )
-MSG_HASH(
-   MENU_ENUM_LABEL_VALUE_INPUT_TURBO_DEFAULT_BUTTON,
-   "Turbo Standaardknop"
-   )
-MSG_HASH(
-   MENU_ENUM_SUBLABEL_INPUT_TURBO_DEFAULT_BUTTON,
-   "Standaard actieve knop voor Turbo Modus 'Enkele Knop'."
-   )
-MSG_HASH(
-   MENU_ENUM_LABEL_VALUE_INPUT_TURBO_FIRE_SETTINGS,
-   "Turbo-vuur"
-   )
-MSG_HASH(
-   MENU_ENUM_SUBLABEL_INPUT_TURBO_FIRE_SETTINGS,
-   "Wijzig de turbo-vuur instellingen."
-   )
-MSG_HASH(
-   MENU_ENUM_LABEL_VALUE_INPUT_HAPTIC_FEEDBACK_SETTINGS,
-   "Haptische Feedback/Vibratie (Trilsignaal)"
-   )
-MSG_HASH(
-   MENU_ENUM_SUBLABEL_INPUT_HAPTIC_FEEDBACK_SETTINGS,
-   "Haptische feedback en trillingsinstellingen wijzigen."
-   )
-MSG_HASH(
-   MENU_ENUM_LABEL_VALUE_INPUT_MENU_SETTINGS,
-   "Menubesturing"
-   )
-MSG_HASH(
-   MENU_ENUM_SUBLABEL_INPUT_MENU_SETTINGS,
-   "Wijzig de instellingen voor menubediening."
-   )
-MSG_HASH(
    MENU_ENUM_LABEL_VALUE_INPUT_HOTKEY_BINDS,
-   "Sneltoetsen"
+   "Invoer Hotkey Binds"
    )
 MSG_HASH(
    MENU_ENUM_LABEL_VALUE_INPUT_USER_BINDS,
-   "Poort %u Besturingselementen"
+   "Poort %u Binds"
    )
 
 /* Settings > Input > Haptic Feedback/Vibration */
 
-MSG_HASH(
-   MENU_ENUM_LABEL_VALUE_VIBRATE_ON_KEYPRESS,
-   "Trillen bij indrukken knop"
-   )
-MSG_HASH(
-   MENU_ENUM_LABEL_VALUE_ENABLE_DEVICE_VIBRATION,
-   "Toestel trillen inschakelen (voor ondersteunde Cores)"
-   )
-MSG_HASH(
-   MENU_ENUM_SUBLABEL_INPUT_RUMBLE_GAIN,
-   "Specificeer de omvang van de haptische feedbackeffecten."
-   )
 
 /* Settings > Input > Menu Controls */
 
-MSG_HASH(
-   MENU_ENUM_LABEL_VALUE_INPUT_UNIFIED_MENU_CONTROLS,
-   "Uniforme Menubesturing"
-   )
-MSG_HASH(
-   MENU_ENUM_SUBLABEL_INPUT_UNIFIED_MENU_CONTROLS,
-   "Gebruik dezelfde besturingselementen voor zowel het menu als het spel. Geldt voor het toetsenbord."
-   )
-MSG_HASH(
-   MENU_ENUM_LABEL_VALUE_MENU_INPUT_SWAP_OK_CANCEL,
-   "Menu Wissel OK en Annuleer Knoppen"
-   )
-MSG_HASH(
-   MENU_ENUM_SUBLABEL_MENU_INPUT_SWAP_OK_CANCEL,
-   "Verwissel knoppen voor OK/Annuleren. Uitgeschakeld is de Japanse knoporiëntatie, ingeschakeld is de westerse oriëntatie."
-   )
-MSG_HASH(
-   MENU_ENUM_LABEL_VALUE_INPUT_ALL_USERS_CONTROL_MENU,
-   "Alle Gebruikers kunnen de Menu Bedienen"
-   )
 
-
-/* Settings > Input > Hotkeys */
+/* Settings > Input > Hotkey Binds */
 
 MSG_HASH(
-   MENU_ENUM_LABEL_VALUE_QUIT_PRESS_TWICE,
-   "Afsluiten Bevestigen"
+   MENU_ENUM_LABEL_VALUE_INPUT_MENU_ENUM_TOGGLE_GAMEPAD_COMBO,
+   "Menu Schakelaar Gamepad Combo"
    )
 MSG_HASH(
    MENU_ENUM_SUBLABEL_INPUT_MENU_ENUM_TOGGLE_GAMEPAD_COMBO,
-   "Knopcombinatie om het menu te openen."
-   )
-MSG_HASH(
-   MENU_ENUM_LABEL_VALUE_INPUT_QUIT_GAMEPAD_COMBO,
-   "Stop de Controller Combo"
-   )
-MSG_HASH(
-   MENU_ENUM_SUBLABEL_INPUT_QUIT_GAMEPAD_COMBO,
-   "Knopcombinatie van controller om RetroArch af te sluiten."
-   )
-MSG_HASH(
-   MENU_ENUM_LABEL_VALUE_INPUT_HOTKEY_BLOCK_DELAY,
-   "Sneltoets Vertraging Inschakelen (Frames)"
-   )
-MSG_HASH(
-   MENU_ENUM_LABEL_VALUE_INPUT_META_FAST_FORWARD_KEY,
-   "Vooruitspoelen (in-/uitschakelen)"
-   )
-MSG_HASH(
-   MENU_ENUM_SUBLABEL_INPUT_META_FAST_FORWARD_KEY,
-   "Schakelt tussen snel-vooruit en normale snelheid."
-   )
-MSG_HASH(
-   MENU_ENUM_LABEL_VALUE_INPUT_META_FAST_FORWARD_HOLD_KEY,
-   "Vooruitspoelen (Vasthouden)"
-   )
-MSG_HASH(
-   MENU_ENUM_SUBLABEL_INPUT_META_FAST_FORWARD_HOLD_KEY,
-   "Maakt vooruitspoelen mogelijk wanneer het knop is vastgehouden. Inhoud wordt op normale snelheid uitgevoerd wanneer de sleutel wordt losgelaten."
-   )
-MSG_HASH(
-   MENU_ENUM_LABEL_VALUE_INPUT_META_SLOWMOTION_KEY,
-   "Slow-Motion (in-/uitschakelen)"
-   )
-MSG_HASH(
-   MENU_ENUM_SUBLABEL_INPUT_META_SLOWMOTION_KEY,
-   "Schakelt tussen slow-motion en normale snelheid."
-   )
-MSG_HASH(
-   MENU_ENUM_LABEL_VALUE_INPUT_META_SLOWMOTION_HOLD_KEY,
-   "Slow-Motion (Vasthouden)"
-   )
-MSG_HASH(
-   MENU_ENUM_SUBLABEL_INPUT_META_SLOWMOTION_HOLD_KEY,
-   "Maakt slow-motion mogelijk wanneer het knop is vastgehouden. Inhoud wordt op normale snelheid uitgevoerd wanneer de sleutel wordt losgelaten."
-   )
-MSG_HASH(
-   MENU_ENUM_LABEL_VALUE_INPUT_META_VRR_RUNLOOP_TOGGLE,
-   "Synchroniseren met de Exacte Inhoudsframerate (in-/uitschakelen)"
-   )
-MSG_HASH(
-   MENU_ENUM_SUBLABEL_INPUT_META_VRR_RUNLOOP_TOGGLE,
-   "Schakelt synchronisatie naar exacte inhoudsframerate in/uit."
-   )
-MSG_HASH(
-   MENU_ENUM_LABEL_VALUE_INPUT_META_LOAD_STATE_KEY,
-   "Status Laden"
-   )
-MSG_HASH(
-   MENU_ENUM_SUBLABEL_INPUT_META_LOAD_STATE_KEY,
-   "Laadt een opgeslagen staat van het huidig geselecteerde slot."
-   )
-MSG_HASH(
-   MENU_ENUM_LABEL_VALUE_INPUT_META_SAVE_STATE_KEY,
-   "Sla de Staat op"
-   )
-MSG_HASH(
-   MENU_ENUM_SUBLABEL_INPUT_META_SAVE_STATE_KEY,
-   "Slaat een staat op in het huidig geselecteerde slot."
-   )
-MSG_HASH(
-   MENU_ENUM_LABEL_VALUE_INPUT_META_FULLSCREEN_TOGGLE_KEY,
-   "Volledig Scherm (in-/uitschakelen)"
-   )
-MSG_HASH(
-   MENU_ENUM_SUBLABEL_INPUT_META_FULLSCREEN_TOGGLE_KEY,
-   "Schakelt tussen volledig scherm en vensterweergave-modi."
-   )
-MSG_HASH(
-   MENU_ENUM_LABEL_VALUE_INPUT_META_CLOSE_CONTENT_KEY,
-   "Sluit Inhoud"
-   )
-MSG_HASH(
-   MENU_ENUM_SUBLABEL_INPUT_META_CLOSE_CONTENT_KEY,
-   "Sluit de huidige inhoud af. Eventuele niet-opgeslagen wijzigingen gaan mogelijk verloren."
+   "Gamepad knoppencombination to toggle menu."
    )
 MSG_HASH(
    MENU_ENUM_LABEL_VALUE_INPUT_META_QUIT_KEY,
    "Sluit RetroArch"
    )
 MSG_HASH(
-   MENU_ENUM_SUBLABEL_INPUT_META_QUIT_KEY,
-   "Sluit RetroArch af, zodat alle opgeslagen gegevens en configuratiebestanden naar de schijf worden gespoeld."
-   )
-MSG_HASH(
-   MENU_ENUM_LABEL_VALUE_INPUT_META_STATE_SLOT_PLUS,
-   "Status Opslaan Slot +"
-   )
-MSG_HASH(
-   MENU_ENUM_SUBLABEL_INPUT_META_STATE_SLOT_PLUS,
-   "Verhoogt de momenteel geselecteerde spaarstaat slot index."
-   )
-MSG_HASH(
-   MENU_ENUM_LABEL_VALUE_INPUT_META_STATE_SLOT_MINUS,
-   "Status Opslaan Slot -"
-   )
-MSG_HASH(
-   MENU_ENUM_SUBLABEL_INPUT_META_STATE_SLOT_MINUS,
-   "Vermindert de momenteel geselecteerde spaarstaat slot index."
-   )
-MSG_HASH(
    MENU_ENUM_LABEL_VALUE_INPUT_META_REWIND,
    "Terugspoelen"
-   )
-MSG_HASH(
-   MENU_ENUM_LABEL_VALUE_INPUT_META_BSV_RECORD_TOGGLE,
-   "Neem de Ingedruktte Knoppen op (in-/uitschakelen)"
-   )
-MSG_HASH(
-   MENU_ENUM_SUBLABEL_INPUT_META_BSV_RECORD_TOGGLE,
-   "Schakelt de opname van gameplay-invoers in de .bsv formaat in/uit."
-   )
-MSG_HASH(
-   MENU_ENUM_LABEL_VALUE_INPUT_META_PAUSE_TOGGLE,
-   "Pauze (in-/uitschakelen)"
-   )
-MSG_HASH(
-   MENU_ENUM_SUBLABEL_INPUT_META_PAUSE_TOGGLE,
-   "Schakelt om inhoud uit te voeren tussen onderbroken en niet-onderbroken staten."
-   )
-MSG_HASH(
-   MENU_ENUM_LABEL_VALUE_INPUT_META_FRAMEADVANCE,
-   "Frame-vooruitgang"
-   )
-MSG_HASH(
-   MENU_ENUM_LABEL_VALUE_INPUT_META_RESET,
-   "Spel Opnieuw Instellen"
-   )
-MSG_HASH(
-   MENU_ENUM_SUBLABEL_INPUT_META_RESET,
-   "Herstart de huidige inhoud vanaf het begin."
    )
 MSG_HASH(
    MENU_ENUM_LABEL_VALUE_INPUT_META_SHADER_NEXT,
@@ -2441,227 +1008,15 @@ MSG_HASH(
    "Vorige shader"
    )
 MSG_HASH(
-   MENU_ENUM_LABEL_VALUE_INPUT_META_CHEAT_INDEX_PLUS,
-   "Volgende Cheat Index"
-   )
-MSG_HASH(
-   MENU_ENUM_SUBLABEL_INPUT_META_CHEAT_INDEX_PLUS,
-   "Verhoogt de momenteel geselecteerde cheat index."
-   )
-MSG_HASH(
-   MENU_ENUM_LABEL_VALUE_INPUT_META_CHEAT_INDEX_MINUS,
-   "Vorige Cheat Index"
-   )
-MSG_HASH(
-   MENU_ENUM_SUBLABEL_INPUT_META_CHEAT_INDEX_MINUS,
-   "Vermindert de momenteel geselecteerde cheat index."
-   )
-MSG_HASH(
-   MENU_ENUM_LABEL_VALUE_INPUT_META_CHEAT_TOGGLE,
-   "Cheats (in-/uitschakelen)"
-   )
-MSG_HASH(
-   MENU_ENUM_SUBLABEL_INPUT_META_CHEAT_TOGGLE,
-   "Schakelt de huidige geselecteerde cheat in/uit."
-   )
-MSG_HASH(
    MENU_ENUM_LABEL_VALUE_INPUT_META_SCREENSHOT,
    "Schermafdruk maken"
    )
-MSG_HASH(
-   MENU_ENUM_SUBLABEL_INPUT_META_SCREENSHOT,
-   "Maakt een afbeelding van de huidige inhoud."
-   )
-MSG_HASH(
-   MENU_ENUM_LABEL_VALUE_INPUT_META_MUTE,
-   "Audio Dempen (in-/uitschakelen)"
-   )
-MSG_HASH(
-   MENU_ENUM_SUBLABEL_INPUT_META_MUTE,
-   "Schakelt de audio-uitvoer in/uit."
-   )
-MSG_HASH(
-   MENU_ENUM_LABEL_VALUE_INPUT_META_OSK,
-   "Schermtoetsenbord (in-/uitschakelen)"
-   )
-MSG_HASH(
-   MENU_ENUM_SUBLABEL_INPUT_META_OSK,
-   "Schakelt het schermtoetsenbord in/uit."
-   )
-MSG_HASH(
-   MENU_ENUM_LABEL_VALUE_INPUT_META_FPS_TOGGLE,
-   "Toon de FPS (in-/uitschakelen)"
-   )
-MSG_HASH(
-   MENU_ENUM_SUBLABEL_INPUT_META_FPS_TOGGLE,
-   "Schakelt de 'frames per seconde' statusindicator in/uit."
-   )
-MSG_HASH(
-   MENU_ENUM_LABEL_VALUE_INPUT_META_SEND_DEBUG_INFO,
-   "Stuur Foutopsporings-info (Debug Info)"
-   )
-MSG_HASH(
-   MENU_ENUM_SUBLABEL_INPUT_META_SEND_DEBUG_INFO,
-   "Stuurt diagnostische informatie over uw apparaat en RetroArch-configuratie naar onze servers voor analyse."
-   )
-MSG_HASH(
-   MENU_ENUM_LABEL_VALUE_INPUT_META_NETPLAY_HOST_TOGGLE,
-   "Netplay Hosting (in-/uitschakelen)"
-   )
-MSG_HASH(
-   MENU_ENUM_SUBLABEL_INPUT_META_NETPLAY_HOST_TOGGLE,
-   "Schakelt netplay-hosting in/uit."
-   )
-MSG_HASH(
-   MENU_ENUM_LABEL_VALUE_INPUT_META_NETPLAY_GAME_WATCH,
-   "Netplay Spel/Toeschouwer-Modus (in-/uitschakelen)"
-   )
-MSG_HASH(
-   MENU_ENUM_SUBLABEL_INPUT_META_NETPLAY_GAME_WATCH,
-   "Schakelt de huidige netplay-sessie tussen de 'play' en 'spectate' modi."
-   )
-MSG_HASH(
-   MENU_ENUM_LABEL_VALUE_INPUT_META_ENABLE_HOTKEY,
-   "Sneltoets Inschakelen"
-   )
-MSG_HASH(
-   MENU_ENUM_LABEL_VALUE_INPUT_META_VOLUME_UP,
-   "Volume Omhoog"
-   )
-MSG_HASH(
-   MENU_ENUM_SUBLABEL_INPUT_META_VOLUME_UP,
-   "Verhoogt het uitvoervolume."
-   )
-MSG_HASH(
-   MENU_ENUM_LABEL_VALUE_INPUT_META_VOLUME_DOWN,
-   "Volume Omlaag"
-   )
-MSG_HASH(
-   MENU_ENUM_SUBLABEL_INPUT_META_VOLUME_DOWN,
-   "Verlaagt het uitvoervolume."
-   )
-MSG_HASH(
-   MENU_ENUM_LABEL_VALUE_INPUT_META_OVERLAY_NEXT,
-   "Volgende Overlay"
-   )
-MSG_HASH(
-   MENU_ENUM_SUBLABEL_INPUT_META_OVERLAY_NEXT,
-   "Schakelt over naar de volgende beschikbare lay-out van de momenteel actieve schermoverlay."
-   )
-MSG_HASH(
-   MENU_ENUM_LABEL_VALUE_INPUT_META_DISK_EJECT_TOGGLE,
-   "Schakel Disc Eject in/uit"
-   )
-MSG_HASH(
-   MENU_ENUM_SUBLABEL_INPUT_META_DISK_EJECT_TOGGLE,
-   "Als de virtuele schijflade is gesloten, wordt deze geopend en wordt de geladen schijf verwijderd. Anders voegt het de huidige geselecteerde schijf toe en sluit het lade."
-   )
-MSG_HASH(
-   MENU_ENUM_LABEL_VALUE_INPUT_META_DISK_NEXT,
-   "Volgende Schijf"
-   )
-MSG_HASH(
-   MENU_ENUM_LABEL_VALUE_INPUT_META_DISK_PREV,
-   "Vorige Schijf"
-   )
-MSG_HASH(
-   MENU_ENUM_LABEL_VALUE_INPUT_META_GRAB_MOUSE_TOGGLE,
-   "Grijp de Muis (in-/uitschakelen)"
-   )
-MSG_HASH(
-   MENU_ENUM_SUBLABEL_INPUT_META_GRAB_MOUSE_TOGGLE,
-   "Grijpt of laat de muis los. Wanneer het wordt gepakt, is de systeemcursor verborgen en beperkt tot het RetroArch-weergavevenster, waardoor de relatieve muisinvoer wordt verbeterd."
-   )
-MSG_HASH(
-   MENU_ENUM_LABEL_VALUE_INPUT_META_GAME_FOCUS_TOGGLE,
-   "Spel Focus (in-/uitschakelen)"
-   )
-MSG_HASH(
-   MENU_ENUM_SUBLABEL_INPUT_META_GAME_FOCUS_TOGGLE,
-   "Schakelt de 'Spel Focus'-modus in of uit. Wanneer de inhoud focus heeft, zijn sneltoetsen uitgeschakeld (volledige toetsenbordinvoer wordt doorgegeven aan de actieve core) en wordt de muis gegrepen."
-   )
-MSG_HASH(
-   MENU_ENUM_LABEL_VALUE_INPUT_META_UI_COMPANION_TOGGLE,
-   "Bureaublad Menu (in-/uitschakelen)"
-   )
-MSG_HASH(
-   MENU_ENUM_SUBLABEL_INPUT_META_UI_COMPANION_TOGGLE,
-   "Opent de Bijbehorende WIMP (Windows, Icons, Menus, Pointer) desktop-gebruikersinterface."
-   )
-MSG_HASH(
-   MENU_ENUM_LABEL_VALUE_INPUT_META_MENU_TOGGLE,
-   "Menu (in-/uitschakelen)"
-   )
-MSG_HASH(
-   MENU_ENUM_SUBLABEL_INPUT_META_MENU_TOGGLE,
-   "Schakelt de huidige weergave tussen het menu en de actieve inhoud."
-   )
-MSG_HASH(
-   MENU_ENUM_LABEL_VALUE_INPUT_META_RECORDING_TOGGLE,
-   "Opname (in-/uitschakelen)"
-   )
-MSG_HASH(
-   MENU_ENUM_SUBLABEL_INPUT_META_RECORDING_TOGGLE,
-   "Start/stopt de opname van de huidige sessie naar een lokaal videobestand."
-   )
-MSG_HASH(
-   MENU_ENUM_LABEL_VALUE_INPUT_META_STREAMING_TOGGLE,
-   "Streaming (in-/uitschakelen)"
-   )
-MSG_HASH(
-   MENU_ENUM_SUBLABEL_INPUT_META_STREAMING_TOGGLE,
-   "Start/stopt het streamen van de huidige sessie naar een online videoplatform."
-   )
-MSG_HASH(
-   MENU_ENUM_LABEL_VALUE_INPUT_META_RUNAHEAD_TOGGLE,
-   "Run-Ahead (in-/uitschakelen)"
-   )
-MSG_HASH(
-   MENU_ENUM_LABEL_VALUE_INPUT_META_AI_SERVICE,
-   "AI-Service"
-   )
 
-/* Settings > Input > Port # Controls */
+/* Settings > Input > Port # Binds */
 
-MSG_HASH(
-   MENU_ENUM_LABEL_VALUE_INPUT_DEVICE_TYPE,
-   "Apparaattype"
-   )
-MSG_HASH(
-   MENU_ENUM_LABEL_VALUE_INPUT_ADC_TYPE,
-   "Analoog naar Digitaal Type"
-   )
-MSG_HASH(
-   MENU_ENUM_SUBLABEL_INPUT_ADC_TYPE,
-   "Gebruik gespecificeerde analoge stick voor D-Pad invoer. Als de core native analoge ondersteuning heeft, wordt D-Pad toewijzing uitgeschakeld, tenzij een '(Geforceerd)'-optie is geselecteerd. Als D-Pad toewijzing wordt geforceerd, ontvangt de core geen analoge invoer van de opgegeven stick."
-   )
-MSG_HASH(
-   MENU_ENUM_LABEL_VALUE_INPUT_DEVICE_INDEX,
-   "Apparaatindex"
-   )
-MSG_HASH(
-   MENU_ENUM_LABEL_VALUE_INPUT_REMAP_PORT,
-   "Toegewezen Poort"
-   )
-MSG_HASH(
-   MENU_ENUM_SUBLABEL_INPUT_REMAP_PORT,
-   "Geeft aan welke 'core' poort (meestal het spelersnummer) invoer zal van de front-end controller poort %u ontvangen."
-   )
-MSG_HASH(
-   MENU_ENUM_LABEL_VALUE_INPUT_BIND_ALL,
-   "Stel Alle Bedieningselementen In"
-   )
-MSG_HASH(
-   MENU_ENUM_LABEL_VALUE_INPUT_BIND_DEFAULT_ALL,
-   "Reset naar Standaard-Besturingselementen"
-   )
 MSG_HASH(
    MENU_ENUM_LABEL_VALUE_INPUT_SAVE_AUTOCONFIG,
-   "Sla het Controllerprofiel Op"
-   )
-MSG_HASH(
-   MENU_ENUM_LABEL_VALUE_INPUT_MOUSE_INDEX,
-   "Muisindex"
+   "Autoconfig Opslaan"
    )
 MSG_HASH(
    MENU_ENUM_LABEL_VALUE_INPUT_JOYPAD_B,
@@ -2680,20 +1035,8 @@ MSG_HASH(
    "Start knop"
    )
 MSG_HASH(
-   MENU_ENUM_LABEL_VALUE_INPUT_JOYPAD_UP,
-   "Navigatiepad Omhoog"
-   )
-MSG_HASH(
-   MENU_ENUM_LABEL_VALUE_INPUT_JOYPAD_DOWN,
-   "Navigatiepad Omlaag"
-   )
-MSG_HASH(
-   MENU_ENUM_LABEL_VALUE_INPUT_JOYPAD_LEFT,
-   "Navigatiepad Links"
-   )
-MSG_HASH(
    MENU_ENUM_LABEL_VALUE_INPUT_JOYPAD_RIGHT,
-   "Navigatiepad Rechts"
+   "Rechter D-pad"
    )
 MSG_HASH(
    MENU_ENUM_LABEL_VALUE_INPUT_JOYPAD_A,
@@ -2727,125 +1070,9 @@ MSG_HASH(
    MENU_ENUM_LABEL_VALUE_INPUT_JOYPAD_R3,
    "R3 knop (thumb)"
    )
-MSG_HASH(
-   MENU_ENUM_LABEL_VALUE_INPUT_ANALOG_LEFT_X_PLUS,
-   "Linker Analoog X+ (Rechts)"
-   )
-MSG_HASH(
-   MENU_ENUM_LABEL_VALUE_INPUT_ANALOG_LEFT_X_MINUS,
-   "Linker Analoog X- (Links)"
-   )
-MSG_HASH(
-   MENU_ENUM_LABEL_VALUE_INPUT_ANALOG_LEFT_Y_PLUS,
-   "Linker Analoog Y+ (Omlaag)"
-   )
-MSG_HASH(
-   MENU_ENUM_LABEL_VALUE_INPUT_ANALOG_LEFT_Y_MINUS,
-   "Linker Analoog Y- (Omhoog)"
-   )
-MSG_HASH(
-   MENU_ENUM_LABEL_VALUE_INPUT_ANALOG_RIGHT_X_PLUS,
-   "Rechter Analoog X+ (Rechts)"
-   )
-MSG_HASH(
-   MENU_ENUM_LABEL_VALUE_INPUT_ANALOG_RIGHT_X_MINUS,
-   "Rechter Analoog X- (Links)"
-   )
-MSG_HASH(
-   MENU_ENUM_LABEL_VALUE_INPUT_ANALOG_RIGHT_Y_PLUS,
-   "Rechter Analoog Y+ (Omlaag)"
-   )
-MSG_HASH(
-   MENU_ENUM_LABEL_VALUE_INPUT_ANALOG_RIGHT_Y_MINUS,
-   "Rechter Analoog Y- (Omhoog)"
-   )
-MSG_HASH(
-   MENU_ENUM_LABEL_VALUE_INPUT_LIGHTGUN_TRIGGER,
-   "Wapen Trigger"
-   )
-MSG_HASH(
-   MENU_ENUM_LABEL_VALUE_INPUT_LIGHTGUN_RELOAD,
-   "Wapen Reload"
-   )
-MSG_HASH(
-   MENU_ENUM_LABEL_VALUE_INPUT_LIGHTGUN_AUX_A,
-   "Wapen Aux A"
-   )
-MSG_HASH(
-   MENU_ENUM_LABEL_VALUE_INPUT_LIGHTGUN_AUX_B,
-   "Wapen Aux B"
-   )
-MSG_HASH(
-   MENU_ENUM_LABEL_VALUE_INPUT_LIGHTGUN_AUX_C,
-   "Wapen Aux C"
-   )
-MSG_HASH(
-   MENU_ENUM_LABEL_VALUE_INPUT_LIGHTGUN_START,
-   "Wapen Start"
-   )
-MSG_HASH(
-   MENU_ENUM_LABEL_VALUE_INPUT_LIGHTGUN_SELECT,
-   "Wapen Selectie"
-   )
-MSG_HASH(
-   MENU_ENUM_LABEL_VALUE_INPUT_LIGHTGUN_DPAD_UP,
-   "Wapen D-Pad Omhoog"
-   )
-MSG_HASH(
-   MENU_ENUM_LABEL_VALUE_INPUT_LIGHTGUN_DPAD_DOWN,
-   "Wapen D-Pad Omlaag"
-   )
-MSG_HASH(
-   MENU_ENUM_LABEL_VALUE_INPUT_LIGHTGUN_DPAD_LEFT,
-   "Wapen D-Pad Links"
-   )
-MSG_HASH(
-   MENU_ENUM_LABEL_VALUE_INPUT_LIGHTGUN_DPAD_RIGHT,
-   "Wapen D-Pad Rechts"
-   )
 
 /* Settings > Latency */
 
-MSG_HASH(
-   MENU_ENUM_LABEL_VALUE_RUN_AHEAD_UNSUPPORTED,
-   "[Run-Ahead is Niet Beschikbaar]"
-   )
-MSG_HASH(
-   MENU_ENUM_SUBLABEL_RUN_AHEAD_UNSUPPORTED,
-   "De huidige core is onverenigbaar met run-ahead vanwege een gebrek aan deterministische slaagstaat-ondersteuning."
-   )
-MSG_HASH(
-   MENU_ENUM_LABEL_VALUE_RUN_AHEAD_ENABLED,
-   "Run-Ahead om de Vertraging te Verminderen"
-   )
-MSG_HASH(
-   MENU_ENUM_SUBLABEL_RUN_AHEAD_ENABLED,
-   "Voer core-logica één of meer frames vooruit en laad de staat terug om de waargenomen invoervertraging te verminderen."
-   )
-MSG_HASH(
-   MENU_ENUM_LABEL_VALUE_RUN_AHEAD_FRAMES,
-   "Aantal Frames om Vooruit te Lopen"
-   )
-MSG_HASH(
-   MENU_ENUM_SUBLABEL_RUN_AHEAD_FRAMES,
-   "Het aantal frames dat vooruit moet lopen. Veroorzaakt gameplay-problemen zoals jitter als het aantal lagframes in de game wordt overschreden."
-   )
-MSG_HASH(
-   MENU_ENUM_LABEL_VALUE_RUN_AHEAD_SECONDARY_INSTANCE,
-   "Tweede Instantie voor Run-Ahead gebruiken"
-   )
-MSG_HASH(
-   MENU_ENUM_SUBLABEL_RUN_AHEAD_SECONDARY_INSTANCE,
-   "Gebruik een tweede instantie van de RetroArch-core om vooruit te lopen. Voorkomt audioproblemen door laadstatus."
-   )
-MSG_HASH(
-   MENU_ENUM_LABEL_VALUE_RUN_AHEAD_HIDE_WARNINGS,
-   "Verberg Run-Ahead Waarschuwingen"
-   )
-MSG_HASH(
-   MENU_ENUM_SUBLABEL_RUN_AHEAD_HIDE_WARNINGS,
-   "Verberg het waarschuwingsbericht dat verschijnt bij het gebruik van Run-Ahead en de core ondersteunt geen spaarstaten."
-   )
 
 /* Settings > Core */
 
@@ -2854,101 +1081,31 @@ MSG_HASH(
    "Activeer Gedeelde Hardware Context"
    )
 MSG_HASH(
-   MENU_ENUM_LABEL_VALUE_DRIVER_SWITCH_ENABLE,
-   "Sta Cores toe om de Video-stuurprogramma te Wisselen"
-   )
-MSG_HASH(
-   MENU_ENUM_SUBLABEL_DRIVER_SWITCH_ENABLE,
-   "Sta cores toe om over te schakelen naar een ander video-stuurprogramma dan degene die momenteel is geladen."
-   )
-MSG_HASH(
    MENU_ENUM_LABEL_VALUE_DUMMY_ON_CORE_SHUTDOWN,
    "Dummy Laden Tijdens Afsluiten"
-   )
-MSG_HASH(
-   MENU_ENUM_SUBLABEL_DUMMY_ON_CORE_SHUTDOWN,
-   "Sommige cores hebben een afsluitfunctie, het laden van een dummy-kern voorkomt de afsluiting van RetroArch."
    )
 MSG_HASH(
    MENU_ENUM_LABEL_VALUE_CORE_SET_SUPPORTS_NO_CONTENT_ENABLE,
    "Automatisch core opstarten"
    )
 MSG_HASH(
-   MENU_ENUM_LABEL_VALUE_CHECK_FOR_MISSING_FIRMWARE,
-   "Controleer op Ontbrekende Firmware alvorens te Laden"
-   )
-MSG_HASH(
-   MENU_ENUM_SUBLABEL_CHECK_FOR_MISSING_FIRMWARE,
-   "Controleer of alle vereiste firmware aanwezig is voordat u probeert inhoud te laden."
-   )
-MSG_HASH(
-   MENU_ENUM_LABEL_VALUE_CORE_OPTION_CATEGORY_ENABLE,
-   "Core-optie Categorieën"
-   )
-MSG_HASH(
-   MENU_ENUM_SUBLABEL_CORE_OPTION_CATEGORY_ENABLE,
-   "Sta cores toe om huidige opties te presenteren op categorie-gebaseerde submenu's. LET OP: Core moet opnieuw worden geladen om wijzigingen toe te passen."
-   )
-#ifndef HAVE_DYNAMIC
-MSG_HASH(
-   MENU_ENUM_LABEL_VALUE_ALWAYS_RELOAD_CORE_ON_RUN_CONTENT,
-   "Herlaad de Core Altijd bij \"Inhoud Invoeren\""
-   )
-#endif
-MSG_HASH(
    MENU_ENUM_LABEL_VALUE_VIDEO_ALLOW_ROTATE,
    "Rotatie toestaan"
    )
-#ifdef HAVE_MIST
 
-MSG_HASH(
-   MENU_ENUM_SUBLABEL_CORE_MANAGER_STEAM_LIST,
-   "Installeer of verwijder cores die via Steam worden gedistribueerd."
-   )
-
-MSG_HASH(
-   MENU_ENUM_LABEL_VALUE_CORE_STEAM_INSTALL,
-   "Core Installeren"
-)
-
-MSG_HASH(
-   MENU_ENUM_LABEL_VALUE_CORE_STEAM_UNINSTALL,
-   "Core Verwijderen"
-)
-
-MSG_HASH(
-   MENU_ENUM_LABEL_VALUE_MENU_SHOW_CORE_MANAGER_STEAM,
-   "'Beheer cores' tonen"
-)
-MSG_HASH(
-   MENU_ENUM_SUBLABEL_MENU_SHOW_CORE_MANAGER_STEAM,
-   "Toon de 'Beheer cores' optie in het Hoofdmenu."
-)
-
-
-
-#endif
 /* Settings > Configuration */
 
 MSG_HASH(
-   MENU_ENUM_SUBLABEL_GAME_SPECIFIC_OPTIONS,
-   "Enable customized core options by default at startup."
+   MENU_ENUM_LABEL_VALUE_CONFIG_SAVE_ON_EXIT,
+   "Configuratie Opslaan Tijdens Afsluiten"
    )
 MSG_HASH(
    MENU_ENUM_LABEL_VALUE_AUTO_OVERRIDES_ENABLE,
    "Laad Override Bestanden Automatisch"
    )
 MSG_HASH(
-   MENU_ENUM_SUBLABEL_AUTO_OVERRIDES_ENABLE,
-   "Enable customized configuration by default at startup."
-   )
-MSG_HASH(
    MENU_ENUM_LABEL_VALUE_AUTO_REMAPS_ENABLE,
    "Laad Remap Bestanden Automatisch"
-   )
-MSG_HASH(
-   MENU_ENUM_SUBLABEL_AUTO_REMAPS_ENABLE,
-   "Enable customized controls by default at startup."
    )
 MSG_HASH(
    MENU_ENUM_LABEL_VALUE_AUTO_SHADERS_ENABLE,
@@ -2959,31 +1116,11 @@ MSG_HASH(
 
 MSG_HASH(
    MENU_ENUM_LABEL_VALUE_SORT_SAVEFILES_ENABLE,
-   "Sorteer Slagen in Folders op Core-naam volgorde"
+   "Saves Sorteren In Map"
    )
 MSG_HASH(
    MENU_ENUM_LABEL_VALUE_SORT_SAVESTATES_ENABLE,
-   "Sorteer Slagstaaten in Folders op Core-naam volgorde"
-   )
-MSG_HASH(
-   MENU_ENUM_SUBLABEL_SORT_SAVESTATES_ENABLE,
-   "Sorteer slagstaten in mappen die vernoemd zijn naar de gebruikte core."
-   )
-MSG_HASH(
-   MENU_ENUM_LABEL_VALUE_SORT_SAVEFILES_BY_CONTENT_ENABLE,
-   "Sorteer Slagen in Folders op Inhoudsmap volgorde"
-   )
-MSG_HASH(
-   MENU_ENUM_SUBLABEL_SORT_SAVEFILES_BY_CONTENT_ENABLE,
-   "Sorteer de slaag-bestanden in folders vernoemd naar de map waarin de inhoud zich bevindt."
-   )
-MSG_HASH(
-   MENU_ENUM_LABEL_VALUE_SORT_SAVESTATES_BY_CONTENT_ENABLE,
-   "Sorteer Slagstaten in Folders op Inhoudsmap volgorde"
-   )
-MSG_HASH(
-   MENU_ENUM_SUBLABEL_SORT_SAVESTATES_BY_CONTENT_ENABLE,
-   "Sorteer de slagstaten in folders vernoemd naar de map waarin de inhoud zich bevindt."
+   "Savestates Sorteren In Map"
    )
 MSG_HASH(
    MENU_ENUM_LABEL_VALUE_BLOCK_SRAM_OVERWRITE,
@@ -2995,23 +1132,15 @@ MSG_HASH(
    )
 MSG_HASH(
    MENU_ENUM_LABEL_VALUE_SAVESTATE_AUTO_INDEX,
-   "Verhoog de Slagstaatsindex Automatisch"
-   )
-MSG_HASH(
-   MENU_ENUM_SUBLABEL_SAVESTATE_AUTO_INDEX,
-   "Voordat er een slagstaat wordt gemaakt, wordt de slagstaatsindex automatisch verhoogd. Bij het laden van inhoud wordt de index ingesteld op de hoogst bestaande index."
+   "Save State Automatische Index"
    )
 MSG_HASH(
    MENU_ENUM_LABEL_VALUE_SAVESTATE_AUTO_SAVE,
-   "Automatisch Slaan de Staat op"
+   "Automatisch State Saven"
    )
 MSG_HASH(
-   MENU_ENUM_LABEL_VALUE_SORT_SCREENSHOTS_BY_CONTENT_ENABLE,
-   "Sorteer Schermafbeeldingen in Folders op Inhoudsmap volgorde"
-   )
-MSG_HASH(
-   MENU_ENUM_SUBLABEL_SORT_SCREENSHOTS_BY_CONTENT_ENABLE,
-   "Sorteer de schermafbeeldingen in folders vernoemd naar de map waarin de inhoud zich bevindt."
+   MENU_ENUM_LABEL_VALUE_SAVESTATE_AUTO_LOAD,
+   "Automatisch State Loaden"
    )
 
 /* Settings > Logging */
@@ -3019,10 +1148,6 @@ MSG_HASH(
 MSG_HASH(
    MENU_ENUM_LABEL_VALUE_LOG_VERBOSITY,
    "Logging Niveau"
-   )
-MSG_HASH(
-   MENU_ENUM_SUBLABEL_LOG_VERBOSITY,
-   "Enable or disable logging to the terminal."
    )
 MSG_HASH(
    MENU_ENUM_LABEL_VALUE_LOG_TO_FILE,
@@ -3055,61 +1180,33 @@ MSG_HASH(
    "Terugspoelen"
    )
 MSG_HASH(
-   MENU_ENUM_LABEL_VALUE_MENU_ENUM_THROTTLE_FRAMERATE,
-   "Beperk de Vernieuwingsfrequentie in het Menu"
-   )
-MSG_HASH(
-   MENU_ENUM_SUBLABEL_MENU_ENUM_THROTTLE_FRAMERATE,
-   "Zorgt ervoor dat de framerate wordt beperkt in het menu."
+   MENU_ENUM_LABEL_VALUE_FASTFORWARD_RATIO,
+   "Maximale afspeelsnelheid"
    )
 
 /* Settings > Frame Throttle > Rewind */
 
 MSG_HASH(
    MENU_ENUM_LABEL_VALUE_REWIND_ENABLE,
-   "Terugspoelen Activeren"
+   "Rewind Activeren"
    )
 MSG_HASH(
-   MENU_ENUM_LABEL_VALUE_REWIND_BUFFER_SIZE,
-   "Terugspoelen Buffergrootte (MB)"
-   )
-MSG_HASH(
-   MENU_ENUM_LABEL_VALUE_REWIND_BUFFER_SIZE_STEP,
-   "Terugspoelen Buffergrootte-Stap (MB)"
+   MENU_ENUM_LABEL_VALUE_REWIND_GRANULARITY,
+   "Rewind Granulariteit"
    )
 
 /* Settings > Frame Throttle > Frame Time Counter */
 
-MSG_HASH(
-   MENU_ENUM_LABEL_VALUE_FRAME_TIME_COUNTER_RESET_AFTER_FASTFORWARDING,
-   "Reset na Snel-Vooruitspoelen"
-   )
-MSG_HASH(
-   MENU_ENUM_SUBLABEL_FRAME_TIME_COUNTER_RESET_AFTER_FASTFORWARDING,
-   "Stel de frametijdteller opnieuw in na snel-vooruitspoelen."
-   )
-MSG_HASH(
-   MENU_ENUM_LABEL_VALUE_FRAME_TIME_COUNTER_RESET_AFTER_LOAD_STATE,
-   "Reset na Laden Status"
-   )
-MSG_HASH(
-   MENU_ENUM_SUBLABEL_FRAME_TIME_COUNTER_RESET_AFTER_LOAD_STATE,
-   "Reset de frametijdteller na het laden van een status."
-   )
-MSG_HASH(
-   MENU_ENUM_LABEL_VALUE_FRAME_TIME_COUNTER_RESET_AFTER_SAVE_STATE,
-   "Reset na Status Opslaan"
-   )
-MSG_HASH(
-   MENU_ENUM_SUBLABEL_FRAME_TIME_COUNTER_RESET_AFTER_SAVE_STATE,
-   "Reset de frametijdteller nadat u een status hebt opgeslagen."
-   )
 
 /* Settings > Recording */
 
 MSG_HASH(
-   MENU_ENUM_LABEL_VALUE_VIDEO_RECORD_THREADS,
-   "Draden Opnemen"
+   MENU_ENUM_LABEL_VALUE_VIDEO_RECORD_QUALITY,
+   "Opname Kwaliteit"
+   )
+MSG_HASH(
+   MENU_ENUM_LABEL_VALUE_RECORD_CONFIG,
+   "Laad Opname Configuratie..."
    )
 MSG_HASH(
    MENU_ENUM_LABEL_VALUE_VIDEO_POST_FILTER_RECORD,
@@ -3120,11 +1217,19 @@ MSG_HASH(
    "GPU Opname Activeren"
    )
 MSG_HASH(
+   MENU_ENUM_LABEL_VALUE_VIDEO_STREAM_QUALITY,
+   "Stream Kwaliteit"
+   )
+MSG_HASH(
+   MENU_ENUM_LABEL_VALUE_STREAMING_TITLE,
+   "Titel van Stream"
+   )
+MSG_HASH(
    MENU_ENUM_LABEL_VALUE_UDP_STREAM_PORT,
    "UDP Stream Poort"
    )
 
-/* Settings > On-Screen Display */
+/* Settings > Onscreen Display */
 
 MSG_HASH(
    MENU_ENUM_LABEL_VALUE_ONSCREEN_NOTIFICATIONS_SETTINGS,
@@ -3132,10 +1237,10 @@ MSG_HASH(
    )
 MSG_HASH(
    MENU_ENUM_SUBLABEL_ONSCREEN_NOTIFICATIONS_SETTINGS,
-   "Pas de Onscreen Meldingen aan."
+   "Pas de Onscreen Meldingen aan"
    )
 
-/* Settings > On-Screen Display > On-Screen Overlay */
+/* Settings > Onscreen Display > Onscreen Overlay */
 
 MSG_HASH(
    MENU_ENUM_LABEL_VALUE_INPUT_OVERLAY_ENABLE,
@@ -3143,15 +1248,12 @@ MSG_HASH(
    )
 MSG_HASH(
    MENU_ENUM_SUBLABEL_INPUT_OVERLAY_ENABLE,
-   "Overlays worden gebruikt voor randen en scherm-besturingsemlementen."
+   "Activeer de overlay."
    )
-
 MSG_HASH(
    MENU_ENUM_LABEL_VALUE_INPUT_OVERLAY_HIDE_IN_MENU,
    "Verberg Overlay In Menu"
    )
-#if defined(ANDROID)
-#endif
 MSG_HASH(
    MENU_ENUM_LABEL_VALUE_OVERLAY_AUTOLOAD_PREFERRED,
    "Laad geprefeerd overlay autom."
@@ -3168,11 +1270,19 @@ MSG_HASH(
    MENU_ENUM_SUBLABEL_OVERLAY_PRESET,
    "Selecteer een overlay d.m.v. bestands beheerder."
    )
+MSG_HASH(
+   MENU_ENUM_LABEL_VALUE_OVERLAY_SCALE,
+   "Overlay Schalering"
+   )
+MSG_HASH(
+   MENU_ENUM_SUBLABEL_OVERLAY_SCALE,
+   "Schalering van alle UI elements van de overlay."
+   )
 
-/* Settings > On-Screen Display > Video Layout */
+/* Settings > Onscreen Display > Video Layout */
 
 
-/* Settings > On-Screen Display > On-Screen Notifications */
+/* Settings > Onscreen Display > Onscreen Notifications */
 
 MSG_HASH(
    MENU_ENUM_LABEL_VALUE_VIDEO_FONT_ENABLE,
@@ -3183,8 +1293,8 @@ MSG_HASH(
    "Framerate weergeven"
    )
 MSG_HASH(
-   MENU_ENUM_LABEL_VALUE_NOTIFICATION_SHOW_SCREENSHOT_DURATION_NORMAL,
-   "Normaal"
+   MENU_ENUM_LABEL_VALUE_MEMORY_SHOW,
+   "Geheugen Details meenemen"
    )
 MSG_HASH(
    MENU_ENUM_LABEL_VALUE_VIDEO_FONT_PATH,
@@ -3222,20 +1332,8 @@ MSG_HASH(
    "Navigatie Wrap-Around"
    )
 MSG_HASH(
-   MENU_ENUM_LABEL_VALUE_MENU_SCREENSAVER_TIMEOUT,
-   "Time-out voor schermbeveiliging in menu"
-   )
-MSG_HASH(
-   MENU_ENUM_SUBLABEL_MENU_SCREENSAVER_TIMEOUT,
-   "Terwijl het menu actief is, wordt de schermbeveiliging ingeschakeld na een bepaalde tijdsduur."
-   )
-MSG_HASH(
-   MENU_ENUM_LABEL_VALUE_MENU_SCREENSAVER_ANIMATION,
-   "Animatie voor schermbeveiliging in menu"
-   )
-MSG_HASH(
-   MENU_ENUM_LABEL_VALUE_MENU_SCREENSAVER_ANIMATION_SNOW,
-   "Sneeuw"
+   MENU_ENUM_LABEL_VALUE_PAUSE_LIBRETRO,
+   "Pauseer als menu op voorgrond is"
    )
 MSG_HASH(
    MENU_ENUM_LABEL_VALUE_MOUSE_ENABLE,
@@ -3247,52 +1345,118 @@ MSG_HASH(
    )
 MSG_HASH(
    MENU_ENUM_LABEL_VALUE_THREADED_DATA_RUNLOOP_ENABLE,
-   "Bedrade Taken"
+   "Threaded taken"
+   )
+MSG_HASH(
+   MENU_ENUM_LABEL_VALUE_PAUSE_NONACTIVE,
+   "Laat niet in achtergrond draaien"
    )
 MSG_HASH(
    MENU_ENUM_LABEL_VALUE_VIDEO_DISABLE_COMPOSITION,
    "Desktop Compositie Deactiveren"
    )
 MSG_HASH(
-   MENU_ENUM_LABEL_VALUE_UI_COMPANION_ENABLE,
-   "UI Companion Enable"
+   MENU_ENUM_LABEL_VALUE_UI_COMPANION_START_ON_BOOT,
+   "UI Companion Start Tijdens Boot"
+   )
+MSG_HASH(
+   MENU_ENUM_LABEL_VALUE_UI_MENUBAR_ENABLE,
+   "Menubalk"
    )
 
-/* Settings > User Interface > Menu Item Visibility */
+/* Settings > User Interface > Views */
 
 MSG_HASH(
    MENU_ENUM_LABEL_VALUE_QUICK_MENU_VIEWS_SETTINGS,
    "Snelmenu"
    )
 MSG_HASH(
-   MENU_ENUM_LABEL_VALUE_SETTINGS_VIEWS_SETTINGS,
-   "Instellingen"
+   MENU_ENUM_SUBLABEL_QUICK_MENU_VIEWS_SETTINGS,
+   "Toon/verberg elementen op the Snelmenu scherm."
    )
 MSG_HASH(
-   MENU_ENUM_LABEL_VALUE_MENU_SHOW_DUMP_DISC,
-   "Toon 'Dump Disk'"
+   MENU_ENUM_LABEL_VALUE_MENU_SHOW_LOAD_CORE,
+   "Toon Core Laden"
    )
 MSG_HASH(
-   MENU_ENUM_SUBLABEL_MENU_SHOW_DUMP_DISC,
-   "Toon de 'Dump Disk' optie in het Hoofdmenu."
-   )
-#ifdef HAVE_LAKKA
-#endif
-MSG_HASH(
-   MENU_ENUM_LABEL_VALUE_MENU_ADD_CONTENT_ENTRY_DISPLAY_MAIN_TAB,
-   "Hoofdmenu"
+   MENU_ENUM_SUBLABEL_MENU_SHOW_LOAD_CORE,
+   "Toon/verberg de 'Laad Core' optie."
    )
 MSG_HASH(
-   MENU_ENUM_LABEL_VALUE_SHOW_CONTENTLESS_CORES_CUSTOM,
-   "Aangepast"
+   MENU_ENUM_LABEL_VALUE_MENU_SHOW_LOAD_CONTENT,
+   "Toon Laad Inhoud"
+   )
+MSG_HASH(
+   MENU_ENUM_SUBLABEL_MENU_SHOW_LOAD_CONTENT,
+   "Toon/verberg de 'Laad Inhoud' optie."
+   )
+MSG_HASH(
+   MENU_ENUM_LABEL_VALUE_MENU_SHOW_INFORMATION,
+   "Toon Informatie"
+   )
+MSG_HASH(
+   MENU_ENUM_SUBLABEL_MENU_SHOW_INFORMATION,
+   "Toon/verberg de 'Informatie' optie."
+   )
+MSG_HASH(
+   MENU_ENUM_LABEL_VALUE_MENU_SHOW_CONFIGURATIONS,
+   "Toon Configuraties"
+   )
+MSG_HASH(
+   MENU_ENUM_SUBLABEL_MENU_SHOW_CONFIGURATIONS,
+   "Toon/verberg de 'Configuraties' optie."
+   )
+MSG_HASH(
+   MENU_ENUM_LABEL_VALUE_MENU_SHOW_HELP,
+   "Toon Hulp"
+   )
+MSG_HASH(
+   MENU_ENUM_SUBLABEL_MENU_SHOW_HELP,
+   "Toon/verberg de 'Hulp' optie."
+   )
+MSG_HASH(
+   MENU_ENUM_LABEL_VALUE_MENU_SHOW_QUIT_RETROARCH,
+   "Toon Sluit RetroArch"
+   )
+MSG_HASH(
+   MENU_ENUM_SUBLABEL_MENU_SHOW_QUIT_RETROARCH,
+   "Toon/verberg de 'Sluit RetroArch' optie."
+   )
+MSG_HASH(
+   MENU_ENUM_LABEL_VALUE_CONTENT_SHOW_SETTINGS,
+   "Instellingentab weergeven"
+   )
+MSG_HASH(
+   MENU_ENUM_LABEL_VALUE_CONTENT_SHOW_IMAGES,
+   "Afbeeldingentab weergeven"
+   )
+MSG_HASH(
+   MENU_ENUM_LABEL_VALUE_CONTENT_SHOW_MUSIC,
+   "Muziektab weergeven"
+   )
+MSG_HASH(
+   MENU_ENUM_LABEL_VALUE_CONTENT_SHOW_VIDEO,
+   "Videotab weergeven"
+   )
+MSG_HASH(
+   MENU_ENUM_LABEL_VALUE_CONTENT_SHOW_HISTORY,
+   "Geschiedenistab weergeven"
    )
 MSG_HASH(
    MENU_ENUM_LABEL_VALUE_TIMEDATE_ENABLE,
    "Tijd/datum weergeven"
    )
 MSG_HASH(
+   MENU_ENUM_SUBLABEL_TIMEDATE_ENABLE,
+   "Huidige tijd/datum weergeven in het menu."
+   )
+MSG_HASH(
    MENU_ENUM_LABEL_VALUE_TIMEDATE_STYLE,
    "Stijl van datum / tijd"
+   )
+MSG_HASH(
+   MENU_ENUM_SUBLABEL_BATTERY_LEVEL_ENABLE,
+   "Batterijstand weergeven in het menu."
    )
 MSG_HASH(
    MENU_ENUM_LABEL_VALUE_CORE_ENABLE,
@@ -3303,18 +1467,101 @@ MSG_HASH( /* FIXME Not RGUI specific */
    "Start Scherm Weergeven"
    )
 
-/* Settings > User Interface > Menu Item Visibility > Quick Menu */
+/* Settings > User Interface > Views > Quick Menu */
 
+MSG_HASH(
+   MENU_ENUM_LABEL_VALUE_QUICK_MENU_SHOW_TAKE_SCREENSHOT,
+   "Toon Neem Schermafdruk"
+   )
+MSG_HASH(
+   MENU_ENUM_SUBLABEL_QUICK_MENU_SHOW_TAKE_SCREENSHOT,
+   "Toon/verberg de 'Neem Schermafdruk' optie."
+   )
+MSG_HASH(
+   MENU_ENUM_LABEL_VALUE_QUICK_MENU_SHOW_SAVE_LOAD_STATE,
+   "Toon Save/Load State"
+   )
+MSG_HASH(
+   MENU_ENUM_SUBLABEL_QUICK_MENU_SHOW_SAVE_LOAD_STATE,
+   "Toon/verberg de opties voor saving/loading een state."
+   )
+MSG_HASH(
+   MENU_ENUM_LABEL_VALUE_QUICK_MENU_SHOW_UNDO_SAVE_LOAD_STATE,
+   "Toon Save/Load State Ongedaan Maken"
+   )
+MSG_HASH(
+   MENU_ENUM_SUBLABEL_QUICK_MENU_SHOW_UNDO_SAVE_LOAD_STATE,
+   "Toon/verberg de opties voor saving/loading een state ongedaan te maken."
+   )
+MSG_HASH(
+   MENU_ENUM_LABEL_VALUE_QUICK_MENU_SHOW_OPTIONS,
+   "Toon Opties"
+   )
+MSG_HASH(
+   MENU_ENUM_SUBLABEL_QUICK_MENU_SHOW_OPTIONS,
+   "Toon/verberg de 'Opties' optie."
+   )
+MSG_HASH(
+   MENU_ENUM_LABEL_VALUE_QUICK_MENU_SHOW_CONTROLS,
+   "Toon Besturing"
+   )
+MSG_HASH(
+   MENU_ENUM_SUBLABEL_QUICK_MENU_SHOW_CONTROLS,
+   "Toon/verberg de 'Besturing' optie."
+   )
+MSG_HASH(
+   MENU_ENUM_LABEL_VALUE_QUICK_MENU_SHOW_CHEATS,
+   "Toon Cheats"
+   )
+MSG_HASH(
+   MENU_ENUM_SUBLABEL_QUICK_MENU_SHOW_CHEATS,
+   "Toon/verberg de 'Cheats' optie."
+   )
+MSG_HASH(
+   MENU_ENUM_LABEL_VALUE_QUICK_MENU_SHOW_SHADERS,
+   "Toon Shaders"
+   )
+MSG_HASH(
+   MENU_ENUM_SUBLABEL_QUICK_MENU_SHOW_SHADERS,
+   "Toon/verberg de 'Shaders' optie."
+   )
+MSG_HASH(
+   MENU_ENUM_LABEL_VALUE_QUICK_MENU_SHOW_SAVE_CORE_OVERRIDES,
+   "Toon Save Core Overrides"
+   )
+MSG_HASH(
+   MENU_ENUM_SUBLABEL_QUICK_MENU_SHOW_SAVE_CORE_OVERRIDES,
+   "Toon/verberg de 'Save Core Overrides' optie."
+   )
+MSG_HASH(
+   MENU_ENUM_LABEL_VALUE_QUICK_MENU_SHOW_SAVE_GAME_OVERRIDES,
+   "Toon Save Game Overrides"
+   )
+MSG_HASH(
+   MENU_ENUM_SUBLABEL_QUICK_MENU_SHOW_SAVE_GAME_OVERRIDES,
+   "Toon/verberg de 'Save Game Overrides' optie."
+   )
+MSG_HASH(
+   MENU_ENUM_LABEL_VALUE_QUICK_MENU_SHOW_INFORMATION,
+   "Toon Informatie"
+   )
+MSG_HASH(
+   MENU_ENUM_SUBLABEL_QUICK_MENU_SHOW_INFORMATION,
+   "Toon/verberg de 'Informatie' optie."
+   )
 
 /* Settings > User Interface > Views > Settings */
-
 
 
 /* Settings > User Interface > Appearance */
 
 MSG_HASH(
    MENU_ENUM_LABEL_VALUE_MENU_SCALE_FACTOR,
-   "Schaalfactor menu"
+   "Menu schaalfactor"
+   )
+MSG_HASH(
+   MENU_ENUM_LABEL_VALUE_MENU_WALLPAPER,
+   "Achtergrond"
    )
 MSG_HASH(
    MENU_ENUM_LABEL_VALUE_MENU_WALLPAPER_OPACITY,
@@ -3329,11 +1576,11 @@ MSG_HASH(
 
 MSG_HASH(
    MENU_ENUM_LABEL_VALUE_AI_SERVICE_MODE,
-   "AI-Service Uitvoer"
+   "AI Service Uitvoer"
    )
 MSG_HASH(
    MENU_ENUM_LABEL_VALUE_AI_SERVICE_ENABLE,
-   "AI-Service Ingeschakeld"
+   "AI Service Ingeschakeld"
    )
 
 /* Settings > Accessibility */
@@ -3350,10 +1597,6 @@ MSG_HASH(
 MSG_HASH(
    MENU_ENUM_LABEL_VALUE_CHEEVOS_TEST_UNOFFICIAL,
    "Test Onofficiele Achievements"
-   )
-MSG_HASH(
-   MENU_ENUM_SUBLABEL_CHEEVOS_TEST_UNOFFICIAL,
-   "Enable or disable unofficial achievements and/or beta features for testing purposes."
    )
 
 /* Settings > Network */
@@ -3383,12 +1626,16 @@ MSG_HASH(
    "Netwerk Commando Poort"
    )
 MSG_HASH(
-   MENU_ENUM_LABEL_VALUE_STDIN_CMD_ENABLE,
-   "stdin Commandos"
+   MENU_ENUM_LABEL_VALUE_NETWORK_REMOTE_ENABLE,
+   "Netwerk Gamepad"
    )
 MSG_HASH(
-   MENU_ENUM_SUBLABEL_STDIN_CMD_ENABLE,
-   "Enable stdin command interface."
+   MENU_ENUM_LABEL_VALUE_NETWORK_REMOTE_PORT,
+   "Netwerk Remote Base Port"
+   )
+MSG_HASH(
+   MENU_ENUM_LABEL_VALUE_STDIN_CMD_ENABLE,
+   "stdin Commandos"
    )
 
 /* Settings > Network > Updater */
@@ -3402,11 +1649,15 @@ MSG_HASH(
 
 MSG_HASH(
    MENU_ENUM_LABEL_VALUE_HISTORY_LIST_ENABLE,
-   "Geschiedenis"
+   "Geschiedenislijst Activeren"
    )
 MSG_HASH(
    MENU_ENUM_SUBLABEL_HISTORY_LIST_ENABLE,
    "Enable or disable recent playlist for games, images, music, and videos."
+   )
+MSG_HASH(
+   MENU_ENUM_LABEL_VALUE_CONTENT_HISTORY_SIZE,
+   "Geschiedenislijst grootte"
    )
 MSG_HASH(
    MENU_ENUM_LABEL_VALUE_PLAYLIST_ENTRY_REMOVE,
@@ -3427,6 +1678,10 @@ MSG_HASH(
 /* Settings > User */
 
 MSG_HASH(
+   MENU_ENUM_SUBLABEL_PRIVACY_SETTINGS,
+   "Bewerk je privacy-instellingen."
+   )
+MSG_HASH(
    MENU_ENUM_LABEL_VALUE_NETPLAY_NICKNAME,
    "Gebruikersnaam"
    )
@@ -3437,6 +1692,10 @@ MSG_HASH(
 MSG_HASH(
    MENU_ENUM_LABEL_VALUE_USER_LANGUAGE,
    "Taal"
+   )
+MSG_HASH(
+   MENU_ENUM_SUBLABEL_USER_LANGUAGE,
+   "Stel de taal in van de gebruikersinterface."
    )
 
 /* Settings > User > Privacy */
@@ -3456,10 +1715,6 @@ MSG_HASH(
 
 /* Settings > User > Accounts */
 
-MSG_HASH(
-   MENU_ENUM_LABEL_VALUE_ACCOUNTS_RETRO_ACHIEVEMENTS,
-   "Retro Achievements"
-   )
 
 /* Settings > User > Accounts > RetroAchievements */
 
@@ -3478,9 +1733,6 @@ MSG_HASH(
 /* Settings > User > Accounts > Twitch */
 
 
-/* Settings > User > Accounts > Facebook Gaming */
-
-
 /* Settings > Directory */
 
 MSG_HASH(
@@ -3495,29 +1747,46 @@ MSG_HASH( /* FIXME Not RGUI specific */
    MENU_ENUM_LABEL_VALUE_RGUI_BROWSER_DIRECTORY,
    "Bestandsbeheer"
    )
+MSG_HASH( /* FIXME Not RGUI specific */
+   MENU_ENUM_LABEL_VALUE_RGUI_CONFIG_DIRECTORY,
+   "Configuratie"
+   )
+MSG_HASH(
+   MENU_ENUM_LABEL_VALUE_CONTENT_DATABASE_DIRECTORY,
+   "Inhoud Database"
+   )
+MSG_HASH(
+   MENU_ENUM_SUBLABEL_CONTENT_DATABASE_DIRECTORY,
+   "Databases worden in deze directory opgeslagen."
+   )
+MSG_HASH(
+   MENU_ENUM_SUBLABEL_CURSOR_DIRECTORY,
+   "Bewaarde queries worden in deze directory opgeslagen."
+   )
+MSG_HASH(
+   MENU_ENUM_LABEL_VALUE_CHEAT_DATABASE_PATH,
+   "Cheats"
+   )
+MSG_HASH(
+   MENU_ENUM_LABEL_VALUE_RECORDING_OUTPUT_DIRECTORY,
+   "Opname Uitvoer Map"
+   )
+MSG_HASH(
+   MENU_ENUM_LABEL_VALUE_RECORDING_CONFIG_DIRECTORY,
+   "Opname Config Map"
+   )
+MSG_HASH(
+   MENU_ENUM_LABEL_VALUE_JOYPAD_AUTOCONFIG_DIR,
+   "Invoerapparaten Autoconfiguratie"
+   )
 MSG_HASH(
    MENU_ENUM_LABEL_VALUE_PLAYLIST_DIRECTORY,
    "Afspeellijsten"
    )
-
-#ifdef HAVE_MIST
-/* Settings > Steam */
-
-
-
 MSG_HASH(
-   MENU_ENUM_LABEL_VALUE_STEAM_RICH_PRESENCE_FORMAT_CONTENT,
-   "Inhoud"
+   MENU_ENUM_LABEL_VALUE_SAVEFILE_DIRECTORY,
+   "Savebestand"
    )
-MSG_HASH(
-   MENU_ENUM_LABEL_VALUE_STEAM_RICH_PRESENCE_FORMAT_CORE,
-   "Core naam"
-   )
-MSG_HASH(
-   MENU_ENUM_LABEL_VALUE_STEAM_RICH_PRESENCE_FORMAT_SYSTEM,
-   "Systeem naam"
-   )
-#endif
 
 /* Music */
 
@@ -3535,8 +1804,8 @@ MSG_HASH(
 /* Netplay */
 
 MSG_HASH(
-   MENU_ENUM_SUBLABEL_NETPLAY_ENABLE_CLIENT,
-   "Enables netplay in client mode."
+   MENU_ENUM_LABEL_VALUE_NETPLAY_REFRESH_ROOMS,
+   "Room Lijst Vernieuwen"
    )
 
 /* Netplay > Host */
@@ -3550,7 +1819,7 @@ MSG_HASH(
    "Stop met hosten"
    )
 
-/* Import Content */
+/* Import content */
 
 MSG_HASH(
    MENU_ENUM_LABEL_VALUE_SCAN_THIS_DIRECTORY,
@@ -3561,7 +1830,7 @@ MSG_HASH(
    "Scan Een Bestand"
    )
 
-/* Import Content > Scan File */
+/* Import content > Scan File */
 
 MSG_HASH(
    MENU_ENUM_LABEL_VALUE_ADD_TO_MIXER_AND_COLLECTION,
@@ -3572,21 +1841,11 @@ MSG_HASH(
    "Aan audio mixer toevoegen en afspelen"
    )
 
-/* Import Content > Manual Scan */
+/* Import content > Manual Scan */
 
-MSG_HASH(
-   MENU_ENUM_LABEL_VALUE_MANUAL_CONTENT_SCAN_SYSTEM_NAME,
-   "Systeem naam"
-   )
-
-/* Explore tab */
 
 /* Playlist > Playlist Item */
 
-MSG_HASH(
-   MENU_ENUM_LABEL_VALUE_RENAME_ENTRY,
-   "Rename the title of the entry."
-   )
 MSG_HASH(
    MENU_ENUM_LABEL_VALUE_DELETE_ENTRY,
    "Verwijderen"
@@ -3602,22 +1861,18 @@ MSG_HASH(
 
 /* Playlist Item > Set Core Association */
 
+MSG_HASH(
+   MENU_ENUM_LABEL_VALUE_DETECT_CORE_LIST_OK_CURRENT_CORE,
+   "Huidige core"
+   )
 
 /* Playlist Item > Information */
 
 MSG_HASH(
-   MENU_ENUM_LABEL_VALUE_CONTENT_INFO_LABEL,
-   "Naam"
-   )
-MSG_HASH(
    MENU_ENUM_LABEL_VALUE_CONTENT_INFO_PATH,
    "Bestandspad"
    )
-MSG_HASH( /* FIXME Unused? */
-   MENU_ENUM_LABEL_VALUE_CONTENT_INFO_RUNTIME,
-   "Speeltijd"
-   )
-MSG_HASH( /* FIXME Unused? */
+MSG_HASH(
    MENU_ENUM_LABEL_VALUE_CONTENT_INFO_LAST_PLAYED,
    "Laatst Gespeeld"
    )
@@ -3645,10 +1900,6 @@ MSG_HASH(
    "Neem Schermafdruk"
    )
 MSG_HASH(
-   MENU_ENUM_LABEL_VALUE_SAVE_STATE,
-   "Status Opslaan"
-   )
-MSG_HASH(
    MENU_ENUM_LABEL_VALUE_LOAD_STATE,
    "Laad State"
    )
@@ -3658,7 +1909,7 @@ MSG_HASH(
    )
 MSG_HASH(
    MENU_ENUM_LABEL_VALUE_UNDO_SAVE_STATE,
-   "Maak de Slagstaat Ongedaan"
+   "Save State Ongedaan Maken"
    )
 MSG_HASH(
    MENU_ENUM_LABEL_VALUE_ADD_TO_FAVORITES,
@@ -3669,20 +1920,40 @@ MSG_HASH(
    "Start Opname"
    )
 MSG_HASH(
+   MENU_ENUM_SUBLABEL_QUICK_MENU_START_RECORDING,
+   "Start met opnemen."
+   )
+MSG_HASH(
    MENU_ENUM_LABEL_VALUE_QUICK_MENU_STOP_RECORDING,
    "Stop Opname"
+   )
+MSG_HASH(
+   MENU_ENUM_SUBLABEL_QUICK_MENU_STOP_RECORDING,
+   "Stop met opnemen."
    )
 MSG_HASH(
    MENU_ENUM_LABEL_VALUE_QUICK_MENU_START_STREAMING,
    "Start Streamen"
    )
 MSG_HASH(
+   MENU_ENUM_SUBLABEL_QUICK_MENU_START_STREAMING,
+   "Start met streamen."
+   )
+MSG_HASH(
    MENU_ENUM_LABEL_VALUE_QUICK_MENU_STOP_STREAMING,
    "Stop Streamen"
    )
 MSG_HASH(
+   MENU_ENUM_SUBLABEL_QUICK_MENU_STOP_STREAMING,
+   "Stop met streamen."
+   )
+MSG_HASH(
+   MENU_ENUM_LABEL_VALUE_CORE_OPTIONS,
+   "Opties"
+   )
+MSG_HASH(
    MENU_ENUM_LABEL_VALUE_CORE_INPUT_REMAPPING_OPTIONS,
-   "Besturingselementen"
+   "Besturing"
    )
 MSG_HASH(
    MENU_ENUM_LABEL_VALUE_DISK_OPTIONS,
@@ -3696,19 +1967,7 @@ MSG_HASH(
 /* Quick Menu > Options */
 
 
-/* Quick Menu > Options > Manage Core Options */
-
-MSG_HASH(
-   MENU_ENUM_SUBLABEL_CORE_OPTIONS_FLUSH,
-   "Forceer de huidige instellingen om naar het actieve optiebestand te worden geschreven. Zorgt ervoor dat de opties worden bewaard in het geval dat een core-fout ervoor zorgt dat de front-end niet goed wordt afgesloten."
-   )
-
-/* - Legacy (unused) */
-
 /* Quick Menu > Controls */
-
-
-/* Quick Menu > Controls > Manage Remap Files */
 
 MSG_HASH(
    MENU_ENUM_LABEL_VALUE_REMAP_FILE_LOAD,
@@ -3723,7 +1982,7 @@ MSG_HASH(
    "Game Remap Bestand Opslaan"
    )
 
-/* Quick Menu > Controls > Manage Remap Files > Load Remap File */
+/* Quick Menu > Controls > Load Remap File */
 
 
 /* Quick Menu > Cheats */
@@ -3750,6 +2009,10 @@ MSG_HASH(
 
 /* Quick Menu > Cheats > Load Cheat File (Replace) */
 
+MSG_HASH(
+   MENU_ENUM_LABEL_VALUE_CHEAT_FILE,
+   "Cheat Bestand"
+   )
 
 /* Quick Menu > Cheats > Load Cheat File (Append) */
 
@@ -3760,17 +2023,9 @@ MSG_HASH(
    MENU_ENUM_LABEL_VALUE_CHEAT_STATE,
    "Ingeschakeld"
    )
-MSG_HASH(
-   MENU_ENUM_LABEL_VALUE_CHEAT_DESC,
-   "Omschrijving"
-   )
 
-/* Quick Menu > Disc Control */
+/* Quick Menu > Disk Control */
 
-MSG_HASH(
-   MENU_ENUM_LABEL_VALUE_DISK_TRAY_EJECT,
-   "Schijf Uitwerpen"
-   )
 MSG_HASH(
    MENU_ENUM_LABEL_VALUE_DISK_TRAY_INSERT,
    "Disk Image Toevoegen"
@@ -3778,14 +2033,6 @@ MSG_HASH(
 
 /* Quick Menu > Shaders */
 
-MSG_HASH(
-   MENU_ENUM_LABEL_VALUE_VIDEO_SHADER_PRESET_REMOVE,
-   "Verwijderen"
-   )
-MSG_HASH(
-   MENU_ENUM_SUBLABEL_VIDEO_SHADER_PRESET_REMOVE,
-   "Remove shader presets of a specific type."
-   )
 MSG_HASH(
    MENU_ENUM_LABEL_VALUE_SHADER_APPLY_CHANGES,
    "Shader Instellingen Toepassen"
@@ -3796,8 +2043,6 @@ MSG_HASH(
    )
 
 /* Quick Menu > Shaders > Save */
-
-
 
 MSG_HASH(
    MENU_ENUM_LABEL_VALUE_VIDEO_SHADER_PRESET_SAVE_AS,
@@ -3882,6 +2127,10 @@ MSG_HASH(
    "Terug"
    )
 MSG_HASH(
+   MENU_ENUM_LABEL_VALUE_BASIC_MENU_CONTROLS_OK,
+   "Oke"
+   )
+MSG_HASH(
    MENU_ENUM_LABEL_VALUE_DIRECTORY_NOT_FOUND,
    "Map niet gevonden."
    )
@@ -3892,17 +2141,213 @@ MSG_HASH(
 
 /* Settings Options */
 
-MSG_HASH( /* FIXME Should be MENU_LABEL_VALUE */
-   MSG_UNKNOWN_COMPILER,
-   "Onbekende compiler"
+MSG_HASH(
+   MENU_ENUM_LABEL_VALUE_LANG_ALBANIAN,
+   "Albanees"
+   )
+MSG_HASH(
+   MENU_ENUM_LABEL_VALUE_LANG_ARABIC,
+   "Arabisch"
+   )
+MSG_HASH(
+   MENU_ENUM_LABEL_VALUE_LANG_AZERBAIJANI,
+   "Azerbeidzjaanse"
+   )
+MSG_HASH(
+   MENU_ENUM_LABEL_VALUE_LANG_BULGARIAN,
+   "Bulgarijns"
+   )
+MSG_HASH(
+   MENU_ENUM_LABEL_VALUE_LANG_CHINESE_SIMPLIFIED,
+   "Chinees (Gesimplificeerd)"
+   )
+MSG_HASH(
+   MENU_ENUM_LABEL_VALUE_LANG_CHINESE_TRADITIONAL,
+   "Chinees (Traditioneel)"
+   )
+MSG_HASH(
+   MENU_ENUM_LABEL_VALUE_LANG_CROATIAN,
+   "Kroatisch"
+   )
+MSG_HASH(
+   MENU_ENUM_LABEL_VALUE_LANG_CZECH,
+   "Tsjeschisch"
+   )
+MSG_HASH(
+   MENU_ENUM_LABEL_VALUE_LANG_DANISH,
+   "Deens"
+   )
+MSG_HASH(
+   MENU_ENUM_LABEL_VALUE_LANG_DUTCH,
+   "Nederlands"
+   )
+MSG_HASH(
+   MENU_ENUM_LABEL_VALUE_LANG_ENGLISH,
+   "Engels"
+   )
+MSG_HASH(
+   MENU_ENUM_LABEL_VALUE_LANG_ESTONIAN,
+   "Estlands"
+   )
+MSG_HASH(
+   MENU_ENUM_LABEL_VALUE_LANG_FILIPINO,
+   "Filippijn"
+   )
+MSG_HASH(
+   MENU_ENUM_LABEL_VALUE_LANG_FINNISH,
+   "Fins"
+   )
+MSG_HASH(
+   MENU_ENUM_LABEL_VALUE_LANG_FRENCH,
+   "Frans"
+   )
+MSG_HASH(
+   MENU_ENUM_LABEL_VALUE_LANG_GALICIAN,
+   "Galicisch"
+   )
+MSG_HASH(
+   MENU_ENUM_LABEL_VALUE_LANG_GEORGIAN,
+   "Georgisch"
+   )
+MSG_HASH(
+   MENU_ENUM_LABEL_VALUE_LANG_GERMAN,
+   "Duits"
+   )
+MSG_HASH(
+   MENU_ENUM_LABEL_VALUE_LANG_GREEK,
+   "Grieks"
+   )
+MSG_HASH(
+   MENU_ENUM_LABEL_VALUE_LANG_HEBREW,
+   "Hebreeuws"
+   )
+MSG_HASH(
+   MENU_ENUM_LABEL_VALUE_LANG_HUNGARIAN,
+   "Hongaars"
+   )
+MSG_HASH(
+   MENU_ENUM_LABEL_VALUE_LANG_ICELANDIC,
+   "Ijslands"
+   )
+MSG_HASH(
+   MENU_ENUM_LABEL_VALUE_LANG_INDONESIAN,
+   "Indonesisch"
+   )
+MSG_HASH(
+   MENU_ENUM_LABEL_VALUE_LANG_IRISH,
+   "Iers"
+   )
+MSG_HASH(
+   MENU_ENUM_LABEL_VALUE_LANG_ITALIAN,
+   "Italiaans"
+   )
+MSG_HASH(
+   MENU_ENUM_LABEL_VALUE_LANG_JAPANESE,
+   "Japans"
+   )
+MSG_HASH(
+   MENU_ENUM_LABEL_VALUE_LANG_KOREAN,
+   "Koreaans"
+   )
+MSG_HASH(
+   MENU_ENUM_LABEL_VALUE_LANG_LATIN,
+   "Latijns"
+   )
+MSG_HASH(
+   MENU_ENUM_LABEL_VALUE_LANG_LATVIAN,
+   "Latviaans"
+   )
+MSG_HASH(
+   MENU_ENUM_LABEL_VALUE_LANG_LITHUANIAN,
+   "Litouws"
+   )
+MSG_HASH(
+   MENU_ENUM_LABEL_VALUE_LANG_MACEDONIAN,
+   "Macedonisch"
+   )
+MSG_HASH(
+   MENU_ENUM_LABEL_VALUE_LANG_MALAY,
+   "Maleis"
+   )
+MSG_HASH(
+   MENU_ENUM_LABEL_VALUE_LANG_MALTESE,
+   "Maltees"
+   )
+MSG_HASH(
+   MENU_ENUM_LABEL_VALUE_LANG_NORWEGIAN,
+   "Noors"
+   )
+MSG_HASH(
+   MENU_ENUM_LABEL_VALUE_LANG_PERSIAN,
+   "Perzisch"
+   )
+MSG_HASH(
+   MENU_ENUM_LABEL_VALUE_LANG_POLISH,
+   "Pools"
+   )
+MSG_HASH(
+   MENU_ENUM_LABEL_VALUE_LANG_PORTUGUESE_BRAZIL,
+   "Portugees (Brazil)"
+   )
+MSG_HASH(
+   MENU_ENUM_LABEL_VALUE_LANG_PORTUGUESE_PORTUGAL,
+   "Portugees (Portugal)"
+   )
+MSG_HASH(
+   MENU_ENUM_LABEL_VALUE_LANG_ROMANIAN,
+   "Roemeens"
+   )
+MSG_HASH(
+   MENU_ENUM_LABEL_VALUE_LANG_RUSSIAN,
+   "Russisch"
+   )
+MSG_HASH(
+   MENU_ENUM_LABEL_VALUE_LANG_SERBIAN,
+   "Servisch"
+   )
+MSG_HASH(
+   MENU_ENUM_LABEL_VALUE_LANG_SLOVAK,
+   "Slowaaks"
+   )
+MSG_HASH(
+   MENU_ENUM_LABEL_VALUE_LANG_SLOVENIAN,
+   "Sloveens"
+   )
+MSG_HASH(
+   MENU_ENUM_LABEL_VALUE_LANG_SPANISH,
+   "Spaans"
+   )
+MSG_HASH(
+   MENU_ENUM_LABEL_VALUE_LANG_SWEDISH,
+   "Zweeds"
+   )
+MSG_HASH(
+   MENU_ENUM_LABEL_VALUE_LANG_THAI,
+   "Thais"
+   )
+MSG_HASH(
+   MENU_ENUM_LABEL_VALUE_LANG_TURKISH,
+   "Turks"
+   )
+MSG_HASH(
+   MENU_ENUM_LABEL_VALUE_LANG_UKRAINIAN,
+   "Oekraiens"
+   )
+MSG_HASH(
+   MENU_ENUM_LABEL_VALUE_LANG_VIETNAMESE,
+   "Vietnamees"
+   )
+MSG_HASH(
+   MENU_ENUM_LABEL_VALUE_LANG_WELSH,
+   "Wels"
+   )
+MSG_HASH(
+   MENU_ENUM_LABEL_VALUE_LANG_YIDDISH,
+   "Jiddisch"
    )
 MSG_HASH(
    MENU_ENUM_LABEL_VALUE_NETPLAY_SHARE_DIGITAL_VOTE,
    "Stem"
-   )
-MSG_HASH(
-   MENU_ENUM_LABEL_VALUE_NETPLAY_SHARE_NONE,
-   "Geen"
    )
 MSG_HASH(
    MENU_ENUM_LABEL_VALUE_NETPLAY_SHARE_NO_PREFERENCE,
@@ -3913,16 +2358,16 @@ MSG_HASH(
    "UIT"
    )
 MSG_HASH(
-   MENU_ENUM_LABEL_VALUE_PLAYLIST_RUNTIME_AGGREGATE,
-   "Aggregaat"
-   )
-MSG_HASH(
    MENU_ENUM_LABEL_VALUE_SYSTEM_INFO_POWER_SOURCE_CHARGED,
    "Opgeladen"
    )
 MSG_HASH(
    MENU_ENUM_LABEL_VALUE_SYSTEM_INFO_POWER_SOURCE_CHARGING,
    "Opladen"
+   )
+MSG_HASH(
+   MENU_ENUM_LABEL_VALUE_SYSTEM_INFO_POWER_SOURCE_NO_SOURCE,
+   "Geen bron"
    )
 MSG_HASH(
    MENU_ENUM_LABEL_VALUE_USE_THIS_DIRECTORY,
@@ -3935,18 +2380,6 @@ MSG_HASH(
 MSG_HASH(
    MENU_ENUM_LABEL_VALUE_DIRECTORY_NONE,
    "<Niets>"
-   )
-MSG_HASH(
-   MENU_ENUM_LABEL_VALUE_NONE,
-   "Geen"
-   )
-MSG_HASH(
-   MENU_ENUM_LABEL_VALUE_UNKNOWN,
-   "Onbekend"
-   )
-MSG_HASH(
-   MENU_ENUM_LABEL_VALUE_PLAYLIST_MANAGER_SORT_MODE_OFF,
-   "Geen"
    )
 MSG_HASH(
    MENU_ENUM_LABEL_VALUE_SCROLL_NORMAL,
@@ -3989,16 +2422,16 @@ MSG_HASH(
    "N.v.t"
    )
 MSG_HASH(
+   MENU_ENUM_LABEL_VALUE_DONT_CARE,
+   "Onbelangrijk"
+   )
+MSG_HASH(
    MENU_ENUM_LABEL_VALUE_LINEAR,
    "Lineair"
    )
 MSG_HASH(
    MENU_ENUM_LABEL_VALUE_NEAREST,
-   "Naaste"
-   )
-MSG_HASH(
-   MENU_ENUM_LABEL_VALUE_CONTENT,
-   "Inhoud"
+   "Dichtstbijzijnde"
    )
 MSG_HASH(
    MENU_ENUM_LABEL_VALUE_LEFT_ANALOG,
@@ -4035,14 +2468,6 @@ MSG_HASH(
 /* RGUI: Settings Options */
 
 MSG_HASH(
-   MENU_ENUM_LABEL_VALUE_RGUI_THUMB_SCALE_BILINEAR,
-   "Bilineair"
-   )
-MSG_HASH(
-   MENU_ENUM_LABEL_VALUE_RGUI_UPSCALE_NONE,
-   "Geen"
-   )
-MSG_HASH(
    MENU_ENUM_LABEL_VALUE_RGUI_UPSCALE_AUTO,
    "Automatisch"
    )
@@ -4052,7 +2477,7 @@ MSG_HASH(
    )
 MSG_HASH(
    MENU_ENUM_LABEL_VALUE_RGUI_ASPECT_RATIO_LOCK_INTEGER,
-   "Schalen in gehele getallen"
+   "Vierkantige schalering"
    )
 MSG_HASH(
    MENU_ENUM_LABEL_VALUE_RGUI_MENU_COLOR_THEME_CUSTOM,
@@ -4134,16 +2559,16 @@ MSG_HASH(
    "Menu-pictogram thema"
    )
 MSG_HASH(
-   MENU_ENUM_SUBLABEL_XMB_THEME,
-   "Select a different theme for the icon. Changes will take effect after you restart the program."
-   )
-MSG_HASH(
    MENU_ENUM_LABEL_VALUE_XMB_MENU_COLOR_THEME,
    "Menu Kleur Thema"
    )
 
 /* XMB: Settings Options */
 
+MSG_HASH(
+   MENU_ENUM_LABEL_VALUE_SHADER_PIPELINE_RIBBON_SIMPLIFIED,
+   "Ribbon (vereenvoudigd)"
+   )
 MSG_HASH(
    MENU_ENUM_LABEL_VALUE_SHADER_PIPELINE_SIMPLE_SNOW,
    "Simpel Sneeuw"
@@ -4321,10 +2746,6 @@ MSG_HASH(
    "Aangepast..."
    )
 MSG_HASH(
-   MENU_ENUM_LABEL_VALUE_QT_MENU_VIEW_OPTIONS_TITLE,
-   "Instellingen"
-   )
-MSG_HASH(
    MENU_ENUM_LABEL_VALUE_QT_MENU_HELP,
    "&hulp"
    )
@@ -4333,16 +2754,12 @@ MSG_HASH(
    "Core Laden"
    )
 MSG_HASH(
-   MENU_ENUM_LABEL_VALUE_QT_NAME,
-   "Naam"
-   )
-MSG_HASH(
    MENU_ENUM_LABEL_VALUE_QT_TAB_PLAYLISTS,
    "Afspeellijsten"
    )
 MSG_HASH(
    MENU_ENUM_LABEL_VALUE_QT_TAB_FILE_BROWSER,
-   "Bestandbeheer"
+   "Betandenbeheer"
    )
 MSG_HASH(
    MENU_ENUM_LABEL_VALUE_QT_INFORMATION,
@@ -4353,24 +2770,12 @@ MSG_HASH(
    "Fout"
    )
 MSG_HASH(
-   MENU_ENUM_LABEL_VALUE_QT_STOP,
-   "Stoppen"
-   )
-MSG_HASH(
    MENU_ENUM_LABEL_VALUE_QT_DELETE_PLAYLIST,
    "Afspeellijst verwijderen"
    )
 MSG_HASH(
-   MENU_ENUM_LABEL_VALUE_QT_PLAYLIST_ENTRY_NAME,
-   "Naam:"
-   )
-MSG_HASH(
    MENU_ENUM_LABEL_VALUE_QT_PLAYLIST_ENTRY_DATABASE,
    "Inhoud Database:"
-   )
-MSG_HASH(
-   MENU_ENUM_LABEL_VALUE_QT_REMOVE,
-   "Verwijderen"
    )
 
 /* Unsorted */
@@ -4378,10 +2783,6 @@ MSG_HASH(
 MSG_HASH(
    MENU_ENUM_LABEL_VALUE_ACCOUNTS_LIST_END,
    "Accounts Lijst Eindpunt"
-   )
-MSG_HASH(
-   MENU_ENUM_LABEL_VALUE_CHEEVOS_SETTINGS,
-   "Retro Achievements"
    )
 MSG_HASH(
    MENU_ENUM_LABEL_VALUE_CORE_COUNTERS,
@@ -4397,15 +2798,15 @@ MSG_HASH(
    )
 MSG_HASH(
    MENU_ENUM_LABEL_VALUE_INPUT_DESCRIPTOR_HIDE_UNBOUND,
-   "Verberg Ongebonden Core-invoeromschrijvers"
+   "Verbergen Niet-gemapte Core Input Descripties"
    )
 MSG_HASH(
    MENU_ENUM_LABEL_VALUE_INPUT_DESCRIPTOR_LABEL_SHOW,
-   "Invoerbeschrijving Labels Weergeven"
+   "Descriptie Labels Weergeven"
    )
 MSG_HASH(
    MENU_ENUM_LABEL_VALUE_LOAD_CONTENT_HISTORY,
-   "Geschiedenis"
+   "Recentelijk gebruikt"
    )
 MSG_HASH(
    MENU_ENUM_LABEL_VALUE_NO_PERFORMANCE_COUNTERS,
@@ -4434,6 +2835,10 @@ MSG_HASH(
 MSG_HASH(
    MENU_ENUM_LABEL_VALUE_USER,
    "Gebruiker"
+   )
+MSG_HASH(
+   MENU_ENUM_LABEL_VALUE_USE_BUILTIN_IMAGE_VIEWER,
+   "Gebruik ingebouwde afbeeldingsweergave"
    )
 
 /* Unused (Only Exist in Translation Files) */
@@ -4495,6 +2900,10 @@ MSG_HASH(
    "Audio/Video Raadpleging"
    )
 MSG_HASH(
+   MENU_ENUM_LABEL_VALUE_HELP_CHANGE_VIRTUAL_GAMEPAD,
+   "Virtuele Gamepad Overlay Veranderen"
+   )
+MSG_HASH(
    MENU_ENUM_LABEL_VALUE_HELP_LOADING_CONTENT,
    "Hoe Laad je Content?"
    )
@@ -4505,14 +2914,6 @@ MSG_HASH(
 MSG_HASH(
    MENU_ENUM_LABEL_VALUE_HELP_WHAT_IS_A_CORE,
    "Wat is een Core?"
-   )
-MSG_HASH(
-   MENU_ENUM_LABEL_VALUE_HELP_SEND_DEBUG_INFO,
-   "Stuur Foutopsporings-info (Debug Info)"
-   )
-MSG_HASH(
-   MENU_ENUM_SUBLABEL_HELP_SEND_DEBUG_INFO,
-   "Stuurt diagnostische informatie over uw apparaat en RetroArch-configuratie naar onze servers voor analyse."
    )
 MSG_HASH(
    MENU_ENUM_LABEL_VALUE_MANAGEMENT,
@@ -4545,6 +2946,14 @@ MSG_HASH(
 
 /* Unused (Needs Confirmation) */
 
+MSG_HASH(
+   MENU_ENUM_LABEL_VALUE_DATABASE_CURSOR_LIST_ENTRY_DEVELOPER,
+   "Database - Filter : Ontwikkelaar"
+   )
+MSG_HASH(
+   MENU_ENUM_LABEL_VALUE_DATABASE_CURSOR_LIST_ENTRY_PUBLISHER,
+   "Database - Filter : Uitgever"
+   )
 MSG_HASH(
    MENU_ENUM_LABEL_VALUE_CONFIG,
    "Configuratie"
@@ -4591,7 +3000,7 @@ MSG_HASH(
    )
 MSG_HASH(
    MENU_ENUM_LABEL_VALUE_BASIC_MENU_ENUM_CONTROLS_TOGGLE_MENU,
-   "Schakel menu in/uit"
+   "Menu verbergen / tonen"
    )
 
 /* Discord Status */
@@ -4638,6 +3047,18 @@ MSG_HASH(
 MSG_HASH(
    MSG_GOT_CONNECTION_FROM_NAME,
    "Verbonden met: \"%s (%s)\""
+   )
+MSG_HASH(
+   MSG_PUBLIC_ADDRESS,
+   "Poorttoewijzing succesvol"
+   )
+MSG_HASH(
+   MSG_UPNP_FAILED,
+   "Poorttoewijzing mislukt"
+   )
+MSG_HASH(
+   MSG_NO_ARGUMENTS_SUPPLIED_AND_NO_MENU_BUILTIN,
+   "Geen argumenten geleverd en geen menu ingebouwd, hulp weergeven..."
    )
 MSG_HASH(
    MSG_WAITING_FOR_CLIENT,
@@ -4704,11 +3125,6 @@ MSG_HASH(
    "Kan niet overschakelen naar speelmodus"
    )
 MSG_HASH(
-   MSG_NETPLAY_STATUS_PLAYING,
-   "Afspelen"
-   )
-
-MSG_HASH(
    MSG_AUDIO_VOLUME,
    "Geluidsvolume"
    )
@@ -4774,15 +3190,15 @@ MSG_HASH(
    )
 MSG_HASH(
    MSG_CORE_DOES_NOT_SUPPORT_SAVESTATES,
-   "Core heeft geen slagstaat ondersteuning."
+   "Core heeft geen save state ondersteuning."
    )
 MSG_HASH(
-   MSG_CRC32_CHECKSUM_MISMATCH,
-   "CRC32 checksum mismatch between content file and saved content checksum in replay file header) replay highly likely to desync on playback."
+   MSG_DISK_CLOSED,
+   "Gesloten"
    )
 MSG_HASH(
-   MSG_DETECTED_VIEWPORT_OF,
-   "Gedetecteerd weergave van"
+   MSG_DISK_EJECTED,
+   "Uitgeworpen"
    )
 MSG_HASH(
    MSG_DOWNLOAD_FAILED,
@@ -4837,10 +3253,6 @@ MSG_HASH(
    "Shader gevonden"
    )
 MSG_HASH(
-   MSG_HW_RENDERED_MUST_USE_POSTSHADED_RECORDING,
-   "Libretro core is hardware-geaccelereerd. Must use post-shaded recording as well."
-   )
-MSG_HASH(
    MSG_INTERNAL_STORAGE,
    "Interne Opslag"
    )
@@ -4869,20 +3281,12 @@ MSG_HASH(
    "Geheugen"
    )
 MSG_HASH(
-   MSG_MOVIE_FILE_IS_NOT_A_VALID_BSV1_FILE,
-   "Movie file is not a valid BSV1 file."
-   )
-MSG_HASH(
-   MSG_MOVIE_FORMAT_DIFFERENT_SERIALIZER_VERSION,
-   "Movie format seems to have a different serializer version. Will most likely fail."
-   )
-MSG_HASH(
-   MSG_MOVIE_PLAYBACK_ENDED,
-   "Movie playback ended."
-   )
-MSG_HASH(
    MSG_PAUSED,
    "Gepauzeerd."
+   )
+MSG_HASH(
+   MSG_RECEIVED,
+   "ontvangen"
    )
 MSG_HASH(
    MSG_REWINDING,
@@ -4914,11 +3318,7 @@ MSG_HASH(
    )
 MSG_HASH(
    MSG_UNDOING_SAVE_STATE,
-   "Slagstaat ongedaan maken"
-   )
-MSG_HASH(
-   MSG_UNKNOWN,
-   "Onbekend"
+   "Save state ongedaan maken"
    )
 MSG_HASH(
    MSG_VALUE_REBOOTING,
@@ -4933,8 +3333,8 @@ MSG_HASH(
    "Versie van libretro API"
    )
 MSG_HASH(
-   MSG_VIEWPORT_SIZE_CALCULATION_FAILED,
-   "Weergave grootte berekening mislukt! Zal doorgaan met rauw gegevens. Dit werkt waarschijnlijk niet goed..."
+   MSG_FAILED,
+   "gefaald"
    )
 MSG_HASH(
    MSG_DEVICE_NOT_CONFIGURED,
@@ -4984,18 +3384,6 @@ MSG_HASH(
    MSG_RESAMPLER_QUALITY_HIGHEST,
    "Hoogst"
    )
-MSG_HASH(
-   MSG_DUMPING_DISC,
-   "Disk dumpt..."
-   )
-MSG_HASH(
-   MSG_DISC_DUMP_FAILED_TO_READ_FROM_DRIVE,
-   "Aflezen van schijf mislukt. Dump afgebroken."
-   )
-MSG_HASH(
-   MSG_DISC_DUMP_FAILED_TO_WRITE_TO_DISK,
-   "Schrijven naar schijf mislukt. Dump afgebroken."
-   )
 
 /* Lakka */
 
@@ -5019,14 +3407,6 @@ MSG_HASH(
    "Scherm Resolutie"
    )
 MSG_HASH(
-   MENU_ENUM_LABEL_VALUE_VIDEO_SOFT_FILTER,
-   "Soft Filter Enable"
-   )
-MSG_HASH(
-   MENU_ENUM_LABEL_VALUE_BLUETOOTH_SETTINGS,
-   "Bluetooth Activeren"
-   )
-MSG_HASH(
    MENU_ENUM_LABEL_VALUE_VIDEO_VI_WIDTH,
    "VI Scherm Breedte Instellen"
    )
@@ -5043,12 +3423,12 @@ MSG_HASH(
    "Blok Frames"
    )
 MSG_HASH(
-   MENU_ENUM_LABEL_VALUE_INPUT_TOUCH_ENABLE,
-   "Touch Enable"
+   MENU_ENUM_LABEL_VALUE_MENU_SHOW_REBOOT,
+   "Toon Herstart"
    )
 MSG_HASH(
-   MENU_ENUM_LABEL_VALUE_INPUT_SMALL_KEYBOARD_ENABLE,
-   "Small Keyboard Enable"
+   MENU_ENUM_SUBLABEL_MENU_SHOW_REBOOT,
+   "Toon/verberg de 'Herstart' optie."
    )
 
 #ifdef HAVE_LAKKA_SWITCH
@@ -5060,27 +3440,10 @@ MSG_HASH(
    MENU_ENUM_LABEL_VALUE_BLUETOOTH_ENABLE,
    "Bluetooth Activeren"
    )
-MSG_HASH(
-   MENU_ENUM_LABEL_VALUE_SAMBA_ENABLE,
-   "SAMBA Enable"
-   )
-MSG_HASH(
-   MENU_ENUM_SUBLABEL_SAMBA_ENABLE,
-   "Netwerkfolders delen via het SMB-protocol."
-   )
-MSG_HASH(
-   MENU_ENUM_LABEL_VALUE_SSH_ENABLE,
-   "SSH Enable"
-   )
-MSG_HASH(
-   MENU_ENUM_SUBLABEL_SSH_ENABLE,
-   "Enable or disable remote command line access."
-   )
 #endif
 #ifdef GEKKO
 #endif
 #ifdef HAVE_ODROIDGO2
-#else
 #endif
 #if defined(_3DS)
 MSG_HASH(
@@ -5090,26 +3453,6 @@ MSG_HASH(
 MSG_HASH(
    MENU_ENUM_LABEL_VALUE_VIDEO_3DS_DISPLAY_MODE,
    "3DS weergavemodus"
-   )
-MSG_HASH(
-   MSG_3DS_BOTTOM_MENU_DEFAULT,
-   "Raak aan voor\nRetroArch-menu"
-   )
-MSG_HASH(
-   MSG_3DS_BOTTOM_MENU_ASSET_NOT_FOUND,
-   "bottom_menu.png niet gevonden\nin de assets/ctr folder"
-   )
-MSG_HASH(
-   MSG_3DS_BOTTOM_MENU_RESUME,
-   "Spel\nhervatten"
-   )
-MSG_HASH(
-   MSG_3DS_BOTTOM_MENU_SAVE_STATE,
-   "Bewaarpunt\ncreëren"
-   )
-MSG_HASH(
-   MSG_3DS_BOTTOM_MENU_LOAD_STATE,
-   "Bewaarpunt\nladen"
    )
 #endif
 #ifdef HAVE_QT

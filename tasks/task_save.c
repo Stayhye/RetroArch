@@ -36,43 +36,33 @@
 #include <file/file_path.h>
 #include <retro_miscellaneous.h>
 #include <string/stdstring.h>
-#include <time/rtime.h>
 
 #ifdef HAVE_CONFIG_H
-#include "../config.h"
+#include "../core.h"
 #endif
 
 #ifdef HAVE_NETWORKING
 #include "../network/netplay/netplay.h"
 #endif
 
-#ifdef HAVE_CHEEVOS
-#include "../cheevos/cheevos.h"
-#endif
-
 #include "../content.h"
 #include "../core.h"
-#include "../core_info.h"
 #include "../file_path_special.h"
 #include "../configuration.h"
 #include "../msg_hash.h"
 #include "../retroarch.h"
 #include "../verbosity.h"
 #include "tasks_internal.h"
-#ifdef HAVE_CHEATS
-#include "../cheat_manager.h"
-#endif
+#include "../managers/cheat_manager.h"
 
-#if defined(HAVE_LIBNX) || defined(_3DS)
+#ifdef HAVE_LIBNX
 #define SAVE_STATE_CHUNK 4096 * 10
 #else
 #define SAVE_STATE_CHUNK 4096
 #endif
 
-#define RASTATE_VERSION 1
-#define RASTATE_MEM_BLOCK "MEM "
-#define RASTATE_CHEEVOS_BLOCK "ACHV"
-#define RASTATE_END_BLOCK "END "
+static bool save_state_in_background = false;
+static struct string_list *task_save_files = NULL;
 
 struct ram_type
 {
@@ -83,43 +73,47 @@ struct ram_type
 struct save_state_buf
 {
    void* data;
-   size_t size;
    char path[PATH_MAX_LENGTH];
-};
-
-struct ram_save_state_buf
-{
-   struct save_state_buf state_buf;
-   bool to_write_file;
+   size_t size;
 };
 
 struct sram_block
 {
+   unsigned type;
    void *data;
    size_t size;
-   unsigned type;
 };
 
 typedef struct
 {
    intfstream_t *file;
+   char path[PATH_MAX_LENGTH];
    void *data;
    void *undo_data;
    ssize_t size;
    ssize_t undo_size;
    ssize_t written;
    ssize_t bytes_read;
-   int state_slot;
-   char path[PATH_MAX_LENGTH];
    bool load_to_backup_buffer;
    bool autoload;
    bool autosave;
    bool undo_save;
    bool mute;
+   int state_slot;
    bool thumbnail_enable;
    bool has_valid_framebuffer;
    bool compress_files;
 } save_task_state_t;
+
+typedef save_task_state_t load_task_data_t;
+
+/* Holds the previous saved state
+ * Can be restored to disk with undo_save_state(). */
+static struct save_state_buf undo_save_buf;
+
+/* Holds the data from before a load_state() operation
+ * Can be restored with undo_load_state(). */
+static struct save_state_buf undo_load_buf;
 
 #ifdef HAVE_THREADS
 typedef struct autosave autosave_t;
@@ -133,6 +127,10 @@ struct autosave_st
 
 struct autosave
 {
+   volatile bool quit;
+   size_t bufsize;
+   unsigned interval;
+   bool compress_files;
    void *buffer;
    const void *retro_buffer;
    const char *path;
@@ -140,47 +138,10 @@ struct autosave
    slock_t *cond_lock;
    scond_t *cond;
    sthread_t *thread;
-   size_t bufsize;
-   unsigned interval;
-   volatile bool quit;
-   bool compress_files;
 };
-#endif
 
-typedef save_task_state_t load_task_data_t;
-
-/* Holds the previous saved state
- * Can be restored to disk with undo_save_state(). */
-/* TODO/FIXME - global state - perhaps move outside this file */
-static struct save_state_buf undo_save_buf;
-
-/* Holds the data from before a load_state() operation
- * Can be restored with undo_load_state(). */
-static struct save_state_buf undo_load_buf;
-
-/* Buffer that stores state instead of file.
- * This is useful for devices with slow I/O. */
-static struct ram_save_state_buf ram_buf;
-
-#ifdef HAVE_THREADS
-/* TODO/FIXME - global state - perhaps move outside this file */
 static struct autosave_st autosave_state;
-#endif
 
-/* TODO/FIXME - global state - perhaps move outside this file */
-static bool save_state_in_background       = false;
-static struct string_list *task_save_files = NULL;
-
-typedef struct rastate_size_info
-{
-   size_t total_size;
-   size_t coremem_size;
-#ifdef HAVE_CHEEVOS
-   size_t cheevos_size;
-#endif
-} rastate_size_info_t;
-
-#ifdef HAVE_THREADS
 /**
  * autosave_thread:
  * @data            : pointer to autosave object
@@ -433,6 +394,7 @@ void autosave_unlock(void)
 bool content_undo_load_state(void)
 {
    unsigned i;
+   retro_ctx_serialize_info_t serial_info;
    size_t temp_data_size;
    bool ret                  = false;
    unsigned num_blocks       = 0;
@@ -441,17 +403,13 @@ bool content_undo_load_state(void)
    settings_t *settings      = config_get_ptr();
    bool block_sram_overwrite = settings->bools.block_sram_overwrite;
 
-   if (!core_info_current_supports_savestate())
-   {
-      RARCH_LOG("[State]: %s\n",
-            msg_hash_to_str(MSG_CORE_DOES_NOT_SUPPORT_SAVESTATES));
-      return false;
-   }
-
-   RARCH_LOG("[State]: %s \"%s\", %u %s.\n",
+   RARCH_LOG("%s: \"%s\".\n",
          msg_hash_to_str(MSG_LOADING_STATE),
-         undo_load_buf.path,
-         (unsigned)undo_load_buf.size,
+         undo_load_buf.path);
+
+   RARCH_LOG("%s: %u %s.\n",
+         msg_hash_to_str(MSG_STATE_SIZE),
+         (unsigned int)undo_load_buf.size,
          msg_hash_to_str(MSG_BYTES));
 
    /* TODO/FIXME - This checking of SRAM overwrite,
@@ -461,7 +419,7 @@ bool content_undo_load_state(void)
    if (block_sram_overwrite && task_save_files
          && task_save_files->size)
    {
-      RARCH_LOG("[SRAM]: %s.\n",
+      RARCH_LOG("%s.\n",
             msg_hash_to_str(MSG_BLOCKING_SRAM_OVERWRITE));
       blocks = (struct sram_block*)
          calloc(task_save_files->size, sizeof(*blocks));
@@ -511,11 +469,14 @@ bool content_undo_load_state(void)
    temp_data_size         = undo_load_buf.size;
    memcpy(temp_data, undo_load_buf.data, undo_load_buf.size);
 
+   serial_info.data_const = temp_data;
+   serial_info.size       = temp_data_size;
+
    /* Swap the current state with the backup state. This way, we can undo
    what we're undoing */
    content_save_state("RAM", false, false);
 
-   ret                    = content_deserialize_state(temp_data, temp_data_size);
+   ret                    = core_unserialize(&serial_info);
 
    /* Clean up the temporary copy */
    free(temp_data);
@@ -540,15 +501,12 @@ bool content_undo_load_state(void)
    }
 
    for (i = 0; i < num_blocks; i++)
-   {
       free(blocks[i].data);
-      blocks[i].data = NULL;
-   }
    free(blocks);
 
    if (!ret)
    {
-      RARCH_ERR("[State]: %s \"%s\".\n",
+      RARCH_ERR("%s \"%s\".\n",
          msg_hash_to_str(MSG_FAILED_TO_UNDO_LOAD_STATE),
          undo_load_buf.path);
    }
@@ -610,106 +568,13 @@ static void task_save_handler_finished(retro_task_t *task,
    free(state);
 }
 
-static size_t content_align_size(size_t size)
-{
-   /* align to 8-byte boundary */
-   return ((size + 7) & ~7);
-}
-
-static bool content_get_rastate_size(rastate_size_info_t* size)
-{
-   retro_ctx_size_info_t info;
-
-   core_serialize_size(&info);
-   if (!info.size)
-      return false;
-
-   size->coremem_size = info.size;
-   /* 8-byte identifier, 8-byte block header, content, 8-byte terminator */
-   size->total_size = 8 + 8 + content_align_size(info.size) + 8;
-
-#ifdef HAVE_CHEEVOS
-   size->cheevos_size = rcheevos_get_serialize_size();
-   if (size->cheevos_size > 0)
-      size->total_size += 8 + content_align_size(size->cheevos_size); /* 8-byte block header + content */
-#endif
-
-   return true;
-}
-
-size_t content_get_serialized_size(void)
-{
-   rastate_size_info_t size;
-   if (!content_get_rastate_size(&size))
-      return 0;
-
-   return size.total_size;
-}
-
-static void content_write_block_header(unsigned char* output, const char* header, size_t size)
-{
-   memcpy(output, header, 4);
-   output[4] = ((size) & 0xFF);
-   output[5] = ((size >> 8) & 0xFF);
-   output[6] = ((size >> 16) & 0xFF);
-   output[7] = ((size >> 24) & 0xFF);
-}
-
-static bool content_write_serialized_state(void* buffer, rastate_size_info_t* size)
+static void *get_serialized_data(const char *path, size_t serial_size)
 {
    retro_ctx_serialize_info_t serial_info;
-   unsigned char* output = (unsigned char*)buffer;
+   bool ret    = false;
+   void *data  = NULL;
 
-   /* 8-byte identifier "RASTATE1" where 1 is the version */
-   memcpy(output, "RASTATE", 7);
-   output[7] = RASTATE_VERSION;
-   output += 8;
-
-   /* important - write the unaligned size - some cores fail if they aren't passed the exact right size. */
-   content_write_block_header(output, RASTATE_MEM_BLOCK, size->coremem_size);
-   output += 8;
-
-   /* important - pass the unaligned size to the core. some fail if it isn't exactly what they're expecting. */
-   serial_info.size = size->coremem_size;
-   serial_info.data = (void*)output;
-   if (!core_serialize(&serial_info))
-      return false;
-
-   output += content_align_size(size->coremem_size);
-
-#ifdef HAVE_CHEEVOS
-   if (size->cheevos_size)
-   {
-      content_write_block_header(output, RASTATE_CHEEVOS_BLOCK, size->cheevos_size);
-
-      if (rcheevos_get_serialized_data(output + 8))
-         output += content_align_size(size->cheevos_size) + 8;
-   }
-#endif
-
-   content_write_block_header(output, RASTATE_END_BLOCK, 0);
-
-   return true;
-}
-
-bool content_serialize_state(void* buffer, size_t buffer_size)
-{
-   rastate_size_info_t size;
-   if (!content_get_rastate_size(&size))
-      return false;
-
-   if (size.total_size > buffer_size)
-      return false;
-
-   return content_write_serialized_state(buffer, &size);
-}
-
-static void *content_get_serialized_data(size_t* serial_size)
-{
-   void* data;
-
-   rastate_size_info_t size;
-   if (!content_get_rastate_size(&size))
+   if (!serial_size)
       return NULL;
 
    /* Ensure buffer is initialised to zero
@@ -717,17 +582,26 @@ static void *content_get_serialized_data(size_t* serial_size)
     *   sizes when core requests a larger buffer
     *   than it needs (and leaves the excess
     *   as uninitialised garbage) */
-   data = calloc(size.total_size, 1);
+   data = calloc(serial_size, 1);
+
    if (!data)
       return NULL;
 
-   if (!content_write_serialized_state(data, &size))
+   RARCH_LOG("%s: %d %s.\n",
+         msg_hash_to_str(MSG_STATE_SIZE),
+         (int)serial_size,
+         msg_hash_to_str(MSG_BYTES));
+
+   serial_info.data = data;
+   serial_info.size = serial_size;
+   ret              = core_serialize(&serial_info);
+
+   if (!ret)
    {
       free(data);
       return NULL;
    }
 
-   *serial_size = size.total_size;
    return data;
 }
 
@@ -758,11 +632,7 @@ static void task_save_handler(retro_task_t *task)
    }
 
    if (!state->data)
-   {
-      size_t size = 0;
-      state->data = content_get_serialized_data(&size);
-      state->size = (ssize_t)size;
-   }
+      state->data  = get_serialized_data(state->path, state->size);
 
    remaining       = MIN(state->size - state->written, SAVE_STATE_CHUNK);
 
@@ -778,27 +648,26 @@ static void task_save_handler(retro_task_t *task)
 
    if (task_get_cancelled(task) || written != remaining)
    {
-      size_t err_size = 8192 * sizeof(char);
-      char *err       = (char*)malloc(err_size);
-      err[0]          = '\0';
+      char err[8192];
+
+      err[0] = '\0';
 
       if (state->undo_save)
       {
-         RARCH_ERR("[State]: %s \"%s\".\n",
+         RARCH_ERR("%s \"%s\".\n",
             msg_hash_to_str(MSG_FAILED_TO_UNDO_SAVE_STATE),
             undo_save_buf.path);
 
-         snprintf(err, err_size - 1, "%s \"%s\".",
+         snprintf(err, sizeof(err), "%s \"%s\".",
                   msg_hash_to_str(MSG_FAILED_TO_UNDO_SAVE_STATE),
                   "RAM");
       }
       else
-         snprintf(err, err_size - 1,
+         snprintf(err, sizeof(err),
                "%s %s",
                msg_hash_to_str(MSG_FAILED_TO_SAVE_STATE_TO), state->path);
 
       task_set_error(task, strdup(err));
-      free(err);
       task_save_handler_finished(task, state);
       return;
    }
@@ -897,13 +766,6 @@ error:
  **/
 bool content_undo_save_state(void)
 {
-   if (!core_info_current_supports_savestate())
-   {
-      RARCH_LOG("[State]: %s\n",
-            msg_hash_to_str(MSG_CORE_DOES_NOT_SUPPORT_SAVESTATES));
-      return false;
-   }
-
    return task_push_undo_save_state(undo_save_buf.path,
                              undo_save_buf.data,
                              undo_save_buf.size);
@@ -970,23 +832,18 @@ static void task_load_handler(retro_task_t *task)
 #endif
 
       if (!state->file)
-         goto end;
+         goto error;
 
       state->size = intfstream_get_size(state->file);
 
       if (state->size < 0)
-         goto end;
+         goto error;
 
       state->data = malloc(state->size + 1);
 
       if (!state->data)
-         goto end;
+         goto error;
    }
-
-#ifdef HAVE_CHEEVOS
-   if (rcheevos_hardcore_active())
-      task_set_cancelled(task, true);
-#endif
 
    remaining          = MIN(state->size - state->bytes_read, SAVE_STATE_CHUNK);
    bytes_read         = intfstream_read(state->file,
@@ -1006,8 +863,10 @@ static void task_load_handler(retro_task_t *task)
 
          snprintf(msg,
                8192 * sizeof(char),
-               msg_hash_to_str(MSG_AUTOLOADING_SAVESTATE_FAILED),
-               state->path);
+               "%s \"%s\" %s.",
+               msg_hash_to_str(MSG_AUTOLOADING_SAVESTATE_FROM),
+               state->path,
+               msg_hash_to_str(MSG_FAILED));
          task_set_error(task, strdup(msg));
          free(msg);
       }
@@ -1022,126 +881,44 @@ static void task_load_handler(retro_task_t *task)
 
    if (state->bytes_read == state->size)
    {
+      size_t sizeof_msg = 8192;
+      char         *msg = (char*)malloc(sizeof_msg * sizeof(char));
+
+      msg[0]            = '\0';
+
       task_free_title(task);
 
-      if (!task_get_mute(task))
+      if (state->autoload)
+         snprintf(msg, sizeof_msg,
+               "%s \"%s\" %s.",
+               msg_hash_to_str(MSG_AUTOLOADING_SAVESTATE_FROM),
+               state->path,
+               msg_hash_to_str(MSG_SUCCEEDED));
+      else
       {
-         size_t msg_size   = 8192 * sizeof(char);
-         char *msg         = (char*)malloc(msg_size);
-
-         msg[0]            = '\0';
-
-         if (state->autoload)
-            snprintf(msg, msg_size - 1,
-                  msg_hash_to_str(MSG_AUTOLOADING_SAVESTATE_SUCCEEDED),
-                  state->path);
+         if (state->state_slot < 0)
+            strlcpy(msg, msg_hash_to_str(MSG_LOADED_STATE_FROM_SLOT_AUTO),
+                 sizeof_msg);
          else
-         {
-            if (state->state_slot < 0)
-               strlcpy(msg, msg_hash_to_str(MSG_LOADED_STATE_FROM_SLOT_AUTO),
-                     msg_size - 1);
-            else
-               snprintf(msg, msg_size - 1,
-                     msg_hash_to_str(MSG_LOADED_STATE_FROM_SLOT),
-                     state->state_slot);
-         }
+            snprintf(msg, sizeof_msg,
+                  msg_hash_to_str(MSG_LOADED_STATE_FROM_SLOT),
+                  state->state_slot);
 
-         task_set_title(task, strdup(msg));
-         free(msg);
       }
 
-      goto end;
+      if (!task_get_mute(task))
+         task_set_title(task, strdup(msg));
+
+      free(msg);
+      task_load_handler_finished(task, state);
+
+      return;
    }
 
    return;
 
-end:
+error:
    task_load_handler_finished(task, state);
-}
-
-static bool content_load_rastate1(unsigned char* input, size_t size)
-{
-   unsigned char* stop = input + size;
-   unsigned char* marker;
-   bool seen_core = false;
-#ifdef HAVE_CHEEVOS
-   bool seen_cheevos = false;
-#endif
-
-   input += 8;
-   while (input < stop)
-   {
-      size_t block_size = (input[7] << 24 | input[6] << 16 | input[5] << 8 | input[4]);
-      marker = input;
-      input += 8;
-
-      if (memcmp(marker, RASTATE_MEM_BLOCK, 4) == 0)
-      {
-         retro_ctx_serialize_info_t serial_info;
-         serial_info.data_const = (void*)input;
-         serial_info.size = block_size;
-         if (!core_unserialize(&serial_info))
-            return false;
-
-         seen_core = true;
-      }
-#ifdef HAVE_CHEEVOS
-      else if (memcmp(marker, RASTATE_CHEEVOS_BLOCK, 4) == 0)
-      {
-         if (rcheevos_set_serialized_data((void*)input))
-            seen_cheevos = true;
-      }
-#endif
-      else if (memcmp(marker, RASTATE_END_BLOCK, 4) == 0)
-      {
-         break;
-      }
-
-      input += content_align_size(block_size);
-   }
-
-   if (!seen_core)
-      return false;
-
-#ifdef HAVE_CHEEVOS
-   if (!seen_cheevos)
-      rcheevos_set_serialized_data(NULL);
-#endif
-
-   return true;
-}
-
-bool content_deserialize_state(const void* serialized_data, size_t serialized_size)
-{
-   if (memcmp(serialized_data, "RASTATE", 7) != 0)
-   {
-      /* old format is just core data, load it directly */
-      retro_ctx_serialize_info_t serial_info;
-      serial_info.data_const = serialized_data;
-      serial_info.size = serialized_size;
-      if (!core_unserialize(&serial_info))
-         return false;
-
-#ifdef HAVE_CHEEVOS
-      rcheevos_set_serialized_data(NULL);
-#endif
-   }
-   else
-   {
-      unsigned char* input = (unsigned char*)serialized_data;
-      switch (input[7]) /* version */
-      {
-         case 1:
-            if (!content_load_rastate1(input, serialized_size))
-               return false;
-            break;
-
-         default:
-            return false;
-      }
-   }
-
-   return true;
 }
 
 /**
@@ -1154,6 +931,7 @@ static void content_load_state_cb(retro_task_t *task,
       void *task_data,
       void *user_data, const char *error)
 {
+   retro_ctx_serialize_info_t serial_info;
    unsigned i;
    bool ret;
    load_task_data_t *load_data = (load_task_data_t*)task_data;
@@ -1164,19 +942,17 @@ static void content_load_state_cb(retro_task_t *task,
    settings_t *settings        = config_get_ptr();
    bool block_sram_overwrite   = settings->bools.block_sram_overwrite;
 
-#ifdef HAVE_CHEEVOS
-   if (rcheevos_hardcore_active())
-      goto error;
-#endif
-
-   RARCH_LOG("[State]: %s \"%s\", %u %s.\n",
+   RARCH_LOG("%s: \"%s\".\n",
          msg_hash_to_str(MSG_LOADING_STATE),
-         load_data->path,
-         (unsigned)size,
-         msg_hash_to_str(MSG_BYTES));
+         load_data->path);
 
    if (size < 0 || !buf)
       goto error;
+
+   RARCH_LOG("%s: %u %s.\n",
+         msg_hash_to_str(MSG_STATE_SIZE),
+         (unsigned)size,
+         msg_hash_to_str(MSG_BYTES));
 
    /* This means we're backing up the file in memory, 
     * so content_undo_save_state()
@@ -1206,7 +982,7 @@ static void content_load_state_cb(retro_task_t *task,
    if (block_sram_overwrite && task_save_files
          && task_save_files->size)
    {
-      RARCH_LOG("[SRAM]: %s.\n",
+      RARCH_LOG("%s.\n",
             msg_hash_to_str(MSG_BLOCKING_SRAM_OVERWRITE));
       blocks = (struct sram_block*)
          calloc(task_save_files->size, sizeof(*blocks));
@@ -1251,12 +1027,15 @@ static void content_load_state_cb(retro_task_t *task,
       }
    }
 
+   serial_info.data_const = buf;
+   serial_info.size       = size;
+
    /* Backup the current state so we can undo this load */
    content_save_state("RAM", false, false);
 
-   ret = content_deserialize_state(buf, size);
+   ret                    = core_unserialize(&serial_info);
 
-   /* Flush back. */
+    /* Flush back. */
    for (i = 0; i < num_blocks; i++)
    {
       if (blocks[i].data)
@@ -1287,7 +1066,7 @@ static void content_load_state_cb(retro_task_t *task,
    return;
 
 error:
-   RARCH_ERR("[State]: %s \"%s\".\n",
+   RARCH_ERR("%s \"%s\".\n",
          msg_hash_to_str(MSG_FAILED_TO_LOAD_STATE),
          load_data->path);
    if (buf)
@@ -1305,7 +1084,6 @@ static void save_state_cb(retro_task_t *task,
       void *user_data, const char *error)
 {
    save_task_state_t *state   = (save_task_state_t*)task_data;
-#ifdef HAVE_SCREENSHOTS
    char               *path   = strdup(state->path);
    settings_t     *settings   = config_get_ptr();
    const char *dir_screenshot = settings->paths.directory_screenshot; 
@@ -1313,9 +1091,8 @@ static void save_state_cb(retro_task_t *task,
    if (state->thumbnail_enable)
       take_screenshot(dir_screenshot,
             path, true, state->has_valid_framebuffer, false, true);
-   free(path);
-#endif
 
+   free(path);
    free(state);
 }
 
@@ -1490,37 +1267,31 @@ bool content_save_state(const char *path, bool save_to_disk, bool autosave)
 {
    retro_ctx_size_info_t info;
    void *data  = NULL;
-   size_t serial_size;
-
-   if (!core_info_current_supports_savestate())
-   {
-      RARCH_LOG("[State]: %s\n",
-            msg_hash_to_str(MSG_CORE_DOES_NOT_SUPPORT_SAVESTATES));
-      return false;
-   }
 
    core_serialize_size(&info);
 
    if (info.size == 0)
       return false;
-   serial_size = info.size;
 
    if (!save_state_in_background)
    {
-      data = content_get_serialized_data(&serial_size);
+      RARCH_LOG("%s: \"%s\".\n",
+            msg_hash_to_str(MSG_SAVING_STATE),
+            path);
+
+      data = get_serialized_data(path, info.size);
 
       if (!data)
       {
-         RARCH_ERR("[State]: %s \"%s\".\n",
+         RARCH_ERR("%s \"%s\".\n",
                msg_hash_to_str(MSG_FAILED_TO_SAVE_STATE_TO),
                path);
          return false;
       }
 
-      RARCH_LOG("[State]: %s \"%s\", %u %s.\n",
-            msg_hash_to_str(MSG_SAVING_STATE),
-            path,
-            (unsigned)serial_size,
+      RARCH_LOG("%s: %d %s.\n",
+            msg_hash_to_str(MSG_STATE_SIZE),
+            (int)info.size,
             msg_hash_to_str(MSG_BYTES));
    }
 
@@ -1528,25 +1299,25 @@ bool content_save_state(const char *path, bool save_to_disk, bool autosave)
    {
       if (path_is_valid(path) && !autosave)
       {
-         /* Before overwriting the savestate file, load it into a buffer
+         /* Before overwritting the savestate file, load it into a buffer
          to allow undo_save_state() to work */
          /* TODO/FIXME - Use msg_hash_to_str here */
-         RARCH_LOG("[State]: %s ...\n",
+         RARCH_LOG("%s ...\n",
                msg_hash_to_str(MSG_FILE_ALREADY_EXISTS_SAVING_TO_BACKUP_BUFFER));
 
-         task_push_load_and_save_state(path, data, serial_size, true, autosave);
+         task_push_load_and_save_state(path, data, info.size, true, autosave);
       }
       else
-         task_push_save_state(path, data, serial_size, autosave);
+         task_push_save_state(path, data, info.size, autosave);
    }
    else
    {
       if (!data)
-         data = content_get_serialized_data(&serial_size);
+         data = get_serialized_data(path, info.size);
 
       if (!data)
       {
-         RARCH_ERR("[State]: %s \"%s\".\n",
+         RARCH_ERR("%s \"%s\".\n",
                msg_hash_to_str(MSG_FAILED_TO_SAVE_STATE_TO),
                path);
          return false;
@@ -1561,61 +1332,20 @@ bool content_save_state(const char *path, bool save_to_disk, bool autosave)
          undo_load_buf.data = NULL;
       }
 
-      undo_load_buf.data = malloc(serial_size);
+      undo_load_buf.data = malloc(info.size);
       if (!undo_load_buf.data)
       {
          free(data);
          return false;
       }
 
-      memcpy(undo_load_buf.data, data, serial_size);
+      memcpy(undo_load_buf.data, data, info.size);
       free(data);
-      undo_load_buf.size = serial_size;
+      undo_load_buf.size = info.size;
       strlcpy(undo_load_buf.path, path, sizeof(undo_load_buf.path));
    }
 
    return true;
-}
-
-/**
- * content_ram_state_pending:
- * Check a ram state write to disk.
- *
- * Returns: true if need to write, false otherwise.
- **/
-bool content_ram_state_pending(void)
-{
-   return ram_buf.to_write_file;
-}
-
-static bool task_save_state_finder(retro_task_t *task, void *user_data)
-{
-   if (!task)
-      return false;
-
-   if (task->handler == task_save_handler)
-      return true;
-
-   return false;
-}
-
-/* Returns true if a save state task is in progress */
-static bool content_save_state_in_progress(void* data)
-{
-   task_finder_data_t find_data;
-
-   find_data.func     = task_save_state_finder;
-   find_data.userdata = NULL;
-
-   if (task_queue_find(&find_data))
-      return true;
-
-   return false;
-}
-
-void content_wait_for_save_state_task(void)
-{
-   task_queue_wait(content_save_state_in_progress, NULL);
 }
 
 /**
@@ -1631,8 +1361,8 @@ void content_wait_for_save_state_task(void)
 bool content_load_state(const char *path,
       bool load_to_backup_buffer, bool autoload)
 {
-   retro_task_t       *task     = NULL;
-   save_task_state_t *state     = NULL;
+   retro_task_t       *task     = task_init();
+   save_task_state_t *state     = (save_task_state_t*)calloc(1, sizeof(*state));
    settings_t *settings         = config_get_ptr();
    int state_slot               = settings->ints.state_slot;
 #if defined(HAVE_ZLIB)
@@ -1640,16 +1370,6 @@ bool content_load_state(const char *path,
 #else
    bool compress_files          = false;
 #endif
-
-   if (!core_info_current_supports_savestate())
-   {
-      RARCH_LOG("[State]: %s\n",
-            msg_hash_to_str(MSG_CORE_DOES_NOT_SUPPORT_SAVESTATES));
-      goto error;
-   }
-
-   task  = task_init();
-   state = (save_task_state_t*)calloc(1, sizeof(*state));
 
    if (!task || !state)
       goto error;
@@ -1691,7 +1411,7 @@ bool content_rename_state(const char *origin, const char *dest)
    if (!ret)
       return true;
 
-   RARCH_ERR("[State]: Error %d renaming file \"%s\".\n", ret, origin);
+   RARCH_LOG("Error %d renaming file %s\n", ret, origin);
    return false;
 }
 
@@ -1720,16 +1440,6 @@ bool content_reset_savestate_backups(void)
 
    undo_load_buf.path[0] = '\0';
    undo_load_buf.size    = 0;
-
-   if (ram_buf.state_buf.data)
-   {
-      free(ram_buf.state_buf.data);
-      ram_buf.state_buf.data = NULL;
-   }
-
-   ram_buf.state_buf.path[0] = '\0';
-   ram_buf.state_buf.size    = 0;
-   ram_buf.to_write_file     = false;
 
    return true;
 }
@@ -1799,7 +1509,7 @@ bool content_load_ram_file(unsigned slot)
    {
       if (rc > (ssize_t)mem_info.size)
       {
-         RARCH_WARN("[SRAM]: SRAM is larger than implementation expects, "
+         RARCH_WARN("SRAM is larger than implementation expects, "
                "doing partial load (truncating %u %s %s %u).\n",
                (unsigned)rc,
                msg_hash_to_str(MSG_BYTES),
@@ -1828,31 +1538,37 @@ static bool dump_to_file_desperate(const void *data,
       size_t size, unsigned type)
 {
    time_t time_;
-   struct tm tm_;
-   char timebuf[256];
-   char path[PATH_MAX_LENGTH];
-   char application_data[PATH_MAX_LENGTH];
-
+   char *timebuf;
+   char *path;
+   char *application_data = (char*)malloc(PATH_MAX_LENGTH * sizeof(char));
    application_data[0]    = '\0';
-   path            [0]    = '\0';
-   timebuf         [0]    = '\0';
 
    if (!fill_pathname_application_data(application_data,
-            sizeof(application_data)))
+            PATH_MAX_LENGTH * sizeof(char)))
+   {
+      free(application_data);
       return false;
+   }
 
    time(&time_);
 
-   rtime_localtime(&time_, &tm_);
+   timebuf    = (char*)malloc(256 * sizeof(char));
+   timebuf[0] = '\0';
 
    strftime(timebuf,
          256 * sizeof(char),
-         "%Y-%m-%d-%H-%M-%S", &tm_);
+         "%Y-%m-%d-%H-%M-%S", localtime(&time_));
 
-   snprintf(path, sizeof(path),
+   path    = (char*)malloc(PATH_MAX_LENGTH * sizeof(char));
+   path[0] = '\0';
+   snprintf(path,
+         PATH_MAX_LENGTH * sizeof(char),
          "%s/RetroArch-recovery-%u%s",
          application_data, type,
          timebuf);
+
+   free(application_data);
+   free(timebuf);
 
    /* Fallback (emergency) saves are always
     * uncompressed
@@ -1864,176 +1580,14 @@ static bool dump_to_file_desperate(const void *data,
     *   complicate matters by introducing zlib
     *   compression overheads */
    if (!filestream_write_file(path, data, size))
+   {
+      free(path);
       return false;
+   }
 
-   RARCH_WARN("[SRAM]: Succeeded in saving RAM data to \"%s\".\n", path);
+   RARCH_WARN("Succeeded in saving RAM data to \"%s\".\n", path);
+   free(path);
    return true;
-}
-
-/**
- * content_load_state_from_ram:
- * Load a state from ram.
- *
- * Returns: true if successful, false otherwise.
- **/
-bool content_load_state_from_ram(void)
-{
-   size_t temp_data_size;
-   bool ret                  = false;
-   void* temp_data           = NULL;
-
-   if (!core_info_current_supports_savestate())
-   {
-      RARCH_LOG("[State]: %s\n",
-            msg_hash_to_str(MSG_CORE_DOES_NOT_SUPPORT_SAVESTATES));
-      return false;
-   }
-
-   if (!ram_buf.state_buf.data)
-      return false;
-
-   RARCH_LOG("[State]: %s, %u %s.\n",
-         msg_hash_to_str(MSG_LOADING_STATE),
-         (unsigned)ram_buf.state_buf.size,
-         msg_hash_to_str(MSG_BYTES));
-
-   /* We need to make a temporary copy of the buffer, to allow the swap below */
-   temp_data              = malloc(ram_buf.state_buf.size);
-   temp_data_size         = ram_buf.state_buf.size;
-   memcpy(temp_data, ram_buf.state_buf.data, ram_buf.state_buf.size);
-
-   /* Swap the current state with the backup state. This way, we can undo
-   what we're undoing */
-   content_save_state("RAM", false, false);
-
-   ret                    = content_deserialize_state(temp_data, temp_data_size);
-
-   /* Clean up the temporary copy */
-   free(temp_data);
-   temp_data              = NULL;
-
-   if (!ret)
-   {
-      RARCH_ERR("[State]: %s.\n",
-         msg_hash_to_str(MSG_FAILED_TO_LOAD_SRAM));
-   }
-
-   return ret;
-}
-
-/**
- * content_save_state_from_ram:
- * Save a state to ram.
- *
- * Returns: true if successful, false otherwise.
- **/
-bool content_save_state_to_ram(void)
-{
-   retro_ctx_size_info_t info;
-   void *data  = NULL;
-   size_t serial_size;
-
-   if (!core_info_current_supports_savestate())
-   {
-      RARCH_LOG("[State]: %s\n",
-            msg_hash_to_str(MSG_CORE_DOES_NOT_SUPPORT_SAVESTATES));
-      return false;
-   }
-
-   core_serialize_size(&info);
-
-   if (info.size == 0)
-      return false;
-   serial_size = info.size;
-
-   if (!save_state_in_background)
-   {
-      data = content_get_serialized_data(&serial_size);
-
-      if (!data)
-      {
-         RARCH_ERR("[State]: %s.\n",
-               msg_hash_to_str(MSG_FAILED_TO_SAVE_SRAM));
-         return false;
-      }
-
-      RARCH_LOG("[State]: %s, %u %s.\n",
-            msg_hash_to_str(MSG_SAVING_STATE),
-            (unsigned)serial_size,
-            msg_hash_to_str(MSG_BYTES));
-   }
-
-   if (!data)
-      data = content_get_serialized_data(&serial_size);
-
-   if (!data)
-   {
-      RARCH_ERR("[State]: %s.\n",
-            msg_hash_to_str(MSG_FAILED_TO_SAVE_SRAM));
-      return false;
-   }
-
-   /* If we were holding onto an old state already, clean it up first */
-   if (ram_buf.state_buf.data)
-   {
-      free(ram_buf.state_buf.data);
-      ram_buf.state_buf.data = NULL;
-   }
-
-   ram_buf.state_buf.data = malloc(serial_size);
-   if (!ram_buf.state_buf.data)
-   {
-      free(data);
-      return false;
-   }
-
-   memcpy(ram_buf.state_buf.data, data, serial_size);
-   free(data);
-   ram_buf.state_buf.size = serial_size;
-   ram_buf.to_write_file = true;
-
-   return true;
-}
-
-/**
- * content_ram_state_to_file:
- * @path             : path of ram state that shall be written to.
- * Save a ram state from memory to disk.
- *
- * Returns: true if successful, false otherwise.
- **/
-bool content_ram_state_to_file(const char *path)
-{
-   settings_t *settings            = config_get_ptr();
-#if defined(HAVE_ZLIB)
-   bool compress_files             = settings->bools.save_file_compression;
-#else
-   bool compress_files             = false;
-#endif
-   bool write_success;
-
-   if (!path)
-      return false;
-
-   if (!ram_buf.state_buf.data)
-      return false;
-
-   if (!ram_buf.to_write_file)
-      return false;
-
-#if defined(HAVE_ZLIB)
-   if (compress_files)
-      write_success = rzipstream_write_file(
-         path, ram_buf.state_buf.data, ram_buf.state_buf.size);
-   else
-#endif
-      write_success = filestream_write_file(
-         path, ram_buf.state_buf.data, ram_buf.state_buf.size);
-
-   if (write_success)
-      ram_buf.to_write_file = false;
-
-   return write_success;
 }
 
 /**
@@ -2053,7 +1607,7 @@ bool content_save_ram_file(unsigned slot, bool compress)
    if (!content_get_memory(&mem_info, &ram, slot))
       return false;
 
-   RARCH_LOG("[SRAM]: %s #%u %s \"%s\".\n",
+   RARCH_LOG("%s #%u %s \"%s\".\n",
          msg_hash_to_str(MSG_SAVING_RAM_TYPE),
          ram.type,
          msg_hash_to_str(MSG_TO),
@@ -2070,9 +1624,9 @@ bool content_save_ram_file(unsigned slot, bool compress)
 
    if (!write_success)
    {
-      RARCH_ERR("[SRAM]: %s.\n",
+      RARCH_ERR("%s.\n",
             msg_hash_to_str(MSG_FAILED_TO_SAVE_SRAM));
-      RARCH_WARN("[SRAM]: Attempting to recover ...\n");
+      RARCH_WARN("Attempting to recover ...\n");
 
       /* In case the file could not be written to,
        * the fallback function 'dump_to_file_desperate'
@@ -2080,12 +1634,12 @@ bool content_save_ram_file(unsigned slot, bool compress)
       if (!dump_to_file_desperate(
                mem_info.data, mem_info.size, ram.type))
       {
-         RARCH_WARN("[SRAM]: Failed ... Cannot recover save file.\n");
+         RARCH_WARN("Failed ... Cannot recover save file.\n");
       }
       return false;
    }
 
-   RARCH_LOG("[SRAM]: %s \"%s\".\n",
+   RARCH_LOG("%s \"%s\".\n",
          msg_hash_to_str(MSG_SAVED_SUCCESSFULLY_TO),
          ram.path);
 
@@ -2096,19 +1650,15 @@ bool event_save_files(bool is_sram_used)
 {
    unsigned i;
    settings_t *settings            = config_get_ptr();
-#ifdef HAVE_CHEATS
    const char *path_cheat_database = settings->paths.path_cheat_database;
-#endif
 #if defined(HAVE_ZLIB)
    bool compress_files             = settings->bools.save_file_compression;
 #else
    bool compress_files             = false;
 #endif
 
-#ifdef HAVE_CHEATS
    cheat_manager_save_game_specific_cheats(
          path_cheat_database);
-#endif
    if (!task_save_files || !is_sram_used)
       return false;
 
@@ -2121,24 +1671,21 @@ bool event_save_files(bool is_sram_used)
 bool event_load_save_files(bool is_sram_load_disabled)
 {
    unsigned i;
-   bool success = false;
 
    if (!task_save_files || is_sram_load_disabled)
       return false;
 
-   /* Report a successful load operation if
-    * any type of ram file is found and
-    * processed correctly */
    for (i = 0; i < task_save_files->size; i++)
-      success |= content_load_ram_file(i);
+      content_load_ram_file(i);
 
-   return success;
+   return true;
 }
 
 void path_init_savefile_rtc(const char *savefile_path)
 {
    union string_list_elem_attr attr;
-   char savefile_name_rtc[PATH_MAX_LENGTH];
+   char *savefile_name_rtc = (char*)
+      malloc(PATH_MAX_LENGTH * sizeof(char));
 
    savefile_name_rtc[0] = '\0';
 
@@ -2149,8 +1696,9 @@ void path_init_savefile_rtc(const char *savefile_path)
    attr.i = RETRO_MEMORY_RTC;
    fill_pathname(savefile_name_rtc,
          savefile_path, ".rtc",
-         sizeof(savefile_name_rtc));
+         PATH_MAX_LENGTH * sizeof(char));
    string_list_append(task_save_files, savefile_name_rtc, attr);
+   free(savefile_name_rtc);
 }
 
 void path_deinit_savefile(void)

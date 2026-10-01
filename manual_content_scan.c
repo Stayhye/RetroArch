@@ -39,6 +39,10 @@
  * with a manual content scan */
 typedef struct
 {
+   bool search_archives;
+   bool filter_dat_content;
+   bool overwrite_playlist;
+
    enum manual_content_scan_system_name_type system_name_type;
    enum manual_content_scan_core_type core_type;
 
@@ -51,15 +55,8 @@ typedef struct
    char file_exts_core[PATH_MAX_LENGTH];
    char file_exts_custom[PATH_MAX_LENGTH];
    char dat_file_path[PATH_MAX_LENGTH];
-
-   bool search_recursively;
-   bool search_archives;
-   bool filter_dat_content;
-   bool overwrite_playlist;
-   bool validate_entries;
 } scan_settings_t;
 
-/* TODO/FIXME - static public global variables */
 /* Static settings object
  * > Provides easy access to settings parameters
  *   when creating associated menu entries
@@ -70,6 +67,9 @@ typedef struct
  *   are not thread safe, but we only access them when pushing a
  *   task, not in the task thread itself, so all is well) */
 static scan_settings_t scan_settings = {
+   false,                                       /* search_archives */
+   false,                                       /* filter_dat_content */
+   false,                                       /* overwrite_playlist */
    MANUAL_CONTENT_SCAN_SYSTEM_NAME_CONTENT_DIR, /* system_name_type */
    MANUAL_CONTENT_SCAN_CORE_DETECT,             /* core_type */
    "",                                          /* content_dir */
@@ -81,11 +81,6 @@ static scan_settings_t scan_settings = {
    "",                                          /* file_exts_core */
    "",                                          /* file_exts_custom */
    "",                                          /* dat_file_path */
-   true,                                        /* search_recursively */
-   false,                                       /* search_archives */
-   false,                                       /* filter_dat_content */
-   false,                                       /* overwrite_playlist */
-   false                                        /* validate_entries */
 };
 
 /*****************/
@@ -93,20 +88,6 @@ static scan_settings_t scan_settings = {
 /*****************/
 
 /* Pointer access */
-
-/* Returns a pointer to the internal
- * 'content_dir' string */
-char *manual_content_scan_get_content_dir_ptr(void)
-{
-   return scan_settings.content_dir;
-}
-
-/* Returns size of the internal
- * 'content_dir' string */
-size_t manual_content_scan_get_content_dir_size(void)
-{
-   return sizeof(scan_settings.content_dir);
-}
 
 /* Returns a pointer to the internal
  * 'system_name_custom' string */
@@ -151,13 +132,6 @@ size_t manual_content_scan_get_dat_file_path_size(void)
 }
 
 /* Returns a pointer to the internal
- * 'search_recursively' bool */
-bool *manual_content_scan_get_search_recursively_ptr(void)
-{
-   return &scan_settings.search_recursively;
-}
-
-/* Returns a pointer to the internal
  * 'search_archives' bool */
 bool *manual_content_scan_get_search_archives_ptr(void)
 {
@@ -176,13 +150,6 @@ bool *manual_content_scan_get_filter_dat_content_ptr(void)
 bool *manual_content_scan_get_overwrite_playlist_ptr(void)
 {
    return &scan_settings.overwrite_playlist;
-}
-
-/* Returns a pointer to the internal
- * 'validate_entries' bool */
-bool *manual_content_scan_get_validate_entries_ptr(void)
-{
-   return &scan_settings.validate_entries;
 }
 
 /* Sanitisation */
@@ -214,8 +181,7 @@ void manual_content_scan_scrub_system_name_custom(void)
     * and/or violate the No-Intro filename standard:
     * http://datomatic.no-intro.org/stuff/The%20Official%20No-Intro%20Convention%20(20071030).zip
     * Replace these characters with underscores */
-   while ((scrub_char_pointer = 
-            strpbrk(scan_settings.system_name_custom, "&*/:`\"<>?\\|")))
+   while((scrub_char_pointer = strpbrk(scan_settings.system_name_custom, "&*/:`\"<>?\\|")))
       *scrub_char_pointer = '_';
 }
 
@@ -289,8 +255,8 @@ enum manual_content_scan_dat_file_path_status
  * Returns true if content directory is valid. */
 bool manual_content_scan_set_menu_content_dir(const char *content_dir)
 {
-   size_t len;
    const char *dir_name = NULL;
+   size_t len;
 
    /* Sanity check */
    if (string_is_empty(content_dir))
@@ -307,11 +273,13 @@ bool manual_content_scan_set_menu_content_dir(const char *content_dir)
 
    /* Remove trailing slash, if required */
    len = strlen(scan_settings.content_dir);
-   if (len <= 0)
+   if (len > 0)
+   {
+      if (scan_settings.content_dir[len - 1] == path_default_slash_c())
+         scan_settings.content_dir[len - 1] = '\0';
+   }
+   else
       goto error;
-
-   if (scan_settings.content_dir[len - 1] == PATH_DEFAULT_SLASH_C())
-      scan_settings.content_dir[len - 1] = '\0';
 
    /* Handle case where path was a single slash... */
    if (string_is_empty(scan_settings.content_dir))
@@ -500,234 +468,6 @@ error:
    scan_settings.core_path[0]      = '\0';
    scan_settings.file_exts_core[0] = '\0';
    return false;
-}
-
-/* Sets all parameters for the next manual scan
- * operation according the to recorded values in
- * the specified playlist.
- * Returns MANUAL_CONTENT_SCAN_PLAYLIST_REFRESH_OK
- * if playlist contains a valid scan record. */
-enum manual_content_scan_playlist_refresh_status
-      manual_content_scan_set_menu_from_playlist(playlist_t *playlist,
-            const char *path_content_database, bool show_hidden_files)
-{
-   const char *playlist_path    = NULL;
-   const char *playlist_file    = NULL;
-   const char *content_dir      = NULL;
-   const char *core_name        = NULL;
-   const char *file_exts        = NULL;
-   const char *dat_file_path    = NULL;
-   bool search_recursively      = false;
-   bool search_archives         = false;
-   bool filter_dat_content      = false;
-#ifdef HAVE_LIBRETRODB
-   struct string_list *rdb_list = NULL;
-#endif
-   enum manual_content_scan_system_name_type
-         system_name_type       = MANUAL_CONTENT_SCAN_SYSTEM_NAME_CONTENT_DIR;
-   enum manual_content_scan_core_type
-         core_type              = MANUAL_CONTENT_SCAN_CORE_DETECT;
-   enum manual_content_scan_playlist_refresh_status
-         playlist_status        = MANUAL_CONTENT_SCAN_PLAYLIST_REFRESH_OK;
-   char system_name[PATH_MAX_LENGTH];
-
-   system_name[0] = '\0';
-
-   if (!playlist_scan_refresh_enabled(playlist))
-   {
-      playlist_status = MANUAL_CONTENT_SCAN_PLAYLIST_REFRESH_MISSING_CONFIG;
-      goto end;
-   }
-
-   /* Read scan parameters from playlist */
-   playlist_path      = playlist_get_conf_path(playlist);
-   content_dir        = playlist_get_scan_content_dir(playlist);
-   core_name          = playlist_get_default_core_name(playlist);
-   file_exts          = playlist_get_scan_file_exts(playlist);
-   dat_file_path      = playlist_get_scan_dat_file_path(playlist);
-
-   search_recursively = playlist_get_scan_search_recursively(playlist);
-   search_archives    = playlist_get_scan_search_archives(playlist);
-   filter_dat_content = playlist_get_scan_filter_dat_content(playlist);
-
-   /* Determine system name (playlist basename
-    * without extension) */
-   if (string_is_empty(playlist_path))
-   {
-      /* Cannot happen, but would constitute a
-       * 'system name' error */
-      playlist_status = MANUAL_CONTENT_SCAN_PLAYLIST_REFRESH_INVALID_SYSTEM_NAME;
-      goto end;
-   }
-
-   if ((playlist_file = path_basename(playlist_path)))
-   {
-      strlcpy(system_name, playlist_file, sizeof(system_name));
-      path_remove_extension(system_name);
-   }
-
-   if (string_is_empty(system_name))
-   {
-      /* Cannot happen, but would constitute a
-       * 'system name' error */
-      playlist_status = MANUAL_CONTENT_SCAN_PLAYLIST_REFRESH_INVALID_SYSTEM_NAME;
-      goto end;
-   }
-
-   /* Set content directory */
-   if (!manual_content_scan_set_menu_content_dir(content_dir))
-   {
-      playlist_status = MANUAL_CONTENT_SCAN_PLAYLIST_REFRESH_INVALID_CONTENT_DIR;
-      goto end;
-   }
-
-   /* Set system name */
-#ifdef HAVE_LIBRETRODB
-   /* > If platform has database support, get names
-    *   of all installed database files */
-   rdb_list = dir_list_new_special(
-         path_content_database,
-         DIR_LIST_DATABASES, NULL, show_hidden_files);
-
-   if (rdb_list && rdb_list->size)
-   {
-      size_t i;
-
-      /* Loop over database files */
-      for (i = 0; i < rdb_list->size; i++)
-      {
-         const char *rdb_path = rdb_list->elems[i].data;
-         const char *rdb_file = NULL;
-         char rdb_name[PATH_MAX_LENGTH];
-
-         rdb_name[0] = '\0';
-
-         /* Sanity check */
-         if (string_is_empty(rdb_path))
-            continue;
-
-         rdb_file = path_basename(rdb_path);
-
-         if (string_is_empty(rdb_file))
-            continue;
-
-         /* Remove file extension */
-         strlcpy(rdb_name, rdb_file, sizeof(rdb_name));
-         path_remove_extension(rdb_name);
-
-         if (string_is_empty(rdb_name))
-            continue;
-
-         /* Check whether playlist system name
-          * matches current database file */
-         if (string_is_equal(system_name, rdb_name))
-         {
-            system_name_type = MANUAL_CONTENT_SCAN_SYSTEM_NAME_DATABASE;
-            break;
-         }
-      }
-   }
-
-   string_list_free(rdb_list);
-#endif
-
-   /* > If system name does not match a database
-    *   file, then check whether it matches the
-    *   content directory name */
-   if (system_name_type !=
-         MANUAL_CONTENT_SCAN_SYSTEM_NAME_DATABASE)
-   {
-      /* system_name_type is set to
-       * MANUAL_CONTENT_SCAN_SYSTEM_NAME_CONTENT_DIR
-       * by default - so if a match is found just
-       * reset 'custom name' field */
-      if (string_is_equal(system_name,
-            scan_settings.system_name_content_dir))
-         scan_settings.system_name_custom[0] = '\0';
-      else
-      {
-         /* Playlist is using a custom system name */
-         system_name_type = MANUAL_CONTENT_SCAN_SYSTEM_NAME_CUSTOM;
-         strlcpy(scan_settings.system_name_custom, system_name,
-               sizeof(scan_settings.system_name_custom));
-      }
-   }
-
-   if (!manual_content_scan_set_menu_system_name(
-         system_name_type, system_name))
-   {
-      playlist_status = MANUAL_CONTENT_SCAN_PLAYLIST_REFRESH_INVALID_SYSTEM_NAME;
-      goto end;
-   }
-
-   /* Set core path/name */
-   if (!string_is_empty(core_name) &&
-       !string_is_equal(core_name, FILE_PATH_DETECT))
-      core_type = MANUAL_CONTENT_SCAN_CORE_SET;
-
-   if (!manual_content_scan_set_menu_core_name(
-         core_type, core_name))
-   {
-      playlist_status = MANUAL_CONTENT_SCAN_PLAYLIST_REFRESH_INVALID_CORE;
-      goto end;
-   }
-
-   /* Set custom file extensions */
-   if (string_is_empty(file_exts))
-      scan_settings.file_exts_custom[0] = '\0';
-   else
-   {
-      strlcpy(scan_settings.file_exts_custom, file_exts,
-            sizeof(scan_settings.file_exts_custom));
-
-      /* File extensions read from playlist should
-       * be correctly formatted, with '|' characters
-       * as delimiters
-       * > For menu purposes, must replace these
-       *   delimiters with space characters
-       * > Additionally scrub the resultant string,
-       *   to handle the case where a user has
-       *   'corrupted' it by manually tampering with
-       *   the playlist file */
-      string_replace_all_chars(scan_settings.file_exts_custom, '|', ' ');
-      manual_content_scan_scrub_file_exts(scan_settings.file_exts_custom);
-   }
-
-   /* Set DAT file path */
-   if (string_is_empty(dat_file_path))
-      scan_settings.dat_file_path[0] = '\0';
-   else
-   {
-      strlcpy(scan_settings.dat_file_path, dat_file_path,
-            sizeof(scan_settings.dat_file_path));
-
-      switch (manual_content_scan_validate_dat_file_path())
-      {
-         case MANUAL_CONTENT_SCAN_DAT_FILE_INVALID:
-            playlist_status = MANUAL_CONTENT_SCAN_PLAYLIST_REFRESH_INVALID_DAT_FILE;
-            goto end;
-         case MANUAL_CONTENT_SCAN_DAT_FILE_TOO_LARGE:
-            playlist_status = MANUAL_CONTENT_SCAN_PLAYLIST_REFRESH_DAT_FILE_TOO_LARGE;
-            goto end;
-         default:
-            /* No action required */
-            break;
-      }
-   }
-
-   /* Set remaining boolean parameters */
-   scan_settings.search_recursively = search_recursively;
-   scan_settings.search_archives    = search_archives;
-   scan_settings.filter_dat_content = filter_dat_content;
-   /* When refreshing a playlist:
-    * > We never overwrite the existing file
-    * > We always validate entries in the
-    *   existing file */
-   scan_settings.overwrite_playlist = false;
-   scan_settings.validate_entries   = true;
-
-end:
-   return playlist_status;
 }
 
 /* Menu getters */
@@ -1048,7 +788,7 @@ bool manual_content_scan_get_task_config(
 
    strlcat(
          task_config->database_name,
-         FILE_PATH_LPL_EXTENSION,
+         file_path_str(FILE_PATH_LPL_EXTENSION),
          sizeof(task_config->database_name));
 
    /* ...which can in turn be used to generate the
@@ -1095,15 +835,11 @@ bool manual_content_scan_get_task_config(
    }
 
    /* Get file extensions list */
-   task_config->file_exts_custom_set = false;
    if (!string_is_empty(scan_settings.file_exts_custom))
-   {
-      task_config->file_exts_custom_set = true;
       strlcpy(
             task_config->file_exts,
             scan_settings.file_exts_custom,
             sizeof(task_config->file_exts));
-   }
    else if (scan_settings.core_type == MANUAL_CONTENT_SCAN_CORE_SET)
       if (!string_is_empty(scan_settings.file_exts_core))
          strlcpy(
@@ -1129,16 +865,14 @@ bool manual_content_scan_get_task_config(
             sizeof(task_config->dat_file_path));
    }
 
-   /* Copy 'search recursively' setting */
-   task_config->search_recursively = scan_settings.search_recursively;
    /* Copy 'search inside archives' setting */
-   task_config->search_archives    = scan_settings.search_archives;
+   task_config->search_archives = scan_settings.search_archives;
+
    /* Copy 'DAT file filter' setting */
    task_config->filter_dat_content = scan_settings.filter_dat_content;
+
    /* Copy 'overwrite playlist' setting */
    task_config->overwrite_playlist = scan_settings.overwrite_playlist;
-   /* Copy 'validate_entries' setting */
-   task_config->validate_entries   = scan_settings.validate_entries;
 
    return true;
 }
@@ -1147,8 +881,7 @@ bool manual_content_scan_get_task_config(
  * content directory
  * > Returns NULL in the event of failure
  * > Returned string list must be free()'d */
-struct string_list *manual_content_scan_get_content_list(
-      manual_content_scan_task_config_t *task_config)
+struct string_list *manual_content_scan_get_content_list(manual_content_scan_task_config_t *task_config)
 {
    struct string_list *dir_list = NULL;
    bool filter_exts;
@@ -1177,14 +910,15 @@ struct string_list *manual_content_scan_get_content_list(
    include_compressed = (!filter_exts || task_config->search_archives);
 
    /* Get directory listing
-    * > Exclude directories and hidden files */
+    * > Exclude directories and hidden files
+    * > Scan recursively */
    dir_list = dir_list_new(
          task_config->content_dir,
          filter_exts ? task_config->file_exts : NULL,
          false, /* include_dirs */
          false, /* include_hidden */
          include_compressed,
-         task_config->search_recursively
+         true   /* recursive */
    );
 
    /* Sanity check */
@@ -1359,7 +1093,8 @@ static bool manual_content_scan_get_playlist_content_label(
 void manual_content_scan_add_content_to_playlist(
       manual_content_scan_task_config_t *task_config,
       playlist_t *playlist, const char *content_path,
-      int content_type, logiqx_dat_t *dat_file)
+      int content_type, logiqx_dat_t *dat_file,
+      bool fuzzy_archive_match)
 {
    char playlist_content_path[PATH_MAX_LENGTH];
 
@@ -1377,7 +1112,7 @@ void manual_content_scan_add_content_to_playlist(
 
    /* Check whether content is already included
     * in playlist */
-   if (!playlist_entry_exists(playlist, playlist_content_path))
+   if (!playlist_entry_exists(playlist, playlist_content_path, fuzzy_archive_match))
    {
       struct playlist_entry entry = {0};
       char label[PATH_MAX_LENGTH];
@@ -1394,15 +1129,14 @@ void manual_content_scan_add_content_to_playlist(
       /* Configure playlist entry
        * > The push function reads our entry as const,
        *   so these casts are safe */
-      entry.path       = (char*)playlist_content_path;
-      entry.entry_slot = 0;
-      entry.label      = label;
-      entry.core_path  = (char*)FILE_PATH_DETECT;
-      entry.core_name  = (char*)FILE_PATH_DETECT;
-      entry.crc32      = (char*)"00000000|crc";
-      entry.db_name    = task_config->database_name;
+      entry.path      = (char*)playlist_content_path;
+      entry.label     = label;
+      entry.core_path = (char*)"DETECT";
+      entry.core_name = (char*)"DETECT";
+      entry.crc32     = (char*)"00000000|crc";
+      entry.db_name   = task_config->database_name;
 
       /* Add entry to playlist */
-      playlist_push(playlist, &entry);
+      playlist_push(playlist, &entry, fuzzy_archive_match);
    }
 }

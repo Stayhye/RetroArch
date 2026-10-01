@@ -20,20 +20,11 @@
 #include "../menu_driver.h"
 #include "../menu_cbs.h"
 #include "../../file_path_special.h"
-#ifdef HAVE_CHEATS
-#include "../../cheat_manager.h"
-#endif
+#include "../../managers/cheat_manager.h"
 
 #ifndef BIND_ACTION_LABEL
 #define BIND_ACTION_LABEL(cbs, name) (cbs)->action_label = (name)
 #endif
-
-#define FILL_LABEL_MACRO(func, lbl) \
-static int (func)(file_list_t *list, unsigned type, unsigned i, const char *label, const char *path, char *s, size_t len) \
-{ \
-   strlcpy(s, msg_hash_to_str(lbl), len); \
-   return 0; \
-}
 
 static int action_bind_label_generic(
       file_list_t *list,
@@ -44,11 +35,18 @@ static int action_bind_label_generic(
    return 0;
 }
 
-FILL_LABEL_MACRO(action_bind_label_rdb_entry_detail,         MENU_ENUM_LABEL_VALUE_RDB_ENTRY_DETAIL)
-FILL_LABEL_MACRO(action_bind_label_internal_memory,          MSG_INTERNAL_STORAGE)
-FILL_LABEL_MACRO(action_bind_label_removable_storage,        MSG_REMOVABLE_STORAGE)
-FILL_LABEL_MACRO(action_bind_label_external_application_dir, MSG_EXTERNAL_APPLICATION_DIR)
-FILL_LABEL_MACRO(action_bind_label_application_dir,          MSG_APPLICATION_DIR)
+#define fill_label_macro(func, lbl) \
+static int (func)(file_list_t *list, unsigned type, unsigned i, const char *label, const char *path, char *s, size_t len) \
+{ \
+   strlcpy(s, msg_hash_to_str(lbl), len); \
+   return 0; \
+}
+
+fill_label_macro(action_bind_label_rdb_entry_detail,         MENU_ENUM_LABEL_VALUE_RDB_ENTRY_DETAIL)
+fill_label_macro(action_bind_label_internal_memory,          MSG_INTERNAL_STORAGE)
+fill_label_macro(action_bind_label_removable_storage,        MSG_REMOVABLE_STORAGE)
+fill_label_macro(action_bind_label_external_application_dir, MSG_EXTERNAL_APPLICATION_DIR)
+fill_label_macro(action_bind_label_application_dir,          MSG_APPLICATION_DIR)
 
 static int action_bind_label_playlist_collection_entry(
       file_list_t *list,
@@ -61,7 +59,7 @@ static int action_bind_label_playlist_collection_entry(
    if (string_is_empty(path))
       return 0;
 
-   playlist_file = path_basename_nocompression(path);
+   playlist_file = path_basename(path);
 
    if (string_is_empty(playlist_file))
       return 0;
@@ -70,10 +68,10 @@ static int action_bind_label_playlist_collection_entry(
             "lpl"))
    {
       /* Handle content history */
-      if (string_is_equal(playlist_file, FILE_PATH_CONTENT_HISTORY))
+      if (string_is_equal(playlist_file, file_path_str(FILE_PATH_CONTENT_HISTORY)))
          strlcpy(s, msg_hash_to_str(MENU_ENUM_LABEL_VALUE_HISTORY_TAB), len);
       /* Handle favourites */
-      else if (string_is_equal(playlist_file, FILE_PATH_CONTENT_FAVORITES))
+      else if (string_is_equal(playlist_file, file_path_str(FILE_PATH_CONTENT_FAVORITES)))
          strlcpy(s, msg_hash_to_str(MENU_ENUM_LABEL_VALUE_FAVORITES_TAB), len);
       /* Handle collection playlists */
       else
@@ -96,7 +94,6 @@ static int action_bind_label_playlist_collection_entry(
    return 0;
 }
 
-#ifdef HAVE_CHEATS
 static int action_bind_label_cheat_browse_address(
       file_list_t *list,
       unsigned type, unsigned i,
@@ -106,7 +103,6 @@ static int action_bind_label_cheat_browse_address(
    snprintf(s, len, msg_hash_to_str(MENU_ENUM_LABEL_VALUE_CHEAT_BROWSE_MEMORY), cheat_manager_state.browse_address);
    return 0;
 }
-#endif
 
 int menu_cbs_init_bind_label(menu_file_list_cbs_t *cbs,
       const char *path, const char *label, unsigned type, size_t idx)
@@ -127,9 +123,7 @@ int menu_cbs_init_bind_label(menu_file_list_cbs_t *cbs,
             BIND_ACTION_LABEL(cbs, action_bind_label_playlist_collection_entry);
             break;
          case MENU_ENUM_LABEL_CHEAT_BROWSE_MEMORY:
-#ifdef HAVE_CHEATS
             BIND_ACTION_LABEL(cbs, action_bind_label_cheat_browse_address);
-#endif
             break;
          case MSG_INTERNAL_STORAGE:
             BIND_ACTION_LABEL(cbs, action_bind_label_internal_memory);

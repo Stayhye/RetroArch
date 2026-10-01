@@ -36,10 +36,15 @@
 #error "This module only works on Unix and Windows, see MBEDTLS_NET_C in config.h"
 #endif
 
+#if defined(MBEDTLS_PLATFORM_C)
+#include "mbedtls/platform.h"
+#else
 #include <stdlib.h>
-#include <string.h>
+#endif
 
 #include "mbedtls/net_sockets.h"
+
+#include <string.h>
 
 #if (defined(_WIN32) || defined(_WIN32_WCE)) && !defined(EFIX64) && \
     !defined(EFI32)
@@ -54,7 +59,7 @@
 #include <winsock2.h>
 #include <windows.h>
 
-#if !defined (__PSL1GHT__) && defined(__PS3__) || defined(WIIU)
+#if defined(__CELLOS_LV2__) || defined(WIIU)
 #define close(fd)               socketclose(fd)
 #elif defined(VITA)
 #define close(fd)               sceNetSocketClose(fd)
@@ -314,11 +319,9 @@ int mbedtls_net_accept( mbedtls_net_context *bind_ctx,
     int type_len = (int) sizeof( type );
 #endif
 
-    client_addr.ss_family = 0;
-
     /* Is this a TCP or UDP socket? */
     if( getsockopt( bind_ctx->fd, SOL_SOCKET, SO_TYPE,
-                    (char *) &type, &type_len ) != 0 ||
+                    (void *) &type, &type_len ) != 0 ||
         ( type != SOCK_STREAM && type != SOCK_DGRAM ) )
     {
         return( MBEDTLS_ERR_NET_ACCEPT_FAILED );
@@ -360,18 +363,16 @@ int mbedtls_net_accept( mbedtls_net_context *bind_ctx,
      * then bind a new socket to accept new connections */
     if( type != SOCK_STREAM )
     {
-        int one = 1;
         struct sockaddr_storage local_addr;
-
-        local_addr.ss_family               = 0;
+        int one = 1;
 
         if( connect( bind_ctx->fd, (struct sockaddr *) &client_addr, n ) != 0 )
             return( MBEDTLS_ERR_NET_ACCEPT_FAILED );
 
-        client_ctx->fd                     = bind_ctx->fd;
-        bind_ctx->fd                       = -1; /* In case we exit early */
+        client_ctx->fd = bind_ctx->fd;
+        bind_ctx->fd   = -1; /* In case we exit early */
 
-        n                                  = sizeof( struct sockaddr_storage );
+        n = sizeof( struct sockaddr_storage );
         if( getsockname( client_ctx->fd,
                          (struct sockaddr *) &local_addr, &n ) != 0 ||
             ( bind_ctx->fd = (int) socket( local_addr.ss_family,
@@ -420,7 +421,7 @@ int mbedtls_net_accept( mbedtls_net_context *bind_ctx,
  */
 int mbedtls_net_set_block( mbedtls_net_context *ctx )
 {
-#if defined(__PS3__) || defined(VITA) || defined(WIIU)
+#if defined(__CELLOS_LV2__) || defined(VITA) || defined(WIIU)
    int i = 0;
    setsockopt(ctx->fd, SOL_SOCKET, SO_NBIO, &i, sizeof(int));
    return 1;
@@ -435,7 +436,7 @@ int mbedtls_net_set_block( mbedtls_net_context *ctx )
 
 int mbedtls_net_set_nonblock( mbedtls_net_context *ctx )
 {
-#if defined(__PS3__) || defined(VITA) || defined(WIIU)
+#if defined(__CELLOS_LV2__) || defined(VITA) || defined(WIIU)
    int i = 1;
    setsockopt(ctx->fd, SOL_SOCKET, SO_NBIO, &i, sizeof(int));
    return 1;
@@ -483,7 +484,7 @@ int mbedtls_net_recv( void *ctx, unsigned char *buf, size_t len )
 
     if( ret < 0 )
     {
-        if( net_would_block((const mbedtls_net_context*)ctx ) != 0 )
+        if( net_would_block( ctx ) != 0 )
             return( MBEDTLS_ERR_SSL_WANT_READ );
 
 #if ( defined(_WIN32) || defined(_WIN32_WCE) ) && !defined(EFIX64) && \
@@ -524,9 +525,9 @@ int mbedtls_net_recv_timeout( void *ctx, unsigned char *buf, size_t len,
     tv.tv_sec  = timeout / 1000;
     tv.tv_usec = ( timeout % 1000 ) * 1000;
 
-#if defined(__PS3__)
+#if defined(__CELLOS_LV2__)
     ret = socketselect(fd + 1, &read_fds, NULL, NULL, timeout == 0 ? NULL : &tv);
-#elif  defined(VITA)
+#elif defined(VITA)
    extern int retro_epoll_fd;
    SceNetEpollEvent ev = {0};
 

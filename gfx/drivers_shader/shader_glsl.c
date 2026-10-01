@@ -30,19 +30,13 @@
 
 #if defined(HAVE_OPENGL) || defined(HAVE_OPENGLES)
 #include <gfx/gl_capabilities.h>
-#include "../common/gl2_common.h"
+#include "../common/gl_common.h"
 #endif
 
 #include "shader_glsl.h"
-#ifdef HAVE_REWIND
-#include "../../state_manager.h"
-#endif
+#include "../../managers/state_manager.h"
 #include "../../core.h"
 #include "../../verbosity.h"
-
-#if defined(ORBIS)
-#include "../../deps/xxHash/xxhash.h"
-#endif
 
 #define PREV_TEXTURES (GFX_MAX_TEXTURES - 1)
 
@@ -72,6 +66,8 @@ struct glsl_attrib
    GLsizei offset;
 };
 
+static gfx_ctx_proc_t (*glsl_get_proc_address)(const char*);
+
 struct shader_uniforms_frame
 {
    int texture;
@@ -82,9 +78,6 @@ struct shader_uniforms_frame
 
 struct shader_uniforms
 {
-#if defined(VITA)
-   int time;
-#endif
    int mvp;
    int tex_coord;
    int vertex_coord;
@@ -112,20 +105,6 @@ static const char *glsl_prefixes[] = {
    "ruby",
 };
 
-#if defined(VITA)
-#include "../drivers/gl_shaders/modern_opaque.cg.vert.h"
-#include "../drivers/gl_shaders/modern_opaque.cg.frag.h"
-#include "../drivers/gl_shaders/modern_alpha_blend.cg.vert.h"
-#include "../drivers/gl_shaders/modern_alpha_blend.cg.frag.h"
-
-#ifdef HAVE_SHADERPIPELINE
-#include "../drivers/gl_shaders/modern_pipeline_xmb_ribbon_simple.cg.vert.h"
-#include "../drivers/gl_shaders/pipeline_xmb_ribbon_simple.cg.frag.h"
-#include "../drivers/gl_shaders/modern_pipeline_xmb_ribbon.cg.vert.h"
-#include "../drivers/gl_shaders/pipeline_xmb_ribbon.cg.frag.h"
-#endif
-
-#else
 #include "../drivers/gl_shaders/modern_opaque.glsl.vert.h"
 #include "../drivers/gl_shaders/modern_opaque.glsl.frag.h"
 #include "../drivers/gl_shaders/core_opaque.glsl.vert.h"
@@ -158,7 +137,6 @@ static const char *glsl_prefixes[] = {
 #include "../drivers/gl_shaders/pipeline_bokeh.glsl.frag.h"
 #include "../drivers/gl_shaders/pipeline_snowflake.glsl.frag.h"
 #endif
-#endif
 
 typedef struct glsl_shader_data
 {
@@ -176,7 +154,6 @@ typedef struct glsl_shader_data
    struct video_shader *shader;
 } glsl_shader_data_t;
 
-/* TODO/FIXME - static globals */
 static bool glsl_core;
 static unsigned glsl_major;
 static unsigned glsl_minor;
@@ -280,86 +257,6 @@ static void gl_glsl_print_linker_log(GLuint obj)
    free(info_log);
 }
 
-#if defined(ORBIS)
-void glPigletGetShaderBinarySCE(GLuint program, GLsizei bufSize, GLsizei* length, GLenum* binaryFormat, void* binary);
-
-static const XXH64_hash_t gl_glsl_hash_shader(const char **source, const int source_length)
-{
-   int n;
-   
-   XXH64_state_t* const state = XXH64_createState();
-   XXH64_reset(state, 0xAABBCCDDu);
-   for(n=0; n<source_length; n++)
-   {
-      XXH64_update(state, source[n], strlen(source[n]));
-   }
-   
-   XXH64_hash_t const hash = XXH64_digest(state);
-
-   XXH64_freeState(state);
-
-   return hash;
-}
-
-static bool gl_glsl_load_binary_shader(GLuint shader, char *save_path)
-{
-   FILE * shader_binary;
-   GLsizei shader_size;
-   GLint status;
-
-   shader_binary = fopen(save_path, "rb" );
-
-   if( shader_binary != NULL)
-   {
-      printf("[ShaderDumper] Reading shader dump ... %s\n", save_path);
-      
-      fseek (shader_binary, 0, SEEK_END);   // non-portable
-      shader_size=ftell (shader_binary);
-      fseek(shader_binary, 0, SEEK_SET);
-
-      char * shader_data = malloc(shader_size);
-      fread(shader_data, shader_size, 1, shader_binary);
-
-      fclose(shader_binary);
-
-      glShaderBinary(1, &shader, 2, shader_data, shader_size);
-
-      free(shader_data);
-
-      glGetShaderiv(shader, GL_COMPILE_STATUS, &status);
-      printf("GL_COMPILE_STATUS %x\n", status);
-      return status == GL_TRUE;
-   }
-
-   return false;
-}
-
-static void gl_glsl_dump_shader(GLuint shader, char *save_path)
-{
-      GLint length;
-
-      glGetShaderiv(shader, 0x8b89, &length);
-      printf("[gl_glsl_compile_shader]: Shader Binary Length: %x\n", length);
-
-      GLsizei bufferSize = length;
-      void* shaderBinary = malloc(bufferSize);
-
-      printf("[ShaderDumper] Starting shader dump ... %s\n", save_path);
-
-      memset(shaderBinary, 0, bufferSize);
-
-      GLsizei shader_size;
-      GLenum format;
-
-      glPigletGetShaderBinarySCE(shader, bufferSize, &shader_size, &format, shaderBinary);
-
-      FILE * fShader = fopen(save_path, "wb");
-      fwrite(shaderBinary, shader_size, 1, fShader);
-      fclose(fShader);
-}
-
-#endif
-
 static bool gl_glsl_compile_shader(glsl_shader_data_t *glsl,
       GLuint shader,
       const char *define, const char *program)
@@ -417,27 +314,11 @@ static bool gl_glsl_compile_shader(glsl_shader_data_t *glsl,
    source[2] = glsl->alias_define;
    source[3] = program;
 
-#if defined(ORBIS) 
-   XXH64_hash_t const hash = gl_glsl_hash_shader(source, ARRAY_SIZE(source));
-
-   char save_path[250];
-   sprintf(save_path, "/data/retroarch/temp/%lx.sb", hash);
-
-   if(gl_glsl_load_binary_shader(shader, save_path))
-      return true;
-#endif
-
    glShaderSource(shader, ARRAY_SIZE(source), source, NULL);
    glCompileShader(shader);
 
    glGetShaderiv(shader, GL_COMPILE_STATUS, &status);
    gl_glsl_print_shader_log(shader);
-
-#if defined(ORBIS)
-   if(status == GL_TRUE){
-      gl_glsl_dump_shader(shader, save_path);
-   }
-#endif
 
    return status == GL_TRUE;
 }
@@ -522,11 +403,7 @@ static bool gl_glsl_compile_program(
       program->fprg = 0;
 
       glUseProgram(prog);
-#if defined(VITA)
-      glUniform1i(gl_glsl_get_uniform(glsl, prog, "vTexture"), 0);
-#else
       glUniform1i(gl_glsl_get_uniform(glsl, prog, "Texture"), 0);
-#endif
       glUseProgram(0);
    }
 
@@ -727,9 +604,6 @@ static void gl_glsl_find_uniforms(glsl_shader_data_t *glsl,
 
    glUseProgram(prog);
 
-#if defined(VITA)
-   uni->time            = gl_glsl_get_uniform(glsl, prog, "Time");
-#endif
    uni->mvp             = gl_glsl_get_uniform(glsl, prog, "MVPMatrix");
    uni->tex_coord       = gl_glsl_get_attrib(glsl, prog, "TexCoord");
    uni->vertex_coord    = gl_glsl_get_attrib(glsl, prog, "VertexCoord");
@@ -866,10 +740,6 @@ static void gl_glsl_init_menu_shaders(void *data)
       return;
 
 #ifdef HAVE_OPENGLES
-#if defined(VITA)
-   shader_prog_info.vertex = stock_vertex_xmb_ribbon_modern;
-   shader_prog_info.fragment = stock_fragment_xmb;
-#else
    if (gl_query_extension("GL_OES_standard_derivatives"))
    {
       shader_prog_info.vertex = glsl_core ? stock_vertex_xmb_ribbon_modern : stock_vertex_xmb_ribbon_legacy;
@@ -880,7 +750,6 @@ static void gl_glsl_init_menu_shaders(void *data)
       shader_prog_info.vertex = stock_vertex_xmb_ribbon_simple_legacy;
       shader_prog_info.fragment = stock_fragment_xmb_ribbon_simple;
    }
-#endif
 #else
    shader_prog_info.vertex = glsl_core ? stock_vertex_xmb_ribbon_modern : stock_vertex_xmb_ribbon_legacy;
    shader_prog_info.fragment = glsl_core ? core_stock_fragment_xmb : stock_fragment_xmb;
@@ -896,13 +765,8 @@ static void gl_glsl_init_menu_shaders(void *data)
    gl_glsl_find_uniforms(glsl, 0, glsl->prg[VIDEO_SHADER_MENU].id,
          &glsl->uniforms[VIDEO_SHADER_MENU]);
 
-#if defined(VITA)
-   shader_prog_info.vertex = stock_vertex_xmb_simple_modern;
-   shader_prog_info.fragment = stock_fragment_xmb_ribbon_simple;
-#else
    shader_prog_info.vertex = glsl_core ? stock_vertex_xmb_simple_modern : stock_vertex_xmb_ribbon_simple_legacy;
    shader_prog_info.fragment = glsl_core ? stock_fragment_xmb_ribbon_simple_core : stock_fragment_xmb_ribbon_simple;
-#endif
 
    RARCH_LOG("[GLSL]: Compiling simple ribbon shader..\n");
    gl_glsl_compile_program(
@@ -913,7 +777,6 @@ static void gl_glsl_init_menu_shaders(void *data)
    gl_glsl_find_uniforms(glsl, 0, glsl->prg[VIDEO_SHADER_MENU_2].id,
          &glsl->uniforms[VIDEO_SHADER_MENU_2]);
 
-#if !defined(VITA)
 #if defined(HAVE_OPENGLES)
    shader_prog_info.vertex   = stock_vertex_xmb_snow;
    shader_prog_info.fragment = stock_fragment_xmb_simple_snow;
@@ -982,7 +845,6 @@ static void gl_glsl_init_menu_shaders(void *data)
    gl_glsl_find_uniforms(glsl, 0, glsl->prg[VIDEO_SHADER_MENU_6].id,
          &glsl->uniforms[VIDEO_SHADER_MENU_6]);
 #endif
-#endif
 }
 
 static void *gl_glsl_init(void *data, const char *path)
@@ -993,6 +855,7 @@ static void *gl_glsl_init(void *data, const char *path)
 #ifdef GLSL_DEBUG
    char *error_string         = NULL;
 #endif
+   config_file_t *conf        = NULL;
    const char *stock_vertex   = NULL;
    const char *stock_fragment = NULL;
    glsl_shader_data_t   *glsl = (glsl_shader_data_t*)
@@ -1046,8 +909,12 @@ static void *gl_glsl_init(void *data, const char *path)
 
          if (is_preset)
          {
-            ret = video_shader_load_preset_into_shader(path, glsl->shader);
-            glsl->shader->modern = true;
+            conf = video_shader_read_preset(path);
+            if (conf)
+            {
+               ret = video_shader_read_conf_preset(conf, glsl->shader);
+               glsl->shader->modern = true;
+            }
          }
          else
          {
@@ -1068,23 +935,22 @@ static void *gl_glsl_init(void *data, const char *path)
       {
          RARCH_WARN("[GL]: Stock GLSL shaders will be used.\n");
          glsl->shader->passes = 1;
-#if defined(VITA)
-         glsl->shader->pass[0].source.string.vertex   = strdup(stock_vertex_modern);
-         glsl->shader->pass[0].source.string.fragment = strdup(stock_fragment_modern);
-#else
          glsl->shader->pass[0].source.string.vertex   =
             strdup(glsl_core ? stock_vertex_core : stock_vertex_modern);
          glsl->shader->pass[0].source.string.fragment =
             strdup(glsl_core ? stock_fragment_core : stock_fragment_modern);
-#endif
          glsl->shader->modern = true;
       }
    }
 
-#if defined(VITA)
-    stock_vertex = stock_vertex_modern;
-    stock_fragment = stock_fragment_modern;
-#else
+   video_shader_resolve_parameters(conf, glsl->shader);
+
+   if (conf)
+   {
+      config_file_free(conf);
+      conf = NULL;
+   }
+
    stock_vertex = (glsl->shader->modern) ?
       stock_vertex_modern : stock_vertex_legacy;
    stock_fragment = (glsl->shader->modern) ?
@@ -1095,7 +961,6 @@ static void *gl_glsl_init(void *data, const char *path)
       stock_vertex = stock_vertex_core;
       stock_fragment = stock_fragment_core;
    }
-#endif
 
 #ifdef HAVE_OPENGLES
    if (!glsl->shader->modern)
@@ -1141,7 +1006,7 @@ static void *gl_glsl_init(void *data, const char *path)
    if (!gl_glsl_compile_programs(glsl, &glsl->prg[1]))
       goto error;
 
-   if (!gl2_load_luts(glsl->shader, glsl->lut_textures))
+   if (!gl_load_luts(glsl->shader, glsl->lut_textures))
    {
       RARCH_ERR("[GL]: Failed to load LUTs.\n");
       goto error;
@@ -1164,17 +1029,12 @@ static void *gl_glsl_init(void *data, const char *path)
 
    if (glsl->shader->modern)
    {
-#if defined(VITA)
-      shader_prog_info.vertex   = stock_vertex_modern_blend;
-      shader_prog_info.fragment = stock_fragment_modern_blend;
-#else
       shader_prog_info.vertex   =
             glsl_core ?
             stock_vertex_core_blend : stock_vertex_modern_blend;
       shader_prog_info.fragment =
             glsl_core ?
             stock_fragment_core_blend : stock_fragment_modern_blend;
-#endif
       shader_prog_info.is_file  = false;
 
       gl_glsl_compile_program(
@@ -1206,6 +1066,8 @@ static void *gl_glsl_init(void *data, const char *path)
 error:
    gl_glsl_destroy_resources(glsl);
 
+   if (conf)
+      config_file_free(conf);
    if (glsl)
       free(glsl);
 
@@ -1329,14 +1191,7 @@ static void gl_glsl_set_params(void *dat, void *shader_data)
    }
 
    if (uni->frame_direction >= 0)
-   {
-#ifdef HAVE_REWIND
-      if (state_manager_frame_is_reversed())
-         glUniform1i(uni->frame_direction, -1);
-      else
-#endif
-         glUniform1i(uni->frame_direction, 1);
-   }
+      glUniform1i(uni->frame_direction, state_manager_frame_is_reversed() ? -1 : 1);
 
    /* Set lookup textures. */
    for (i = 0; i < glsl->shader->luts; i++)
@@ -1588,17 +1443,10 @@ static bool gl_glsl_set_coords(void *shader_data,
       elems        *= coords->vertices * sizeof(GLfloat);
 
       buffer        = (GLfloat*)malloc(elems);
-
-      if (!buffer)
-         return false;
    }
 
-#if defined(VITA)
-   if (uni->time >= 0) {
-      float t = (sceKernelGetSystemTimeWide()) / (scePowerGetArmClockFrequency() * 1000.0);
-      glUniform1f(uni->time, t);
-   }
-#endif
+   if (!buffer)
+      return false;
 
    if (uni->tex_coord >= 0)
    {
@@ -1743,19 +1591,23 @@ static struct video_shader *gl_glsl_get_current_shader(void *data)
    return glsl->shader;
 }
 
-static void gl_glsl_get_flags(uint32_t *flags)
+void gl_glsl_set_get_proc_address(gfx_ctx_proc_t (*proc)(const char*))
 {
-   BIT32_SET(*flags, GFX_CTX_FLAGS_SHADERS_GLSL);
+   glsl_get_proc_address = proc;
 }
 
 void gl_glsl_set_context_type(bool core_profile,
       unsigned major, unsigned minor)
 {
-   glsl_core  = core_profile;
+   glsl_core = core_profile;
    glsl_major = major;
    glsl_minor = minor;
 }
 
+static void gl_glsl_get_flags(uint32_t *flags)
+{
+   BIT32_SET(*flags, GFX_CTX_FLAGS_SHADERS_GLSL);
+}
 
 const shader_backend_t gl_glsl_backend = {
    gl_glsl_init,

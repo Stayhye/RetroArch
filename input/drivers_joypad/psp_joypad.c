@@ -25,7 +25,7 @@
 
 #include "../../configuration.h"
 
-#include <defines/psp_defines.h>
+#include "../../defines/psp_defines.h"
 
 #ifdef HAVE_MENU
 #include "../../menu/menu_driver.h"
@@ -35,8 +35,6 @@
 #include <psp2/kernel/sysmem.h>
 #include <psp2/ctrl.h>
 #include <psp2/touch.h>
-
-/* TODO/FIXME - static globals */
 static int psp2_model;
 static SceCtrlPortInfo old_ctrl_info, curr_ctrl_info;
 static SceCtrlActuator actuators[DEFAULT_MAX_PADS] = {0};
@@ -55,11 +53,9 @@ static SceCtrlActuator actuators[DEFAULT_MAX_PADS] = {0};
 #define SE_AREA(x, y) AREA(SCREEN_HALF_WIDTH, SCREEN_HALF_HEIGHT, SCREEN_WIDTH, SCREEN_HEIGHT, (x), (y))
 #endif
 
-/* TODO/FIXME - static globals */
 static uint64_t pad_state[DEFAULT_MAX_PADS];
 static int16_t analog_state[DEFAULT_MAX_PADS][2][2];
 
-/* TODO/FIXME - global referenced outside */
 extern uint64_t lifecycle_state;
 
 static const char *psp_joypad_name(unsigned pad)
@@ -75,30 +71,36 @@ static const char *psp_joypad_name(unsigned pad)
       case SCE_CTRL_TYPE_DS4:
          return "DS4 Controller";
       default:
-         break;
+         return "Unpaired";
    }
-   return "Unpaired";
 #else
    return "PSP Controller";
 #endif
 }
 
-static void *psp_joypad_init(void *data)
+static bool psp_joypad_init(void *data)
 {
    unsigned i;
    unsigned players_count = DEFAULT_MAX_PADS;
 
-#if defined(VITA)
-   psp2_model = sceCtrlIsMultiControllerSupported()? SCE_KERNEL_MODEL_VITATV : SCE_KERNEL_MODEL_VITA;
+   (void)data;
 
+#if defined(VITA)
+   if (!sceCtrlIsMultiControllerSupported())
+      {
+      psp2_model = SCE_KERNEL_MODEL_VITA;
+      } else if(sceCtrlIsMultiControllerSupported() > 0)
+      {
+      psp2_model = SCE_KERNEL_MODEL_VITATV;
+      }
    if (psp2_model != SCE_KERNEL_MODEL_VITATV)
+   {
       players_count = 1;
+   }
    if (sceKernelGetModelForCDialog() != SCE_KERNEL_MODEL_VITATV)
    {
-      sceTouchSetSamplingState(SCE_TOUCH_PORT_BACK,
-            SCE_TOUCH_SAMPLING_STATE_START);
-      sceTouchSetSamplingState(SCE_TOUCH_PORT_FRONT,
-            SCE_TOUCH_SAMPLING_STATE_START);
+      sceTouchSetSamplingState(SCE_TOUCH_PORT_BACK, SCE_TOUCH_SAMPLING_STATE_START);
+      sceTouchSetSamplingState(SCE_TOUCH_PORT_FRONT, SCE_TOUCH_SAMPLING_STATE_START);
    }
    sceCtrlGetControllerPortInfo(&curr_ctrl_info);
    memcpy(&old_ctrl_info, &curr_ctrl_info, sizeof(SceCtrlPortInfo));
@@ -114,103 +116,70 @@ static void *psp_joypad_init(void *data)
             0
             );
 
-   return (void*)-1;
+   return true;
 }
 
-static int32_t psp_joypad_button(unsigned port, uint16_t joykey)
+static bool psp_joypad_button(unsigned port_num, uint16_t key)
 {
-   if (port >= DEFAULT_MAX_PADS)
-      return 0;
-   return pad_state[port] & (UINT64_C(1) << joykey);
+   if (port_num >= DEFAULT_MAX_PADS)
+      return false;
+
+   return (pad_state[port_num] & (UINT64_C(1) << key));
 }
 
-static void psp_joypad_get_buttons(unsigned port, input_bits_t *state)
+static void psp_joypad_get_buttons(unsigned port_num, input_bits_t *state)
 {
-	if (port < DEFAULT_MAX_PADS)
+	if (port_num < DEFAULT_MAX_PADS)
    {
-		BITS_COPY16_PTR( state, pad_state[port] );
+		BITS_COPY16_PTR( state, pad_state[port_num] );
 	}
    else
       BIT256_CLEAR_ALL_PTR(state);
 }
 
-static int16_t psp_joypad_axis_state(unsigned port, uint32_t joyaxis)
+static int16_t psp_joypad_axis(unsigned port_num, uint32_t joyaxis)
 {
    int    val  = 0;
    int    axis = -1;
    bool is_neg = false;
    bool is_pos = false;
 
+   if (joyaxis == AXIS_NONE || port_num >= DEFAULT_MAX_PADS)
+      return 0;
+
    if (AXIS_NEG_GET(joyaxis) < 4)
    {
-      axis   = AXIS_NEG_GET(joyaxis);
+      axis = AXIS_NEG_GET(joyaxis);
       is_neg = true;
    }
    else if (AXIS_POS_GET(joyaxis) < 4)
    {
-      axis   = AXIS_POS_GET(joyaxis);
+      axis = AXIS_POS_GET(joyaxis);
       is_pos = true;
    }
-   else
-      return 0;
 
    switch (axis)
    {
       case 0:
+         val = analog_state[port_num][0][0];
+         break;
       case 1:
-         val = analog_state[port][0][axis];
+         val = analog_state[port_num][0][1];
          break;
       case 2:
+         val = analog_state[port_num][1][0];
+         break;
       case 3:
-         val = analog_state[port][1][axis - 2];
+         val = analog_state[port_num][1][1];
          break;
    }
 
    if (is_neg && val > 0)
-      return 0;
+      val = 0;
    else if (is_pos && val < 0)
-      return 0;
+      val = 0;
+
    return val;
-}
-
-static int16_t psp_joypad_axis(unsigned port, uint32_t joyaxis)
-{
-   if (port >= DEFAULT_MAX_PADS)
-      return 0;
-   return psp_joypad_axis_state(port, joyaxis);
-}
-
-static int16_t psp_joypad_state(
-      rarch_joypad_info_t *joypad_info,
-      const struct retro_keybind *binds,
-      unsigned port)
-{
-   unsigned i;
-   int16_t ret                          = 0;
-   uint16_t port_idx                    = joypad_info->joy_idx;
-
-   if (port_idx >= DEFAULT_MAX_PADS)
-      return 0;
-
-   for (i = 0; i < RARCH_FIRST_CUSTOM_BIND; i++)
-   {
-      /* Auto-binds are per joypad, not per user. */
-      const uint64_t joykey  = (binds[i].joykey != NO_BTN)
-         ? binds[i].joykey  : joypad_info->auto_binds[i].joykey;
-      const uint32_t joyaxis = (binds[i].joyaxis != AXIS_NONE)
-         ? binds[i].joyaxis : joypad_info->auto_binds[i].joyaxis;
-      if (
-               (uint16_t)joykey != NO_BTN 
-            && (pad_state[port_idx] & (UINT64_C(1) << (uint16_t)joykey))
-         )
-         ret |= ( 1 << i);
-      else if (joyaxis != AXIS_NONE &&
-            ((float)abs(psp_joypad_axis_state(port_idx, joyaxis)) 
-             / 0x8000) > joypad_info->axis_threshold)
-         ret |= (1 << i);
-   }
-
-   return ret;
 }
 
 static void psp_joypad_poll(void)
@@ -270,8 +239,7 @@ static void psp_joypad_poll(void)
       SceCtrlData state_tmp;
       unsigned i  = player;
 #if defined(VITA)
-      unsigned p = (psp2_model == SCE_KERNEL_MODEL_VITATV) 
-         ? player + 1 : player;
+      unsigned p = (psp2_model == SCE_KERNEL_MODEL_VITATV) ? player + 1 : player;
       if (curr_ctrl_info.port[p] == SCE_CTRL_TYPE_UNPAIRED)
          continue;
 #elif defined(SN_TARGET_PSP2)
@@ -307,10 +275,8 @@ static void psp_joypad_poll(void)
 
          for (i = 0; i < touch_surface.reportNum; i++)
          {
-            int x = LERP(touch_surface.report[i].x,
-                  TOUCH_MAX_WIDTH, SCREEN_WIDTH);
-            int y = LERP(touch_surface.report[i].y,
-                  TOUCH_MAX_HEIGHT, SCREEN_HEIGHT);
+            int x = LERP(touch_surface.report[i].x, TOUCH_MAX_WIDTH, SCREEN_WIDTH);
+            int y = LERP(touch_surface.report[i].y, TOUCH_MAX_HEIGHT, SCREEN_HEIGHT);
             if (NW_AREA(x, y))
                state_tmp.buttons |= PSP_CTRL_L2;
             if (NE_AREA(x, y))
@@ -321,6 +287,10 @@ static void psp_joypad_poll(void)
                state_tmp.buttons |= PSP_CTRL_R3;
          }
       }
+#endif
+#ifdef HAVE_KERNEL_PRX
+      state_tmp.Buttons = (state_tmp.Buttons & 0x0000FFFF)
+         | (read_system_buttons() & 0xFFFF0000);
 #endif
 
       pad_state[i] |= (STATE_BUTTON(state_tmp) & PSP_CTRL_LEFT) ? (UINT64_C(1) << RETRO_DEVICE_ID_JOYPAD_LEFT) : 0;
@@ -348,6 +318,12 @@ static void psp_joypad_poll(void)
       analog_state[i][RETRO_DEVICE_INDEX_ANALOG_RIGHT][RETRO_DEVICE_ID_ANALOG_X] = (int16_t)(STATE_ANALOGRX(state_tmp)-128) * 256;
       analog_state[i][RETRO_DEVICE_INDEX_ANALOG_RIGHT][RETRO_DEVICE_ID_ANALOG_Y] = (int16_t)(STATE_ANALOGRY(state_tmp)-128) * 256;
 #endif
+
+#ifdef HAVE_KERNEL_PRX
+      if (STATE_BUTTON(state_tmp) & PSP_CTRL_NOTE)
+         BIT64_SET(lifecycle_state, RARCH_MENU_TOGGLE);
+#endif
+
       for (j = 0; j < 2; j++)
          for (k = 0; k < 2; k++)
             if (analog_state[i][j][k] == -0x8000)
@@ -366,8 +342,7 @@ static bool psp_joypad_rumble(unsigned pad,
 #ifdef VITA
    if (psp2_model != SCE_KERNEL_MODEL_VITATV)
       return false;
-   if(pad >= DEFAULT_MAX_PADS)
-      return false;
+
    switch (effect)
    {
       case RETRO_RUMBLE_WEAK:
@@ -417,12 +392,10 @@ input_device_driver_t psp_joypad = {
    psp_joypad_query_pad,
    psp_joypad_destroy,
    psp_joypad_button,
-   psp_joypad_state,
    psp_joypad_get_buttons,
    psp_joypad_axis,
    psp_joypad_poll,
    psp_joypad_rumble,
-   NULL,
    psp_joypad_name,
 #ifdef VITA
    "vita",

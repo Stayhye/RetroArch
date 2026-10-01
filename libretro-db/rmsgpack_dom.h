@@ -44,6 +44,7 @@ enum rmsgpack_dom_type
 
 struct rmsgpack_dom_value
 {
+   enum rmsgpack_dom_type type;
    union
    {
       uint64_t uint_;
@@ -70,13 +71,12 @@ struct rmsgpack_dom_value
          struct rmsgpack_dom_value *items;
       } array;
    } val;
-   enum rmsgpack_dom_type type;
 };
 
 struct rmsgpack_dom_pair
 {
-	struct rmsgpack_dom_value key;   /* uint64_t alignment */
-	struct rmsgpack_dom_value value; /* uint64_t alignment */
+	struct rmsgpack_dom_value key;
+	struct rmsgpack_dom_value value;
 };
 
 void rmsgpack_dom_value_print(struct rmsgpack_dom_value *obj);

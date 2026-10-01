@@ -30,10 +30,6 @@
 
 #ifdef __linux__
 #include <linux/version.h>
-#if __STDC_VERSION__ >= 199901L
-#include "feralgamemode/gamemode_client.h"
-#define FERAL_GAMEMODE
-#endif
 /* inotify API was added in 2.6.13 */
 #if LINUX_VERSION_CODE >= KERNEL_VERSION(2,6,13)
 #define HAS_INOTIFY
@@ -58,10 +54,6 @@
 
 #ifdef ANDROID
 #include <sys/system_properties.h>
-#endif
-
-#if defined(DINGUX)
-#include "../../dingux/dingux_utils.h"
 #endif
 
 #include <boolean.h>
@@ -127,15 +119,6 @@ static const char *proc_acpi_ac_adapter_path       = "/proc/acpi/ac_adapter";
 static char unix_cpu_model_name[64] = {0};
 #endif
 
-/* /proc/meminfo parameters */
-#define PROC_MEMINFO_PATH              "/proc/meminfo"
-#define PROC_MEMINFO_MEM_TOTAL_TAG     "MemTotal:"
-#define PROC_MEMINFO_MEM_AVAILABLE_TAG "MemAvailable:"
-#define PROC_MEMINFO_MEM_FREE_TAG      "MemFree:"
-#define PROC_MEMINFO_BUFFERS_TAG       "Buffers:"
-#define PROC_MEMINFO_CACHED_TAG        "Cached:"
-#define PROC_MEMINFO_SHMEM_TAG         "Shmem:"
-
 #if (defined(__linux__) || defined(__unix__)) && !defined(ANDROID)
 static int speak_pid                            = 0;
 #endif
@@ -163,7 +146,7 @@ int system_property_get(const char *command,
    FILE *pipe;
    int length                   = 0;
    char buffer[PATH_MAX_LENGTH] = {0};
-   char cmd[NAME_MAX_LENGTH]    = {0};
+   char cmd[PATH_MAX_LENGTH]    = {0};
    char *curpos                 = NULL;
    size_t buf_pos               = strlcpy(cmd, command, sizeof(cmd));
 
@@ -206,33 +189,6 @@ error:
 #ifdef ANDROID
 /* forward declaration */
 bool android_run_events(void *data);
-
-void android_dpi_get_density(char *s, size_t len)
-{
-   static bool inited_once             = false;
-   static bool inited2_once            = false;
-   static char string[PROP_VALUE_MAX]  = {0};
-   static char string2[PROP_VALUE_MAX] = {0};
-   if (!inited_once)
-   {
-      system_property_get("getprop", "ro.sf.lcd_density", string);
-      inited_once = true;
-   }
-
-   if (!string_is_empty(string))
-   {
-      strlcpy(s, string, len);
-      return;
-   }
-
-   if (!inited2_once)
-   {
-      system_property_get("wm", "density", string2);
-      inited2_once = true;
-   }
-
-   strlcpy(s, string2, len);
-}
 
 void android_app_write_cmd(struct android_app *android_app, int8_t cmd)
 {
@@ -505,7 +461,7 @@ static struct android_app* android_app_create(ANativeActivity* activity,
    if (pipe(msgpipe))
    {
       RARCH_ERR("could not create pipe: %s.\n", strerror(errno));
-      if (android_app->savedState)
+      if(android_app->savedState)
         free(android_app->savedState);
       free(android_app);
       return NULL;
@@ -659,7 +615,7 @@ bool test_permissions(const char *path)
       "RetroArch", "Create %s in %s %s\n", buf, path,
       ret ? "true" : "false");
 
-   if (ret)
+   if(ret)
       rmdir(buf);
 
    return ret;
@@ -672,7 +628,8 @@ static void frontend_android_shutdown(bool unused)
    exit(0);
 }
 
-#elif !defined(DINGUX)
+#else
+
 static bool make_proc_acpi_key_val(char **_ptr, char **_key, char **_val)
 {
     char *ptr = *_ptr;
@@ -821,9 +778,10 @@ end:
    buf      = NULL;
    buf_info = NULL;
 }
+
 static void check_proc_acpi_sysfs_battery(const char *node,
-      bool *have_battery, bool *charging, int *seconds,
-      int *percent, int *valid_pct_idx)
+      bool *have_battery, bool *charging,
+      int *seconds, int *percent)
 {
    char path[1024];
    const char *base  = proc_acpi_sysfs_battery_path;
@@ -841,22 +799,6 @@ static void check_proc_acpi_sysfs_battery(const char *node,
    int           pct = -1;
 
    path[0]           = '\0';
-
-   /* Stat type. Avoid unknown or device supplies. Missing is considered System. */
-   snprintf(path, sizeof(path), "%s/%s/%s", base, node, "scope");
-
-   if (filestream_exists(path) != 0)
-   {
-      if (filestream_read_file(path, (void**)&buf, &length) == 1 && buf)
-      {
-         if (strstr((char*)buf, "Unknown"))
-            goto end;
-         else if (strstr((char*)buf, "Device"))
-            goto end;
-         free(buf);
-         buf = NULL;
-      }
-   }
 
    snprintf(path, sizeof(path), "%s/%s/%s", base, node, "status");
 
@@ -878,8 +820,9 @@ static void check_proc_acpi_sysfs_battery(const char *node,
       else if (strstr((char*)buf, "Full"))
          *have_battery = true;
       free(buf);
-      buf = NULL;
    }
+
+   buf = NULL;
 
    snprintf(path, sizeof(path), "%s/%s/%s", base, node, "capacity");
    if (filestream_read_file(path, (void**)&buf, &length) != 1)
@@ -887,12 +830,7 @@ static void check_proc_acpi_sysfs_battery(const char *node,
 
    capacity = atoi(buf);
 
-   /*
-    * Keep record of valid capacities for calculating an average
-    * on systems with backup battery supplies.
-    */
-   (*valid_pct_idx)++;
-   (*percent) += capacity;
+   *percent = capacity;
 
 end:
    free(buf);
@@ -979,7 +917,7 @@ static bool int_string(char *str, int *val)
    if (!str)
       return false;
 
-   *val = (int)strtol(str, &endptr, 0);
+   *val = (int) strtol(str, &endptr, 0);
    return ((*str != '\0') && (*endptr == '\0'));
 }
 
@@ -1127,7 +1065,6 @@ static bool frontend_unix_powerstate_check_acpi_sysfs(
    bool have_battery   = false;
    bool have_ac        = false;
    bool charging       = false;
-   int  valid_pct_idx  = 0;
    struct RDIR *entry  = retro_opendir(proc_acpi_sysfs_battery_path);
    if (!entry)
       goto error;
@@ -1139,14 +1076,14 @@ static bool frontend_unix_powerstate_check_acpi_sysfs(
    {
       const char *node = retro_dirent_get_name(entry);
 
+#ifdef HAVE_LAKKA_SWITCH
+      if (node && strstr(node, "max170xx_battery"))
+#else
       if (node && (strstr(node, "BAT") || strstr(node, "battery")))
+#endif
          check_proc_acpi_sysfs_battery(node,
-               &have_battery, &charging, seconds, percent, &valid_pct_idx);
+               &have_battery, &charging, seconds, percent);
    }
-
-   /* Get average percentage */
-   if (valid_pct_idx)
-      (*percent) /= valid_pct_idx;
 
    retro_closedir(entry);
 
@@ -1203,13 +1140,14 @@ static enum frontend_powerstate frontend_unix_get_powerstate(
       int *seconds, int *percent)
 {
    enum frontend_powerstate ret = FRONTEND_POWERSTATE_NONE;
-#if defined(ANDROID)
-   jint powerstate              = FRONTEND_POWERSTATE_NONE;
-   jint battery_level           = 0;
-   JNIEnv *env                  = jni_thread_getenv();
+
+#ifdef ANDROID
+   jint powerstate = ret;
+   jint battery_level = 0;
+   JNIEnv *env = jni_thread_getenv();
 
    if (!env || !g_android)
-      return FRONTEND_POWERSTATE_NONE;
+      return ret;
 
    if (g_android->getPowerstate)
       CALL_INT_METHOD(env, powerstate,
@@ -1222,30 +1160,6 @@ static enum frontend_powerstate frontend_unix_get_powerstate(
    *percent = battery_level;
 
    ret = (enum frontend_powerstate)powerstate;
-#elif defined(RETROFW)
-   *percent = retrofw_get_battery_level(&ret);
-
-   /* 'Time left' reporting is unsupported */
-   *seconds = -1;
-#elif defined(DINGUX)
-   /* Dingux seems to have limited battery
-    * reporting capability - if we get a valid
-    * integer here, just assume that state is
-    * FRONTEND_POWERSTATE_ON_POWER_SOURCE
-    * (since most dingux devices are not meant
-    * to be used while charging...) */
-   int battery_level = dingux_get_battery_level();
-
-   if (battery_level < 0)
-      *percent = -1;
-   else
-   {
-      *percent = battery_level;
-      ret      = FRONTEND_POWERSTATE_ON_POWER_SOURCE;
-   }
-
-   /* 'Time left' reporting is unsupported */
-   *seconds = -1;
 #else
    if (frontend_unix_powerstate_check_acpi_sysfs(&ret, seconds, percent))
       return ret;
@@ -1262,7 +1176,7 @@ static enum frontend_powerstate frontend_unix_get_powerstate(
    return ret;
 }
 
-static enum frontend_architecture frontend_unix_get_arch(void)
+static enum frontend_architecture frontend_unix_get_architecture(void)
 {
    struct utsname buffer;
    const char *val        = NULL;
@@ -1279,7 +1193,12 @@ static enum frontend_architecture frontend_unix_get_arch(void)
          string_is_equal(val, "armv7b")
       )
       return FRONTEND_ARCH_ARMV7;
-   else if (string_starts_with(val, "arm"))
+   else if (
+         string_is_equal(val, "armv6l") ||
+         string_is_equal(val, "armv6b") ||
+         string_is_equal(val, "armv5tel") ||
+         string_is_equal(val, "arm")
+      )
       return FRONTEND_ARCH_ARM;
    else if (string_is_equal(val, "x86_64"))
       return FRONTEND_ARCH_X86_64;
@@ -1302,7 +1221,7 @@ static void frontend_unix_get_os(char *s,
    int rel;
    frontend_android_get_version(major, minor, &rel);
 
-   strcpy_literal(s, "Android");
+   strlcpy(s, "Android", len);
 #else
    unsigned krel;
    struct utsname buffer;
@@ -1312,19 +1231,19 @@ static void frontend_unix_get_os(char *s,
 
    sscanf(buffer.release, "%d.%d.%u", major, minor, &krel);
 #if defined(__FreeBSD__)
-   strcpy_literal(s, "FreeBSD");
+   strlcpy(s, "FreeBSD", len);
 #elif defined(__NetBSD__)
-   strcpy_literal(s, "NetBSD");
+   strlcpy(s, "NetBSD", len);
 #elif defined(__OpenBSD__)
-   strcpy_literal(s, "OpenBSD");
+   strlcpy(s, "OpenBSD", len);
 #elif defined(__DragonFly__)
-   strcpy_literal(s, "DragonFly BSD");
+   strlcpy(s, "DragonFly BSD", len);
 #elif defined(BSD)
-   strcpy_literal(s, "BSD");
+   strlcpy(s, "BSD", len);
 #elif defined(__HAIKU__)
-   strcpy_literal(s, "Haiku");
+   strlcpy(s, "Haiku", len);
 #else
-   strcpy_literal(s, "Linux");
+   strlcpy(s, "Linux", len);
 #endif
 #endif
 }
@@ -1347,37 +1266,12 @@ static void frontend_unix_get_lakka_version(char *s,
 
    pclose(command_file);
 }
-
-static void frontend_unix_set_screen_brightness(int value)
-{
-   char *buffer = NULL;
-   char svalue[16] = {0};
-   unsigned int max_brightness = 100;
-
-   /* Device tree should have 'label = "backlight";' if control is desirable */
-   filestream_read_file("/sys/class/backlight/backlight/max_brightness",
-                        &buffer, NULL);
-   if (buffer)
-   {
-      sscanf(buffer, "%u", &max_brightness);
-      free(buffer);
-   }
-
-   /* Calculate the brightness */
-   value = (value * max_brightness) / 100;
-
-   snprintf(svalue, sizeof(svalue), "%d\n", value);
-   filestream_write_file("/sys/class/backlight/backlight/brightness",
-                         svalue, strlen(svalue));
-}
-
 #endif
 
 static void frontend_unix_get_env(int *argc,
       char *argv[], void *data, void *params_data)
 {
    unsigned i;
-   const char* libretro_directory = getenv("LIBRETRO_DIRECTORY");
 #ifdef ANDROID
    int32_t major, minor, rel;
    char device_model[PROP_VALUE_MAX]  = {0};
@@ -1600,14 +1494,14 @@ static void frontend_unix_get_env(int *argc,
       /* set paths depending on the ability to write
        * to internal_storage_path */
 
-      if (!string_is_empty(internal_storage_path))
+      if(!string_is_empty(internal_storage_path))
       {
-         if (test_permissions(internal_storage_path))
+         if(test_permissions(internal_storage_path))
             storage_permissions = INTERNAL_STORAGE_WRITABLE;
       }
-      else if (!string_is_empty(internal_storage_app_path))
+      else if(!string_is_empty(internal_storage_app_path))
       {
-         if (test_permissions(internal_storage_app_path))
+         if(test_permissions(internal_storage_app_path))
             storage_permissions = INTERNAL_STORAGE_APPDIR_WRITABLE;
       }
       else
@@ -1758,29 +1652,29 @@ static void frontend_unix_get_env(int *argc,
 
    /* Set automatic default values per device */
    if (device_is_xperia_play(device_model))
-      g_defaults.settings_out_latency = 128;
+      g_defaults.settings.out_latency = 128;
    else if (strstr(device_model, "GAMEMID_BT"))
-      g_defaults.settings_out_latency = 160;
+      g_defaults.settings.out_latency = 160;
    else if (strstr(device_model, "SHIELD"))
    {
-      g_defaults.settings_video_refresh_rate = 60.0;
+      g_defaults.settings.video_refresh_rate = 60.0;
 #ifdef HAVE_MENU
 #ifdef HAVE_MATERIALUI
-      g_defaults.menu_materialui_menu_color_theme_enable = true;
-      g_defaults.menu_materialui_menu_color_theme        = MATERIALUI_THEME_NVIDIA_SHIELD;
+      g_defaults.menu.materialui.menu_color_theme_enable = true;
+      g_defaults.menu.materialui.menu_color_theme        = MATERIALUI_THEME_NVIDIA_SHIELD;
 #endif
 #endif
 
 #if 0
       /* Set the OK/cancel menu buttons to the default
        * ones used for Shield */
-      g_defaults.menu_controls_set = true;
-      g_defaults.menu_controls_menu_btn_ok     = RETRO_DEVICE_ID_JOYPAD_B;
-      g_defaults.menu_controls_menu_btn_cancel = RETRO_DEVICE_ID_JOYPAD_A;
+      g_defaults.menu.controls.set = true;
+      g_defaults.menu.controls.menu_btn_ok     = RETRO_DEVICE_ID_JOYPAD_B;
+      g_defaults.menu.controls.menu_btn_cancel = RETRO_DEVICE_ID_JOYPAD_A;
 #endif
    }
    else if (strstr(device_model, "JSS15J"))
-      g_defaults.settings_video_refresh_rate = 59.65;
+      g_defaults.settings.video_refresh_rate = 59.65;
 
    /* For gamepad-like/console devices:
     *
@@ -1791,18 +1685,13 @@ static void frontend_unix_get_env(int *argc,
 
    if (device_is_game_console(device_model) || device_is_android_tv())
    {
-      g_defaults.overlay_set    = true;
-      g_defaults.overlay_enable = false;
-      strcpy_literal(g_defaults.settings_menu, "ozone");
+      g_defaults.overlay.set    = true;
+      g_defaults.overlay.enable = false;
+      strlcpy(g_defaults.settings.menu, "ozone",
+            sizeof(g_defaults.settings.menu));
    }
 #else
    char base_path[PATH_MAX] = {0};
-#if defined(RARCH_UNIX_CWD_ENV)
-   /* The entire path is zero initialized. */
-   getcwd(base_path, sizeof(base_path));
-#elif defined(DINGUX)
-   dingux_get_base_path(base_path, sizeof(base_path));
-#else
    const char *xdg          = getenv("XDG_CONFIG_HOME");
    const char *home         = getenv("HOME");
 
@@ -1817,26 +1706,12 @@ static void frontend_unix_get_env(int *argc,
       strlcat(base_path, "/.config/retroarch", sizeof(base_path));
    }
    else
-      strcpy_literal(base_path, "retroarch");
-#endif
+      strlcpy(base_path, "retroarch", sizeof(base_path));
 
-   if (!string_is_empty(libretro_directory))
-      strlcpy(g_defaults.dirs[DEFAULT_DIR_CORE], libretro_directory,
-            sizeof(g_defaults.dirs[DEFAULT_DIR_CORE]));
-   else
-      fill_pathname_join(g_defaults.dirs[DEFAULT_DIR_CORE], base_path,
-            "cores", sizeof(g_defaults.dirs[DEFAULT_DIR_CORE]));
-#if defined(DINGUX)
-   /* On platforms that require manual core installation/
-    * removal, placing core info files in the same directory
-    * as the cores themselves makes file management highly
-    * inconvenient. Use a dedicated core info directory instead */
-   fill_pathname_join(g_defaults.dirs[DEFAULT_DIR_CORE_INFO], base_path,
-         "core_info", sizeof(g_defaults.dirs[DEFAULT_DIR_CORE_INFO]));
-#else
+   fill_pathname_join(g_defaults.dirs[DEFAULT_DIR_CORE], base_path,
+         "cores", sizeof(g_defaults.dirs[DEFAULT_DIR_CORE]));
    fill_pathname_join(g_defaults.dirs[DEFAULT_DIR_CORE_INFO], base_path,
          "cores", sizeof(g_defaults.dirs[DEFAULT_DIR_CORE_INFO]));
-#endif
    fill_pathname_join(g_defaults.dirs[DEFAULT_DIR_AUTOCONFIG], base_path,
          "autoconfig", sizeof(g_defaults.dirs[DEFAULT_DIR_AUTOCONFIG]));
 
@@ -1859,53 +1734,6 @@ static void frontend_unix_get_env(int *argc,
    else
       fill_pathname_join(g_defaults.dirs[DEFAULT_DIR_ASSETS], base_path,
             "assets", sizeof(g_defaults.dirs[DEFAULT_DIR_ASSETS]));
-
-#if defined(DINGUX)
-   fill_pathname_join(g_defaults.dirs[DEFAULT_DIR_AUDIO_FILTER], base_path,
-         "filters/audio", sizeof(g_defaults.dirs[DEFAULT_DIR_AUDIO_FILTER]));
-   fill_pathname_join(g_defaults.dirs[DEFAULT_DIR_VIDEO_FILTER], base_path,
-         "filters/video", sizeof(g_defaults.dirs[DEFAULT_DIR_VIDEO_FILTER]));
-#else
-   if (path_is_directory("/usr/local/share/retroarch/filters/audio"))
-      fill_pathname_join(g_defaults.dirs[DEFAULT_DIR_AUDIO_FILTER],
-            "/usr/local/share/retroarch",
-            "filters/audio", sizeof(g_defaults.dirs[DEFAULT_DIR_AUDIO_FILTER]));
-   else if (path_is_directory("/usr/share/retroarch/filters/audio"))
-      fill_pathname_join(g_defaults.dirs[DEFAULT_DIR_AUDIO_FILTER],
-            "/usr/share/retroarch",
-            "filters/audio", sizeof(g_defaults.dirs[DEFAULT_DIR_AUDIO_FILTER]));
-   else if (path_is_directory("/usr/local/share/games/retroarch/filters/audio"))
-      fill_pathname_join(g_defaults.dirs[DEFAULT_DIR_AUDIO_FILTER],
-            "/usr/local/share/games/retroarch",
-            "filters/audio", sizeof(g_defaults.dirs[DEFAULT_DIR_AUDIO_FILTER]));
-   else if (path_is_directory("/usr/share/games/retroarch/filters/audio"))
-      fill_pathname_join(g_defaults.dirs[DEFAULT_DIR_AUDIO_FILTER],
-            "/usr/share/games/retroarch",
-            "filters/audio", sizeof(g_defaults.dirs[DEFAULT_DIR_AUDIO_FILTER]));
-   else
-      fill_pathname_join(g_defaults.dirs[DEFAULT_DIR_AUDIO_FILTER], base_path,
-            "filters/audio", sizeof(g_defaults.dirs[DEFAULT_DIR_AUDIO_FILTER]));
-
-   if (path_is_directory("/usr/local/share/retroarch/filters/video"))
-      fill_pathname_join(g_defaults.dirs[DEFAULT_DIR_VIDEO_FILTER],
-            "/usr/local/share/retroarch",
-            "filters/video", sizeof(g_defaults.dirs[DEFAULT_DIR_VIDEO_FILTER]));
-   else if (path_is_directory("/usr/share/retroarch/filters/video"))
-      fill_pathname_join(g_defaults.dirs[DEFAULT_DIR_VIDEO_FILTER],
-            "/usr/share/retroarch",
-            "filters/video", sizeof(g_defaults.dirs[DEFAULT_DIR_VIDEO_FILTER]));
-   else if (path_is_directory("/usr/local/share/games/retroarch/filters/video"))
-      fill_pathname_join(g_defaults.dirs[DEFAULT_DIR_VIDEO_FILTER],
-            "/usr/local/share/games/retroarch",
-            "filters/video", sizeof(g_defaults.dirs[DEFAULT_DIR_VIDEO_FILTER]));
-   else if (path_is_directory("/usr/share/games/retroarch/filters/video"))
-      fill_pathname_join(g_defaults.dirs[DEFAULT_DIR_VIDEO_FILTER],
-            "/usr/share/games/retroarch",
-            "filters/video", sizeof(g_defaults.dirs[DEFAULT_DIR_VIDEO_FILTER]));
-   else
-      fill_pathname_join(g_defaults.dirs[DEFAULT_DIR_VIDEO_FILTER], base_path,
-            "filters/video", sizeof(g_defaults.dirs[DEFAULT_DIR_VIDEO_FILTER]));
-#endif
 
    fill_pathname_join(g_defaults.dirs[DEFAULT_DIR_MENU_CONFIG], base_path,
          "config", sizeof(g_defaults.dirs[DEFAULT_DIR_MENU_CONFIG]));
@@ -1940,21 +1768,14 @@ static void frontend_unix_get_env(int *argc,
          "thumbnails", sizeof(g_defaults.dirs[DEFAULT_DIR_THUMBNAILS]));
    fill_pathname_join(g_defaults.dirs[DEFAULT_DIR_LOGS], base_path,
          "logs", sizeof(g_defaults.dirs[DEFAULT_DIR_LOGS]));
-   fill_pathname_join(g_defaults.dirs[DEFAULT_DIR_SRAM], base_path,
-         "saves", sizeof(g_defaults.dirs[DEFAULT_DIR_SRAM]));
-   fill_pathname_join(g_defaults.dirs[DEFAULT_DIR_SAVESTATE], base_path,
-         "states", sizeof(g_defaults.dirs[DEFAULT_DIR_SAVESTATE]));
-   fill_pathname_join(g_defaults.dirs[DEFAULT_DIR_SYSTEM], base_path,
-         "system", sizeof(g_defaults.dirs[DEFAULT_DIR_SYSTEM]));
 #endif
 
-#ifndef IS_SALAMANDER
-#if defined(ANDROID)
-   dir_check_defaults("host0:app/custom.ini");
-#else
-   dir_check_defaults("custom.ini");
-#endif
-#endif
+   for (i = 0; i < DEFAULT_DIR_LAST; i++)
+   {
+      const char *dir_path = g_defaults.dirs[i];
+      if (!string_is_empty(dir_path))
+         path_mkdir(dir_path);
+   }
 }
 
 #ifdef ANDROID
@@ -1998,52 +1819,8 @@ static void android_app_destroy(struct android_app *android_app)
 }
 #endif
 
-static bool frontend_unix_set_gamemode(bool on)
-{
-#ifdef FERAL_GAMEMODE
-   int gamemode_status  = gamemode_query_status();
-   bool gamemode_active = (gamemode_status == 2);
-
-   if (gamemode_status < 0)
-   {
-      if (on)
-         RARCH_WARN("[GameMode]: GameMode cannot be enabled on this system (\"%s.\") "
-               "https://github.com/FeralInteractive/gamemode needs to be installed.\n",
-               gamemode_error_string());
-
-      return false;
-   }
-
-   if (gamemode_active == on)
-      return true;
-
-   if (on)
-   {
-      if (gamemode_request_start() != 0)
-      {
-         RARCH_WARN("[GameMode]: Failed to enter GameMode: %s.\n", gamemode_error_string());
-         return false;
-      }
-   }
-   else
-   {
-      if (gamemode_request_end() != 0)
-      {
-         RARCH_WARN("[GameMode]: Failed to exit GameMode: %s.\n", gamemode_error_string());
-         return false;
-      }
-   }
-
-   return true;
-#else
-   (void)on;
-   return false;
-#endif
-}
-
 static void frontend_unix_deinit(void *data)
 {
-   settings_t *settings = config_get_ptr();
 #ifdef ANDROID
    struct android_app *android_app = (struct android_app*)data;
 
@@ -2052,14 +1829,6 @@ static void frontend_unix_deinit(void *data)
 
    android_app_destroy(android_app);
 #endif
-
-#ifdef HAVE_LAKKA
-   /* Reset brightness to maximum */
-   if (settings->uints.screen_brightness != DEFAULT_SCREEN_BRIGHTNESS)
-      frontend_unix_set_screen_brightness(DEFAULT_SCREEN_BRIGHTNESS);
-#endif
-
-   frontend_unix_set_gamemode(false);
 }
 
 static void frontend_unix_init(void *data)
@@ -2128,22 +1897,8 @@ static void frontend_unix_init(void *data)
          "doVibrate", "(IIII)V");
    GET_METHOD_ID(env, android_app->getUserLanguageString, class,
          "getUserLanguageString", "()Ljava/lang/String;");
-   GET_METHOD_ID(env, android_app->isPlayStoreBuild, class,
-         "isPlayStoreBuild", "()Z");
-   GET_METHOD_ID(env, android_app->getAvailableCores, class,
-         "getAvailableCores", "()[Ljava/lang/String;");
-   GET_METHOD_ID(env, android_app->getInstalledCores, class,
-         "getInstalledCores", "()[Ljava/lang/String;");
-   GET_METHOD_ID(env, android_app->downloadCore, class,
-         "downloadCore", "(Ljava/lang/String;)V");
-   GET_METHOD_ID(env, android_app->deleteCore, class,
-         "deleteCore", "(Ljava/lang/String;)V");
    CALL_OBJ_METHOD(env, obj, android_app->activity->clazz,
          android_app->getIntent);
-   GET_METHOD_ID(env, android_app->getVolumeCount, class,
-         "getVolumeCount", "()I");
-   GET_METHOD_ID(env, android_app->getVolumePath, class,
-         "getVolumePath", "(Ljava/lang/String;)Ljava/lang/String;");
 
    GET_OBJECT_CLASS(env, class, obj);
    GET_METHOD_ID(env, android_app->getStringExtra, class,
@@ -2161,29 +1916,6 @@ static int frontend_unix_parse_drive_list(void *data, bool load_content)
       MENU_ENUM_LABEL_FILE_BROWSER_DIRECTORY;
 
 #ifdef ANDROID
-
-   JNIEnv *env = jni_thread_getenv();
-   jint output           = 0;
-   jobject obj           = NULL;
-   jstring jstr          = NULL;
-
-   int volume_count = 0;
-
-   if (!env || !g_android)
-      return 0;
-
-   CALL_OBJ_METHOD(env, obj, g_android->activity->clazz,
-         g_android->getIntent);
-
-   if (g_android->getVolumeCount)
-   {
-      CALL_INT_METHOD(env, output,
-         g_android->activity->clazz, g_android->getVolumeCount);
-      volume_count = output;
-   }
-
-   RARCH_LOG("external volumes: %d\n", volume_count);
-
    if (!string_is_empty(internal_storage_path))
    {
       if (storage_permissions == INTERNAL_STORAGE_WRITABLE)
@@ -2207,82 +1939,38 @@ static int frontend_unix_parse_drive_list(void *data, bool load_content)
             FILE_TYPE_DIRECTORY, 0, 0);
    }
    else
+   {
       menu_entries_append_enum(list,
             "/storage/emulated/0",
             msg_hash_to_str(MSG_REMOVABLE_STORAGE),
             enum_idx,
             FILE_TYPE_DIRECTORY, 0, 0);
-
+   }
    menu_entries_append_enum(list,
          "/storage",
          msg_hash_to_str(MSG_REMOVABLE_STORAGE),
          enum_idx,
          FILE_TYPE_DIRECTORY, 0, 0);
    if (!string_is_empty(internal_storage_app_path))
+   {
       menu_entries_append_enum(list,
             internal_storage_app_path,
             msg_hash_to_str(MSG_EXTERNAL_APPLICATION_DIR),
             enum_idx,
             FILE_TYPE_DIRECTORY, 0, 0);
+   }
    if (!string_is_empty(app_dir))
+   {
       menu_entries_append_enum(list,
             app_dir,
             msg_hash_to_str(MSG_APPLICATION_DIR),
             enum_idx,
             FILE_TYPE_DIRECTORY, 0, 0);
-   for (unsigned i=0; i < volume_count; i++)
-   {
-      static char aux_path[PATH_MAX_LENGTH];
-      char index[2];
-      index[0] = '\0';
-
-      snprintf(index, sizeof(index), "%d", i);
-
-      CALL_OBJ_METHOD_PARAM(env, jstr, g_android->activity->clazz, g_android->getVolumePath,
-         (*env)->NewStringUTF(env, index));
-
-      if (jstr)
-      {
-         const char *str = (*env)->GetStringUTFChars(env, jstr, 0);
-
-         aux_path[0] = '\0';
-
-         if (str && *str)
-            strlcpy(aux_path, str,
-                  sizeof(aux_path));
-
-         (*env)->ReleaseStringUTFChars(env, jstr, str);
-         if (!string_is_empty(aux_path))
-            menu_entries_append_enum(list,
-                  aux_path,
-                  msg_hash_to_str(MSG_APPLICATION_DIR),
-                  enum_idx,
-                  FILE_TYPE_DIRECTORY, 0, 0);
-      }
-
    }
-#elif defined(WEBOS)
-   if (path_is_directory("/media/internal"))
-      menu_entries_append_enum(list, "/media/internal",
-            msg_hash_to_str(MENU_ENUM_LABEL_FILE_DETECT_CORE_LIST_PUSH_DIR),
-            enum_idx,
-            FILE_TYPE_DIRECTORY, 0, 0);
-
-   if (path_is_directory("/tmp/usb"))
-      menu_entries_append_enum(list, "/tmp/usb",
-            msg_hash_to_str(MENU_ENUM_LABEL_FILE_DETECT_CORE_LIST_PUSH_DIR),
-            enum_idx,
-            FILE_TYPE_DIRECTORY, 0, 0);
 #else
    char base_path[PATH_MAX] = {0};
-   char udisks_media_path[PATH_MAX] = {0};
-   const char *home         = getenv("HOME");
-   const char *user         = getenv("USER");
-
-#if defined(DINGUX)
-   dingux_get_base_path(base_path, sizeof(base_path));
-#else
    const char *xdg          = getenv("XDG_CONFIG_HOME");
+   const char *home         = getenv("HOME");
 
    if (xdg)
    {
@@ -2294,16 +1982,8 @@ static int frontend_unix_parse_drive_list(void *data, bool load_content)
       strlcpy(base_path, home, sizeof(base_path));
       strlcat(base_path, "/.config/retroarch", sizeof(base_path));
    }
-#endif
 
-   strlcpy(udisks_media_path, "/run/media", sizeof(udisks_media_path));
-   if (user)
-   {
-      strlcat(udisks_media_path, "/", sizeof(udisks_media_path));
-      strlcat(udisks_media_path, user, sizeof(udisks_media_path));
-   }
-
-   if (!string_is_empty(base_path))
+   if(!string_is_empty(base_path))
    {
       menu_entries_append_enum(list, base_path,
             msg_hash_to_str(MENU_ENUM_LABEL_FILE_DETECT_CORE_LIST_PUSH_DIR),
@@ -2313,13 +1993,6 @@ static int frontend_unix_parse_drive_list(void *data, bool load_content)
    if (!string_is_empty(home))
    {
       menu_entries_append_enum(list, home,
-            msg_hash_to_str(MENU_ENUM_LABEL_FILE_DETECT_CORE_LIST_PUSH_DIR),
-            enum_idx,
-            FILE_TYPE_DIRECTORY, 0, 0);
-   }
-   if (path_is_directory(udisks_media_path))
-   {
-      menu_entries_append_enum(list, udisks_media_path,
             msg_hash_to_str(MENU_ENUM_LABEL_FILE_DETECT_CORE_LIST_PUSH_DIR),
             enum_idx,
             FILE_TYPE_DIRECTORY, 0, 0);
@@ -2416,127 +2089,44 @@ static void frontend_unix_exitspawn(char *s, size_t len, char *args)
 }
 #endif
 
-static uint64_t frontend_unix_get_total_mem(void)
+static uint64_t frontend_unix_get_mem_total(void)
 {
-#if defined(DINGUX)
-   char line[256];
-   unsigned long mem_total = 0;
-   FILE* meminfo_file      = NULL;
-
-   line[0] = '\0';
-
-   /* Open /proc/meminfo */
-   meminfo_file = fopen(PROC_MEMINFO_PATH, "r");
-
-   if (!meminfo_file)
-      return 0;
-
-   /* Parse lines
-    * (Note: virtual filesystem, so don't have to
-    *  worry about buffering file reads) */
-   while (fgets(line, sizeof(line), meminfo_file))
-   {
-      if (string_starts_with_size(line, PROC_MEMINFO_MEM_TOTAL_TAG,
-            STRLEN_CONST(PROC_MEMINFO_MEM_TOTAL_TAG)))
-      {
-         sscanf(line, PROC_MEMINFO_MEM_TOTAL_TAG " %lu kB", &mem_total);
-         break;
-      }
-   }
-
-   /* Close /proc/meminfo */
-   fclose(meminfo_file);
-   meminfo_file = NULL;
-
-   return (uint64_t)mem_total * 1024;
-#else
    uint64_t pages            = sysconf(_SC_PHYS_PAGES);
    uint64_t page_size        = sysconf(_SC_PAGE_SIZE);
    return pages * page_size;
-#endif
 }
 
-static uint64_t frontend_unix_get_free_mem(void)
+static uint64_t frontend_unix_get_mem_free(void)
 {
+#if defined(ANDROID) || (!defined(__linux__) && !defined(__OpenBSD__))
    char line[256];
-   unsigned long mem_available = 0;
-   unsigned long mem_free      = 0;
-   unsigned long buffers       = 0;
-   unsigned long cached        = 0;
-   unsigned long shmem         = 0;
-   bool mem_available_found    = false;
-   bool mem_free_found         = false;
-   bool buffers_found          = false;
-   bool cached_found           = false;
-   bool shmem_found            = false;
-   FILE* meminfo_file          = NULL;
-
-   line[0] = '\0';
-
-   /* Open /proc/meminfo */
-   meminfo_file = fopen(PROC_MEMINFO_PATH, "r");
-
-   if (!meminfo_file)
+   uint64_t total    = 0;
+   uint64_t freemem  = 0;
+   uint64_t buffers  = 0;
+   uint64_t cached   = 0;
+   FILE* data = fopen("/proc/meminfo", "r");
+   if (!data)
       return 0;
 
-   /* Parse lines
-    * (Note: virtual filesystem, so don't have to
-    *  worry about buffering file reads) */
-   while (fgets(line, sizeof(line), meminfo_file))
+   while (fgets(line, sizeof(line), data))
    {
-      /* If 'MemAvailable' is found, we can return immediately */
-      if (!mem_available_found)
-         if (string_starts_with_size(line, PROC_MEMINFO_MEM_AVAILABLE_TAG,
-               STRLEN_CONST(PROC_MEMINFO_MEM_AVAILABLE_TAG)))
-         {
-            mem_available_found = true;
-            sscanf(line, PROC_MEMINFO_MEM_AVAILABLE_TAG " %lu kB", &mem_available);
-            break;
-         }
-
-      if (!mem_free_found)
-         if (string_starts_with_size(line, PROC_MEMINFO_MEM_FREE_TAG,
-               STRLEN_CONST(PROC_MEMINFO_MEM_FREE_TAG)))
-         {
-            mem_free_found = true;
-            sscanf(line, PROC_MEMINFO_MEM_FREE_TAG " %lu kB", &mem_free);
-         }
-
-      if (!buffers_found)
-         if (string_starts_with_size(line, PROC_MEMINFO_BUFFERS_TAG,
-               STRLEN_CONST(PROC_MEMINFO_BUFFERS_TAG)))
-         {
-            buffers_found = true;
-            sscanf(line, PROC_MEMINFO_BUFFERS_TAG " %lu kB", &buffers);
-         }
-
-      if (!cached_found)
-         if (string_starts_with_size(line, PROC_MEMINFO_CACHED_TAG,
-               STRLEN_CONST(PROC_MEMINFO_CACHED_TAG)))
-         {
-            cached_found = true;
-            sscanf(line, PROC_MEMINFO_CACHED_TAG " %lu kB", &cached);
-         }
-
-      if (!shmem_found)
-         if (string_starts_with_size(line, PROC_MEMINFO_SHMEM_TAG,
-               STRLEN_CONST(PROC_MEMINFO_SHMEM_TAG)))
-         {
-            shmem_found = true;
-            sscanf(line, PROC_MEMINFO_SHMEM_TAG " %lu kB", &shmem);
-         }
+      if (sscanf(line, "MemTotal: " STRING_REP_USIZE " kB", (size_t*)&total)  == 1)
+         total   *= 1024;
+      if (sscanf(line, "MemFree: " STRING_REP_USIZE " kB", (size_t*)&freemem) == 1)
+         freemem *= 1024;
+      if (sscanf(line, "Buffers: " STRING_REP_USIZE " kB", (size_t*)&buffers) == 1)
+         buffers *= 1024;
+      if (sscanf(line, "Cached: " STRING_REP_USIZE " kB", (size_t*)&cached)   == 1)
+         cached  *= 1024;
    }
 
-   /* Close /proc/meminfo */
-   fclose(meminfo_file);
-   meminfo_file = NULL;
-
-   /* Use 'accurate' free memory value, if available */
-   if (mem_available_found)
-      return (uint64_t)mem_available * 1024;
-
-   /* ...Otherwise, use estimate */
-   return (uint64_t)((mem_free + buffers + cached) - shmem) * 1024;
+   fclose(data);
+   return freemem - buffers - cached;
+#else
+   unsigned long long ps = sysconf(_SC_PAGESIZE);
+   unsigned long long pn = sysconf(_SC_AVPHYS_PAGES);
+   return ps * pn;
+#endif
 }
 
 /*#include <valgrind/valgrind.h>*/
@@ -2851,17 +2441,17 @@ static bool accessibility_speak_unix(int speed,
    else if (speed > 10)
       speed = 10;
 
-   strcpy_literal(voice_out, "-v");
+   strlcpy(voice_out, "-v", 3);
    strlcat(voice_out, language, 5);
 
-   strcpy_literal(speed_out, "-s");
+   strlcpy(speed_out, "-s", 3);
    strlcat(speed_out, speeds[speed-1], 6);
 
    if (priority < 10 && speak_pid > 0)
    {
       /* check if old pid is running */
       if (is_narrator_running_unix())
-         goto end;
+         return true;
    }
 
    if (speak_pid > 0)
@@ -2882,31 +2472,25 @@ static bool accessibility_speak_unix(int speed,
       /* parent process */
       speak_pid = pid;
 
-      /* Tell the system that we'll ignore the exit status of the child
+      /* Tell the system that we'll ignore the exit status of the child 
        * process.  This prevents zombie processes. */
       signal(SIGCHLD,SIG_IGN);
    }
    else
-   {
-      /* child process: replace process with the espeak command */
+   { 
+      /* child process: replace process with the espeak command */ 
       char* cmd[] = { (char*) "espeak", NULL, NULL, NULL, NULL};
       cmd[1] = voice_out;
       cmd[2] = speed_out;
       cmd[3] = (char*)speak_text;
       execvp("espeak", cmd);
    }
-
-end:
-   if (voice_out)
-      free(voice_out);
-   if (speed_out)
-      free(speed_out);
    return true;
 }
 #endif
 
 frontend_ctx_driver_t frontend_ctx_unix = {
-   frontend_unix_get_env,       /* get_env */
+   frontend_unix_get_env,       /* environment_get */
    frontend_unix_init,          /* init */
    frontend_unix_deinit,        /* deinit */
 #ifdef ANDROID
@@ -2930,28 +2514,21 @@ frontend_ctx_driver_t frontend_ctx_unix = {
    NULL,                         /* get_name */
 #endif
    frontend_unix_get_os,
-   frontend_unix_get_rating,           /* get_rating */
-   NULL,                               /* content_loaded */
-   frontend_unix_get_arch,             /* get_architecture */
+   frontend_unix_get_rating,    /* get_rating */
+   NULL,                         /* load_content */
+   frontend_unix_get_architecture,
    frontend_unix_get_powerstate,
    frontend_unix_parse_drive_list,
-   frontend_unix_get_total_mem,
-   frontend_unix_get_free_mem,
+   frontend_unix_get_mem_total,
+   frontend_unix_get_mem_free,
    frontend_unix_install_signal_handlers,
    frontend_unix_get_signal_handler_state,
    frontend_unix_set_signal_handler_state,
    frontend_unix_destroy_signal_handler_state,
-   NULL,                               /* attach_console */
-   NULL,                               /* detach_console */
+   NULL,                         /* attach_console */
+   NULL,                         /* detach_console */
 #ifdef HAVE_LAKKA
    frontend_unix_get_lakka_version,    /* get_lakka_version */
-#else
-   NULL,                               /* get_lakka_version */
-#endif
-#if defined(HAVE_LAKKA_SWITCH) || (defined(HAVE_LAKKA) && defined(HAVE_ODROIDGO2))
-   frontend_unix_set_screen_brightness,/* set_screen_brightness */
-#else
-   NULL,                         /* set_screen_brightness */
 #endif
    frontend_unix_watch_path_for_changes,
    frontend_unix_check_for_path_changes,
@@ -2959,21 +2536,15 @@ frontend_ctx_driver_t frontend_ctx_unix = {
    frontend_unix_get_cpu_model_name,
    frontend_unix_get_user_language,
 #if (defined(__linux__) || defined(__unix__)) && !defined(ANDROID)
-   is_narrator_running_unix,     /* is_narrator_running */
-   accessibility_speak_unix,     /* accessibility_speak */
+   is_narrator_running_unix,
+   accessibility_speak_unix,
 #else
    NULL,                         /* is_narrator_running */
    NULL,                         /* accessibility_speak */
 #endif
-#ifdef FERAL_GAMEMODE
-   frontend_unix_set_gamemode,
-#else
-   NULL,
-#endif
 #ifdef ANDROID
-   "android",                    /* ident               */
+   "android"
 #else
-   "unix",                       /* ident               */
+   "unix"
 #endif
-   NULL                          /* get_video_driver    */
 };

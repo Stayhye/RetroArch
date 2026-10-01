@@ -21,7 +21,7 @@
 
 #include <rthreads/rthreads.h>
 
-#include "../audio_driver.h"
+#include "../../retroarch.h"
 
 /* Helper macros, COM-style. */
 #define SLObjectItf_Realize(a, ...) ((*(a))->Realize(a, __VA_ARGS__))
@@ -37,6 +37,9 @@ typedef struct sl
 {
    uint8_t **buffer;
    uint8_t *buffer_chunk;
+   unsigned buffer_index;
+   unsigned buffer_ptr;
+   volatile unsigned buffered_blocks;
 
    SLObjectItf engine_object;
    SLEngineItf engine;
@@ -48,13 +51,10 @@ typedef struct sl
 
    slock_t *lock;
    scond_t *cond;
-   unsigned buf_size;
-   unsigned buf_count;
-   unsigned buffer_index;
-   unsigned buffer_ptr;
-   volatile unsigned buffered_blocks;
    bool nonblock;
    bool is_paused;
+   unsigned buf_size;
+   unsigned buf_count;
 } sl_t;
 
 static void opensl_callback(SLAndroidSimpleBufferQueueItf bq, void *ctx)
@@ -67,7 +67,7 @@ static void opensl_callback(SLAndroidSimpleBufferQueueItf bq, void *ctx)
 #define GOTO_IF_FAIL(x) do { \
    if ((res = (x)) != SL_RESULT_SUCCESS) \
       goto error; \
-} while (0)
+} while(0)
 
 static void sl_free(void *data)
 {
@@ -116,7 +116,7 @@ static void *sl_init(const char *device, unsigned rate, unsigned latency,
    if (!sl)
       goto error;
 
-   RARCH_LOG("[OpenSL]: Requested audio latency: %u ms.\n", latency);
+   RARCH_LOG("[OpenSL]: Requested audio latency: %u ms.", latency);
 
    GOTO_IF_FAIL(slCreateEngine(&sl->engine_object, 0, NULL, 0, NULL, NULL));
    GOTO_IF_FAIL(SLObjectItf_Realize(sl->engine_object, SL_BOOLEAN_FALSE));

@@ -22,7 +22,6 @@
 #include <ogcsys.h>
 
 #include <libretro.h>
-#include <verbosity.h>
 #include <streams/interface_stream.h>
 
 #ifdef HAVE_CONFIG_H
@@ -40,7 +39,7 @@
 #include "../font_driver.h"
 
 #include "../drivers_font_renderer/bitmap.h"
-#include <defines/gx_defines.h>
+#include "../../defines/gx_defines.h"
 #include "../../configuration.h"
 #include "../../driver.h"
 
@@ -283,9 +282,6 @@ static void retrace_callback(u32 retrace_count)
 
 static bool gx_is_valid_xorigin(gx_video_t *gx, int origin)
 {
-   if (!gx)
-      return false;
-   
    if (origin < 0 || origin + gx->used_system_xOrigin < 0 ||
          gx_mode.viWidth + origin + gx->used_system_xOrigin > 720)
       return false;
@@ -313,11 +309,7 @@ static void gx_set_video_mode(void *data, unsigned fbWidth, unsigned lines,
    uint16_t xfbWidth           = 0;
    uint16_t xfbHeight          = 0;
    gx_video_t *gx              = (gx_video_t*)data;
-   if (!gx)
-      return;
    settings_t *settings        = config_get_ptr();
-   if (!settings)
-      return;
    unsigned viHeightMultiplier = 1;
    bool vfilter                = settings->bools.video_vfilter;
    unsigned viWidth            = settings->uints.video_viwidth;
@@ -328,16 +320,9 @@ static void gx_set_video_mode(void *data, unsigned fbWidth, unsigned lines,
    g_draw_done                 = false;
    /* wait for next even field */
    /* this prevents screen artifacts when switching
-    * between interlaced & non-interlaced modes.
-    *
-    * But move on if it takes over 3 frames as sometimes under dolphin
-    * this stays at constant value.
-    */
-   for (i = 0; i < 3; i++) {
-     VIDEO_WaitVSync();
-     if (VIDEO_GetNextField())
-       break;
-   }
+    * between interlaced & non-interlaced modes */
+   do VIDEO_WaitVSync();
+   while (!VIDEO_GetNextField());
 
    VIDEO_SetBlack(true);
    VIDEO_Flush();
@@ -608,11 +593,9 @@ static void gx_set_aspect_ratio(void *data, unsigned aspect_ratio_idx)
 }
 
 static void gx_get_video_output_size(void *data,
-      unsigned *width, unsigned *height, char *desc, size_t desc_len)
+      unsigned *width, unsigned *height)
 {
    global_t *global = global_get_ptr();
-   if (!global)
-      return;
 
    (void)data;
 
@@ -628,9 +611,7 @@ static void gx_get_video_output_size(void *data,
 
 static void setup_video_mode(gx_video_t *gx)
 {
-   unsigned width  = 0;
-   unsigned height = 0;
-   char desc[64]   = {0};
+   unsigned width, height;
 
    if (!gx->framebuf[0])
    {
@@ -643,7 +624,7 @@ static void setup_video_mode(gx_video_t *gx)
    gx->orientation = ORIENTATION_NORMAL;
    OSInitThreadQueue(&g_video_cond);
 
-   gx_get_video_output_size(gx, &width, &height, desc, sizeof(desc));
+   gx_get_video_output_size(gx, &width, &height);
    gx_set_video_mode(gx, width, height, true);
 }
 
@@ -654,9 +635,6 @@ static void init_texture(gx_video_t *gx, unsigned width, unsigned height,
    unsigned fb_width, fb_height;
    GXTexObj *fb_ptr   	= (GXTexObj*)&g_tex.obj;
    GXTexObj *menu_ptr 	= (GXTexObj*)&menu_tex.obj;
-
-   if (!gx)
-      return;
 
    width               &= ~3;
    height              &= ~3;
@@ -678,9 +656,6 @@ static void init_texture(gx_video_t *gx, unsigned width, unsigned height,
 static void init_vtx(gx_video_t *gx, const video_info_t *video,
       bool video_smooth)
 {
-   if (!gx || !video)
-      return;
-
    Mtx44 m;
    uint32_t level      = 0;
    _CPU_ISR_Disable(level);
@@ -818,7 +793,7 @@ static void *gx_init(const video_info_t *video,
    if (!gx)
       return NULL;
 
-   gxinput     = input_driver_init_wrap(&input_gx, input_joypad_driver);
+   gxinput     = input_gx.init(input_joypad_driver);
    *input      = gxinput ? &input_gx : NULL;
    *input_data = gxinput;
 
@@ -986,9 +961,6 @@ static void gx_resize(gx_video_t *gx,
    unsigned width                   = gx->vp.full_width;
    unsigned height                  = gx->vp.full_height;
 
-   if (!gx)
-      return;
-
 #ifdef HW_RVL
    VIDEO_SetTrapFilter(global->console.softfilter_enable);
    gamma = global->console.screen.gamma_correction;
@@ -1153,9 +1125,6 @@ static void gx_blit_line(gx_video_t *gx,
    unsigned width, height, h;
    bool double_width = false;
 
-   if (!gx)
-      return;
-
    const GXColor b = {
       .r = 0x00,
       .g = 0x00,
@@ -1272,12 +1241,10 @@ static bool gx_suppress_screensaver(void *data, bool enable)
 static void gx_set_rotation(void *data, unsigned orientation)
 {
    gx_video_t *gx  = (gx_video_t*)data;
-
-   if (!gx)
-      return;
-   
    gx->orientation = orientation;
-   gx->should_resize = true;
+
+   if (gx)
+      gx->should_resize = true;
 }
 
 static void gx_set_texture_frame(void *data, const void *frame,
@@ -1320,8 +1287,7 @@ static void gx_apply_state_changes(void *data)
 static void gx_viewport_info(void *data, struct video_viewport *vp)
 {
    gx_video_t *gx = (gx_video_t*)data;
-   if (gx)
-      *vp = gx->vp;
+   *vp = gx->vp;
 }
 
 static void gx_get_video_output_prev(void *data)
@@ -1340,8 +1306,6 @@ static void gx_get_video_output_prev(void *data)
 static void gx_get_video_output_next(void *data)
 {
    global_t *global = global_get_ptr();
-   if (!global)
-      return;
 
    if (global->console.screen.resolutions.current.id >= GX_RESOLUTIONS_LAST)
    {
@@ -1382,11 +1346,7 @@ static const video_poke_interface_t gx_poke_interface = {
    NULL,                         /* grab_mouse_toggle */
    NULL,                         /* get_current_shader */
    NULL,                         /* get_current_software_framebuffer */
-   NULL,                         /* get_hw_render_interface */
-   NULL,                         /* set_hdr_max_nits */
-   NULL,                         /* set_hdr_paper_white_nits */
-   NULL,                         /* set_hdr_contrast */
-   NULL                          /* set_hdr_expand_gamut */
+   NULL                          /* get_hw_render_interface */
 };
 
 static void gx_get_poke_interface(void *data,
@@ -1453,12 +1413,9 @@ static void gx_overlay_vertex_geom(void *data, unsigned image,
 
 static void gx_free_overlay(gx_video_t *gx)
 {
-   if (gx)
-   {
-      free(gx->overlay);
-      gx->overlay = NULL;
-      gx->overlays = 0;
-   }
+   free(gx->overlay);
+   gx->overlay = NULL;
+   gx->overlays = 0;
    GX_InvalidateTexAll();
 }
 
@@ -1467,8 +1424,6 @@ static bool gx_overlay_load(void *data,
 {
    unsigned i;
    gx_video_t *gx = (gx_video_t*)data;
-   if (!gx)
-      return false;
    const struct texture_image *images = (const struct texture_image*)image_data;
 
    gx_free_overlay(gx);
@@ -1502,17 +1457,13 @@ static bool gx_overlay_load(void *data,
 static void gx_overlay_enable(void *data, bool state)
 {
    gx_video_t *gx = (gx_video_t*)data;
-   
-   if (gx)
-      gx->overlay_enable = state;
+   gx->overlay_enable = state;
 }
 
 static void gx_overlay_full_screen(void *data, bool enable)
 {
    gx_video_t *gx = (gx_video_t*)data;
-   
-   if (gx)
-      gx->overlay_full_screen = enable;
+   gx->overlay_full_screen = enable;
 }
 
 static void gx_overlay_set_alpha(void *data, unsigned image, float mod)
@@ -1527,9 +1478,7 @@ static void gx_render_overlay(void *data)
 {
    unsigned i;
    gx_video_t *gx = (gx_video_t*)data;
-   if (!gx)
-      return;
-   
+
    GX_SetCurrentMtx(GX_PNMTX1);
    GX_SetVtxDesc(GX_VA_POS, GX_DIRECT);
    GX_SetVtxDesc(GX_VA_TEX0, GX_DIRECT);
@@ -1625,10 +1574,7 @@ static bool gx_frame(void *data, const void *frame,
    unsigned overscan_corr_bottom      = settings->uints.video_overscan_correction_bottom;
    bool video_smooth                  = settings->bools.video_smooth;
    unsigned video_aspect_ratio_idx    = settings->uints.video_aspect_ratio_idx;
-#ifdef HAVE_MENU
    bool menu_is_alive                 = video_info->menu_is_alive;
-#endif
-   bool fps_show                      = video_info->fps_show;
 
    fps_text_buf[0]                    = '\0';
 
@@ -1737,7 +1683,7 @@ static bool gx_frame(void *data, const void *frame,
 
    GX_DrawDone();
 
-   if (fps_show)
+   if (video_info->fps_show)
    {
       char mem1_txt[128];
       char mem2_txt[128];

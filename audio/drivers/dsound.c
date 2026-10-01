@@ -39,7 +39,7 @@
 #include <queues/fifo_queue.h>
 #include <string/stdstring.h>
 
-#include "../audio_driver.h"
+#include "../../retroarch.h"
 #include "../../verbosity.h"
 
 #ifdef _XBOX
@@ -136,8 +136,8 @@ static void dsound_thread(void *data)
 static DWORD CALLBACK dsound_thread(PVOID data)
 #endif
 {
-   DWORD write_ptr = 0;
-   dsound_t *ds    = (dsound_t*)data;
+   DWORD write_ptr;
+   dsound_t *ds = (dsound_t*)data;
 
    SetThreadPriority(GetCurrentThread(), THREAD_PRIORITY_TIME_CRITICAL);
 
@@ -155,7 +155,7 @@ static DWORD CALLBACK dsound_thread(PVOID data)
       avail = write_avail(read_ptr, write_ptr, ds->buffer_size);
 
       EnterCriticalSection(&ds->crit);
-      fifo_avail = FIFO_READ_AVAIL(ds->buffer);
+      fifo_avail = fifo_read_avail(ds->buffer);
       LeaveCriticalSection(&ds->crit);
 
       if (avail < CHUNK_SIZE || ((fifo_avail < CHUNK_SIZE) && (avail < ds->buffer_size / 2)))
@@ -303,8 +303,7 @@ static void dsound_free(void *data)
    free(ds);
 }
 
-static BOOL CALLBACK enumerate_cb(LPGUID guid,
-      LPCSTR desc, LPCSTR module, LPVOID context)
+static BOOL CALLBACK enumerate_cb(LPGUID guid, LPCSTR desc, LPCSTR module, LPVOID context)
 {
    union string_list_elem_attr attr;
    struct string_list *list = (struct string_list*)context;
@@ -315,20 +314,15 @@ static BOOL CALLBACK enumerate_cb(LPGUID guid,
 
    if (guid)
    {
+      unsigned i;
       LPGUID guid_copy = (LPGUID)malloc(sizeof(GUID) * 1);
+      guid_copy->Data1 = guid->Data1;
+      guid_copy->Data2 = guid->Data2;
+      guid_copy->Data3 = guid->Data3;
+      for (i = 0; i < 8; i++)
+         guid_copy->Data4[i] = guid->Data4[i];
 
-      if (guid_copy)
-      {
-         unsigned i;
-
-         guid_copy->Data1 = guid->Data1;
-         guid_copy->Data2 = guid->Data2;
-         guid_copy->Data3 = guid->Data3;
-         for (i = 0; i < 8; i++)
-            guid_copy->Data4[i] = guid->Data4[i];
-
-         list->elems[list->size - 1].userdata = guid_copy;
-      }
+      list->elems[list->size-1].userdata = guid_copy;
    }
 
    return TRUE;
@@ -517,7 +511,7 @@ static ssize_t dsound_write(void *data, const void *buf_, size_t size)
          size_t avail;
 
          EnterCriticalSection(&ds->crit);
-         avail = FIFO_WRITE_AVAIL(ds->buffer);
+         avail = fifo_write_avail(ds->buffer);
          if (avail > size)
             avail = size;
 
@@ -536,7 +530,7 @@ static ssize_t dsound_write(void *data, const void *buf_, size_t size)
          size_t avail;
 
          EnterCriticalSection(&ds->crit);
-         avail = FIFO_WRITE_AVAIL(ds->buffer);
+         avail = fifo_write_avail(ds->buffer);
          if (avail > size)
             avail = size;
 
@@ -551,8 +545,7 @@ static ssize_t dsound_write(void *data, const void *buf_, size_t size)
             break;
 
          if (avail == 0)
-            if (!(WaitForSingleObject(ds->event, 50) == WAIT_OBJECT_0))
-               return -1;
+            WaitForSingleObject(ds->event, INFINITE);
       }
    }
 
@@ -565,13 +558,21 @@ static size_t dsound_write_avail(void *data)
    dsound_t *ds = (dsound_t*)data;
 
    EnterCriticalSection(&ds->crit);
-   avail = FIFO_WRITE_AVAIL(ds->buffer);
+   avail = fifo_write_avail(ds->buffer);
    LeaveCriticalSection(&ds->crit);
    return avail;
 }
 
-static size_t dsound_buffer_size(void *data) { return 4 * 1024; }
-static bool dsound_use_float(void *data) { return false; }
+static size_t dsound_buffer_size(void *data)
+{
+   return 4 * 1024;
+}
+
+static bool dsound_use_float(void *data)
+{
+   (void)data;
+   return false;
+}
 
 static void *dsound_list_new(void *u)
 {

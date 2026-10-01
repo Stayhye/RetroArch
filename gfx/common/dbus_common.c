@@ -19,7 +19,6 @@
 
 #ifdef HAVE_DBUS
 #include <dbus/dbus.h>
-/* TODO/FIXME - static globals */
 static DBusConnection* dbus_connection      = NULL;
 static unsigned int dbus_screensaver_cookie = 0;
 #endif

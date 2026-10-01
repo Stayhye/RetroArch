@@ -29,6 +29,7 @@
 #include <file/file_path.h>
 #include <compat/strl.h>
 #include <string/stdstring.h>
+#include <gfx/scaler/scaler.h>
 #include <gfx/video_frame.h>
 
 #ifdef HAVE_RBMP
@@ -56,18 +57,47 @@
 
 #include "tasks_internal.h"
 
+typedef struct screenshot_task_state screenshot_task_state_t;
+
+struct screenshot_task_state
+{
+   bool bgr24;
+   bool silence;
+   bool is_idle;
+   bool is_paused;
+   bool history_list_enable;
+   bool pl_fuzzy_archive_match;
+   bool pl_use_old_format;
+   bool pl_compression;
+   bool widgets_ready;
+
+   int pitch;
+   unsigned width;
+   unsigned height;
+   unsigned pixel_format_type;
+
+   char filename[PATH_MAX_LENGTH];
+   char shotname[256];
+
+   struct scaler_ctx scaler;
+
+   uint8_t *out_buffer;
+   const void *frame;
+   void *userbuf;
+};
+
 static bool screenshot_dump_direct(screenshot_task_state_t *state)
 {
-   struct scaler_ctx *scaler     = (struct scaler_ctx*)&state->scaler;
-   bool ret                      = false;
+   struct scaler_ctx *scaler      = (struct scaler_ctx*)&state->scaler;
+   bool ret                       = false;
 
 #if defined(HAVE_RPNG)
    if (state->bgr24)
-      scaler->in_fmt             = SCALER_FMT_BGR24;
+      scaler->in_fmt              = SCALER_FMT_BGR24;
    else if (state->pixel_format_type == RETRO_PIXEL_FORMAT_XRGB8888)
-      scaler->in_fmt             = SCALER_FMT_ARGB8888;
+      scaler->in_fmt              = SCALER_FMT_ARGB8888;
    else
-      scaler->in_fmt             = SCALER_FMT_RGB565;
+      scaler->in_fmt              = SCALER_FMT_RGB565;
 
    video_frame_convert_to_bgr24(
          scaler,
@@ -150,7 +180,10 @@ static void task_screenshot_handler(retro_task_t *task)
       entry.core_path             = (char*)"builtin";
       entry.core_name             = (char*)"imageviewer";
 
-      command_playlist_push_write(g_defaults.image_history, &entry);
+      command_playlist_push_write(g_defaults.image_history, &entry,
+            state->pl_fuzzy_archive_match,
+            state->pl_use_old_format,
+            state->pl_compression);
    }
 #endif
 
@@ -195,9 +228,29 @@ task_finished:
 }
 
 #if defined(HAVE_GFX_WIDGETS)
-void task_screenshot_callback(retro_task_t *task,
+static void task_screenshot_callback(retro_task_t *task,
       void *task_data,
-      void *user_data, const char *error);
+      void *user_data, const char *error)
+{
+   screenshot_task_state_t *state = NULL;
+
+   if (!task)
+      return;
+
+   state = (screenshot_task_state_t*)task->state;
+
+   if (!state)
+      return;
+
+   if (!state->silence && state->widgets_ready)
+      gfx_widget_screenshot_taken(state->shotname, state->filename);
+
+   free(state);
+   /* Must explicitly set task->state to NULL here,
+    * to avoid potential heap-use-after-free errors */
+   state       = NULL;
+   task->state = NULL;
+}
 #endif
 
 /* Take frame bottom-up. */
@@ -220,8 +273,7 @@ static bool screenshot_dump(
    struct retro_system_info system_info;
    uint8_t *buf                   = NULL;
    settings_t *settings           = config_get_ptr();
-   screenshot_task_state_t *state = (screenshot_task_state_t*)
-         calloc(1, sizeof(*state));
+   screenshot_task_state_t *state = (screenshot_task_state_t*)calloc(1, sizeof(*state));
 
    state->shotname[0]             = '\0';
 
@@ -230,6 +282,9 @@ static bool screenshot_dump(
    if (fullpath)
       strlcpy(state->filename, name_base, sizeof(state->filename));
 
+   state->pl_fuzzy_archive_match = settings->bools.playlist_fuzzy_archive_match;
+   state->pl_use_old_format      = settings->bools.playlist_use_old_format;
+   state->pl_compression         = settings->bools.playlist_compression;
    state->is_idle                = is_idle;
    state->is_paused              = is_paused;
    state->bgr24                  = bgr24;
@@ -257,36 +312,6 @@ static bool screenshot_dump(
       }
       else
       {
-         char new_screenshot_dir[PATH_MAX_LENGTH];
-
-         new_screenshot_dir[0] = '\0';
-
-         if (!string_is_empty(screenshot_dir))
-         {
-            const char *content_dir = path_get(RARCH_PATH_BASENAME);
-
-            /* Append content directory name to screenshot
-             * path, if required */
-            if (settings->bools.sort_screenshots_by_content_enable &&
-                !string_is_empty(content_dir))
-            {
-               char content_dir_name[PATH_MAX_LENGTH];
-
-               content_dir_name[0] = '\0';
-
-               fill_pathname_parent_dir_name(content_dir_name,
-                     content_dir, sizeof(content_dir_name));
-               fill_pathname_join(
-                     new_screenshot_dir,
-                     screenshot_dir,
-                     content_dir_name,
-                     sizeof(new_screenshot_dir));
-            }
-            else
-               strlcpy(new_screenshot_dir, screenshot_dir,
-                     sizeof(new_screenshot_dir));
-         }
-
          if (settings->bools.auto_screenshot_filename)
          {
             const char *screenshot_name = NULL;
@@ -294,10 +319,7 @@ static bool screenshot_dump(
             if (path_is_empty(RARCH_PATH_CONTENT))
             {
                if (!core_get_system_info(&system_info))
-               {
-                  free(state);
                   return false;
-               }
 
                if (string_is_empty(system_info.library_name))
                   screenshot_name = "RetroArch";
@@ -317,22 +339,19 @@ static bool screenshot_dump(
             strlcat(state->shotname, ".png", sizeof(state->shotname));
          }
 
-         if (  string_is_empty(new_screenshot_dir) || 
+         if (  string_is_empty(screenshot_dir) || 
                settings->bools.screenshots_in_content_dir)
          {
-            fill_pathname_basedir(new_screenshot_dir, name_base,
-                  sizeof(new_screenshot_dir));
-            fill_pathname_join(state->filename, new_screenshot_dir,
+            char screenshot_path[PATH_MAX_LENGTH];
+            screenshot_path[0]             = '\0';
+            fill_pathname_basedir(screenshot_path, name_base,
+                  sizeof(screenshot_path));
+            fill_pathname_join(state->filename, screenshot_path,
                   state->shotname, sizeof(state->filename));
          }
          else
-            fill_pathname_join(state->filename, new_screenshot_dir,
+            fill_pathname_join(state->filename, screenshot_dir,
                   state->shotname, sizeof(state->filename));
-
-         /* Create screenshot directory, if required */
-         if (!path_is_directory(new_screenshot_dir))
-            if (!path_mkdir(new_screenshot_dir))
-               return false;
       }
    }
 
@@ -364,7 +383,7 @@ static bool screenshot_dump(
       else
 #endif
       {
-         if (!savestate & settings->bools.notification_show_screenshot)
+         if (!savestate)
             task->title = strdup(msg_hash_to_str(MSG_TAKING_SCREENSHOT));
       }
 
@@ -537,16 +556,13 @@ bool take_screenshot(
       bool silence, bool has_valid_framebuffer,
       bool fullpath, bool use_thread)
 {
-   runloop_state_t *runloop_st = runloop_state_get_ptr();
    bool is_paused              = false;
    bool is_idle                = false;
+   bool is_slowmotion          = false;
+   bool is_perfcnt_enable      = false;
    bool ret                    = false;
 
-   if (runloop_st)
-   {
-      is_paused                = runloop_st->paused;
-      is_idle                  = runloop_st->idle;
-   }
+   runloop_get_status(&is_paused, &is_idle, &is_slowmotion, &is_perfcnt_enable);
 
    /* No way to infer screenshot directory. */
    if (     string_is_empty(screenshot_dir)

@@ -75,6 +75,8 @@ static void sdl_gfx_free(void *data)
    if (vid->menu.frame)
       SDL_FreeSurface(vid->menu.frame);
 
+   SDL_QuitSubSystem(SDL_INIT_VIDEO);
+
    if (vid->font)
       vid->font_driver->free(vid->font);
 
@@ -246,7 +248,6 @@ static void *sdl_gfx_init(const video_info_t *video,
    const SDL_VideoInfo *video_info = NULL;
    sdl_video_t                *vid = NULL;
    settings_t            *settings = config_get_ptr();
-   uint32_t sdl_subsystem_flags    = SDL_WasInit(0);
    const char *path_font           = settings->paths.path_font;
    float video_font_size           = settings->floats.video_font_size;
    bool video_font_enable          = settings->bools.video_font_enable;
@@ -258,17 +259,13 @@ static void *sdl_gfx_init(const video_info_t *video,
    XInitThreads();
 #endif
 
-   /* Initialise graphics subsystem, if required */
-   if (sdl_subsystem_flags == 0)
+   if (SDL_WasInit(0) == 0)
    {
       if (SDL_Init(SDL_INIT_VIDEO) < 0)
          return NULL;
    }
-   else if ((sdl_subsystem_flags & SDL_INIT_VIDEO) == 0)
-   {
-      if (SDL_InitSubSystem(SDL_INIT_VIDEO) < 0)
-         return NULL;
-   }
+   else if (SDL_InitSubSystem(SDL_INIT_VIDEO) < 0)
+      return NULL;
 
    vid = (sdl_video_t*)calloc(1, sizeof(*vid));
    if (!vid)
@@ -303,8 +300,7 @@ static void *sdl_gfx_init(const video_info_t *video,
 
    if (input && input_data)
    {
-      void *sdl_input = input_driver_init_wrap(&input_sdl,
-            settings->arrays.input_joypad_driver);
+      void *sdl_input = input_sdl.init(settings->arrays.input_joypad_driver);
 
       if (sdl_input)
       {
@@ -369,9 +365,7 @@ static bool sdl_gfx_frame(void *data, const void *frame, unsigned width,
 {
    char title[128];
    sdl_video_t                    *vid = (sdl_video_t*)data;
-#ifdef HAVE_MENU
    bool menu_is_alive                  = video_info->menu_is_alive;
-#endif
 
    if (!frame)
       return true;
@@ -430,11 +424,14 @@ static bool sdl_gfx_alive(void *data)
 
 static bool sdl_gfx_focus(void *data)
 {
+   (void)data;
    return (SDL_GetAppState() & (SDL_APPINPUTFOCUS | SDL_APPACTIVE)) == (SDL_APPINPUTFOCUS | SDL_APPACTIVE);
 }
 
 static bool sdl_gfx_suppress_screensaver(void *data, bool enable)
 {
+   (void)data;
+   (void)enable;
 #ifdef HAVE_X11
    if (video_driver_display_type_get() == RARCH_DISPLAY_X11)
    {
@@ -446,8 +443,13 @@ static bool sdl_gfx_suppress_screensaver(void *data, bool enable)
    return false;
 }
 
-/* TODO/FIXME - implement */
-static bool sdl_gfx_has_windowed(void *data) { return true; }
+static bool sdl_gfx_has_windowed(void *data)
+{
+   (void)data;
+
+   /* TODO - implement. */
+   return true;
+}
 
 static void sdl_gfx_viewport_info(void *data, struct video_viewport *vp)
 {
@@ -547,11 +549,7 @@ static const video_poke_interface_t sdl_poke_interface = {
    sdl_grab_mouse_toggle,
    NULL,                         /* get_current_shader */
    NULL,                         /* get_current_software_framebuffer */
-   NULL,                         /* get_hw_render_interface */
-   NULL,                         /* set_hdr_max_nits */
-   NULL,                         /* set_hdr_paper_white_nits */
-   NULL,                         /* set_hdr_contrast */
-   NULL                          /* set_hdr_expand_gamut */
+   NULL                          /* get_hw_render_interface */
 };
 
 static void sdl_get_poke_interface(void *data, const video_poke_interface_t **iface)

@@ -102,9 +102,9 @@ typedef struct frontend_ctx_driver
    void (*destroy_signal_handler_state)(void);
    void (*attach_console)(void);
    void (*detach_console)(void);
+#ifdef HAVE_LAKKA
    void (*get_lakka_version)(char *, size_t);
-   /* TODO/FIXME: Need to implement some sort of startup brightness setting. */
-   void (*set_screen_brightness)(int);
+#endif
    void (*watch_path_for_changes)(struct string_list *list, int flags, path_change_data_t **change_data);
    bool (*check_for_path_changes)(path_change_data_t *change_data);
    void (*set_sustained_performance_mode)(bool on);
@@ -113,17 +113,11 @@ typedef struct frontend_ctx_driver
    bool (*is_narrator_running)(void);
    bool (*accessibility_speak)(int speed,
          const char* speak_text, int priority);
-   bool (*set_gamemode)(bool on);
 
    const char *ident;
 
    const struct video_driver *(*get_video_driver)(void);
 } frontend_ctx_driver_t;
-
-typedef struct
-{
-   frontend_ctx_driver_t *current_frontend_ctx; /* ptr alignment */
-} frontend_state_t;
 
 extern frontend_ctx_driver_t frontend_ctx_gx;
 extern frontend_ctx_driver_t frontend_ctx_wiiu;
@@ -184,6 +178,8 @@ enum frontend_architecture frontend_driver_get_cpu_architecture(void);
 const void *frontend_driver_get_cpu_architecture_str(
       char *frontend_architecture, size_t size);
 
+environment_get_t frontend_driver_environment_get_ptr(void);
+
 bool frontend_driver_has_get_video_driver_func(void);
 
 const struct video_driver *frontend_driver_get_video_driver(void);
@@ -216,10 +212,6 @@ void frontend_driver_attach_console(void);
 
 void frontend_driver_detach_console(void);
 
-void frontend_driver_set_screen_brightness(int value);
-
-bool frontend_driver_can_set_screen_brightness(void);
-
 bool frontend_driver_can_watch_for_changes(void);
 
 void frontend_driver_watch_path_for_changes(struct string_list *list, int flags, path_change_data_t **change_data);
@@ -231,12 +223,6 @@ void frontend_driver_set_sustained_performance_mode(bool on);
 const char* frontend_driver_get_cpu_model_name(void);
 
 enum retro_language frontend_driver_get_user_language(void);
-
-bool frontend_driver_has_gamemode(void);
-
-bool frontend_driver_set_gamemode(bool on);
-
-frontend_state_t *frontend_state_get_ptr(void);
 
 RETRO_END_DECLS
 

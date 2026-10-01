@@ -82,8 +82,11 @@ static INLINE uint64_t SWAP64(uint64_t val)
 #endif
 
 #ifdef _MSC_VER
-/* MSVC pre-defines macros depending on target arch */
-#if defined (_M_IX86) || defined (_M_AMD64) || defined (_M_ARM) || defined (_M_ARM64)
+#include <winsock2.h>
+#endif
+
+#ifdef _MSC_VER
+#if _M_IX86 || _M_AMD64 || _M_ARM || _M_ARM64
 #define LSB_FIRST 1
 #elif _M_PPC
 #define MSB_FIRST 1

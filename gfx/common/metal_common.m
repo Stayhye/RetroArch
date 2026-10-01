@@ -23,24 +23,18 @@
 #include <simd/simd.h>
 
 #import <gfx/video_frame.h>
+#include "../../managers/state_manager.h"
 
 #import "metal_common.h"
+#import "../../ui/drivers/cocoa/cocoa_common.h"
+#import "Context.h"
 
-#include "../../ui/drivers/cocoa/apple_platform.h"
-#include "../../ui/drivers/cocoa/cocoa_common.h"
-
-#ifdef HAVE_REWIND
-#include "../../state_manager.h"
-#endif
 #ifdef HAVE_MENU
-#include "../../menu/menu_driver.h"
+#import "../../menu/menu_driver.h"
 #endif
 #ifdef HAVE_GFX_WIDGETS
-#include "../gfx_widgets.h"
+#import "../gfx_widgets.h"
 #endif
-
-#include "../../configuration.h"
-#include "../../verbosity.h"
 
 #define STRUCT_ASSIGN(x, y) \
 { \
@@ -56,11 +50,9 @@
 
 @implementation MetalView
 
-#if !defined(HAVE_COCOATOUCH)
 - (void)keyDown:(NSEvent*)theEvent
 {
 }
-#endif
 
 /* Stop the annoying sound when pressing a key. */
 - (BOOL)acceptsFirstResponder
@@ -195,6 +187,7 @@
 
 - (void)dealloc
 {
+   RARCH_LOG("[MetalDriver]: destroyed\n");
    if (_viewport)
    {
       free(_viewport);
@@ -266,6 +259,10 @@
 
 - (void)setViewportWidth:(unsigned)width height:(unsigned)height forceFull:(BOOL)forceFull allowRotate:(BOOL)allowRotate
 {
+#if 0
+   RARCH_LOG("[Metal]: setViewportWidth size %dx%d\n", width, height);
+#endif
+
    _viewport->full_width = width;
    _viewport->full_height = height;
    video_driver_set_size(_viewport->full_width, _viewport->full_height);
@@ -297,6 +294,9 @@
    @autoreleasepool
    {
       bool statistics_show = video_info->statistics_show;
+#ifdef HAVE_GFX_WIDGETS
+      bool widgets_active  = gfx_widgets_active();
+#endif
 
       [self _beginFrame];
 
@@ -338,10 +338,12 @@
       }
 
 #ifdef HAVE_GFX_WIDGETS
-      [rce pushDebugGroup:@"display widgets"];
-      if (video_info->widgets_active)
+      if (widgets_active)
+      {
+         [rce pushDebugGroup:@"display widgets"];
          gfx_widgets_frame(video_info);
-      [rce popDebugGroup];
+         [rce popDebugGroup];
+      }
 #endif
 
       if (msg && *msg)
@@ -500,13 +502,7 @@
 
 - (void)mtkView:(MTKView *)view drawableSizeWillChange:(CGSize)size
 {
-    NSLog(@"mtkView drawableSizeWillChange to: %f x %f",size.width,size.height);
-#ifdef HAVE_COCOATOUCH
-    CGFloat scale = [[UIScreen mainScreen] scale];
-    [self setViewportWidth:(unsigned int)view.bounds.size.width*scale height:(unsigned int)view.bounds.size.height*scale forceFull:NO allowRotate:YES];
-#else
    [self setViewportWidth:(unsigned int)size.width height:(unsigned int)size.height forceFull:NO allowRotate:YES];
-#endif
 }
 
 - (void)drawInMTKView:(MTKView *)view
@@ -699,11 +695,7 @@ typedef struct MTLALIGN(16)
       switch (i)
       {
          case RARCH_WRAP_BORDER:
-#if defined(HAVE_COCOATOUCH)
-            sd.sAddressMode = MTLSamplerAddressModeClampToZero;
-#else
             sd.sAddressMode = MTLSamplerAddressModeClampToBorderColor;
-#endif
             break;
 
          case RARCH_WRAP_EDGE:
@@ -751,7 +743,9 @@ typedef struct MTLALIGN(16)
 - (void)setSize:(CGSize)size
 {
    if (CGSizeEqualToSize(_size, size))
+   {
       return;
+   }
 
    _size = size;
 
@@ -760,9 +754,9 @@ typedef struct MTLALIGN(16)
    if (_format != RPixelFormatBGRA8Unorm && _format != RPixelFormatBGRX8Unorm)
    {
       MTLTextureDescriptor *td = [MTLTextureDescriptor texture2DDescriptorWithPixelFormat:MTLPixelFormatR16Uint
-                                 width:(NSUInteger)size.width
-                                 height:(NSUInteger)size.height
-                                 mipmapped:NO];
+                                                                                    width:(NSUInteger)size.width
+                                                                                   height:(NSUInteger)size.height
+                                                                                mipmapped:NO];
       _src = [_context.device newTextureWithDescriptor:td];
    }
 }
@@ -775,13 +769,15 @@ typedef struct MTLALIGN(16)
 - (void)setFrame:(CGRect)frame
 {
    if (CGRectEqualToRect(_frame, frame))
+   {
       return;
+   }
 
    _frame = frame;
 
    // update vertices
    CGPoint o = frame.origin;
-   CGSize  s = frame.size;
+   CGSize s = frame.size;
 
    CGFloat l = o.x;
    CGFloat t = o.y;
@@ -804,8 +800,7 @@ typedef struct MTLALIGN(16)
 
 - (void)_convertFormat
 {
-   if (   _format == RPixelFormatBGRA8Unorm
-       || _format == RPixelFormatBGRX8Unorm)
+   if (_format == RPixelFormatBGRA8Unorm || _format == RPixelFormatBGRX8Unorm)
       return;
 
    if (!_srcDirty)
@@ -851,6 +846,8 @@ typedef struct MTLALIGN(16)
 
 - (bool)readViewport:(uint8_t *)buffer isIdle:(bool)isIdle
 {
+   RARCH_LOG("[Metal]: readViewport is_idle = %s\n", isIdle ? "YES" : "NO");
+
    bool enabled = _context.captureEnabled;
    if (!enabled)
       _context.captureEnabled = YES;
@@ -869,21 +866,25 @@ typedef struct MTLALIGN(16)
 {
    if (_shader && (_engine.frame.output_size.x != _viewport->width ||
                    _engine.frame.output_size.y != _viewport->height))
+   {
       resize_render_targets = YES;
+   }
 
    _engine.frame.viewport.originX = _viewport->x;
    _engine.frame.viewport.originY = _viewport->y;
-   _engine.frame.viewport.width   = _viewport->width;
-   _engine.frame.viewport.height  = _viewport->height;
-   _engine.frame.viewport.znear   = 0.0f;
-   _engine.frame.viewport.zfar    = 1.0f;
-   _engine.frame.output_size.x    = _viewport->width;
-   _engine.frame.output_size.y    = _viewport->height;
-   _engine.frame.output_size.z    = 1.0f / _viewport->width;
-   _engine.frame.output_size.w    = 1.0f / _viewport->height;
+   _engine.frame.viewport.width = _viewport->width;
+   _engine.frame.viewport.height = _viewport->height;
+   _engine.frame.viewport.znear = 0.0f;
+   _engine.frame.viewport.zfar = 1.0f;
+   _engine.frame.output_size.x = _viewport->width;
+   _engine.frame.output_size.y = _viewport->height;
+   _engine.frame.output_size.z = 1.0f / _viewport->width;
+   _engine.frame.output_size.w = 1.0f / _viewport->height;
 
    if (resize_render_targets)
+   {
       [self _updateRenderTargets];
+   }
 
    [self _updateHistory];
 
@@ -914,15 +915,16 @@ typedef struct MTLALIGN(16)
 
 - (void)_initHistory
 {
-   int i;
    MTLTextureDescriptor *td = [MTLTextureDescriptor texture2DDescriptorWithPixelFormat:MTLPixelFormatBGRA8Unorm
-                                                   width:(NSUInteger)_size.width
-                                                   height:(NSUInteger)_size.height
-                                                   mipmapped:false];
+                                                                                 width:(NSUInteger)_size.width
+                                                                                height:(NSUInteger)_size.height
+                                                                             mipmapped:false];
    td.usage = MTLTextureUsageShaderRead | MTLTextureUsageShaderWrite | MTLTextureUsageRenderTarget;
 
-   for (i = 0; i < _shader->history_size + 1; i++)
+   for (int i = 0; i < _shader->history_size + 1; i++)
+   {
       [self _initTexture:&_engine.frame.texture[i] withDescriptor:td];
+   }
    init_history = NO;
 }
 
@@ -939,14 +941,15 @@ typedef struct MTLALIGN(16)
 
 - (void)drawWithContext:(Context *)ctx
 {
-   unsigned i;
    _texture = _engine.frame.texture[0].view;
    [self _convertFormat];
 
    if (!_shader || _shader->passes == 0)
+   {
       return;
+   }
 
-   for (i = 0; i < _shader->passes; i++)
+   for (unsigned i = 0; i < _shader->passes; i++)
    {
       if (_shader->pass[i].feedback)
       {
@@ -988,13 +991,7 @@ typedef struct MTLALIGN(16)
       if (_shader->pass[i].frame_count_mod)
          _engine.pass[i].frame_count %= _shader->pass[i].frame_count_mod;
 
-#ifdef HAVE_REWIND
-      if (state_manager_frame_is_reversed())
-         _engine.pass[i].frame_direction = -1;
-      else
-#else
-         _engine.pass[i].frame_direction = 1;
-#endif
+      _engine.pass[i].frame_direction = state_manager_frame_is_reversed() ? -1 : 1;
 
       for (unsigned j = 0; j < SLANG_CBUFFER_MAX; j++)
       {
@@ -1018,9 +1015,7 @@ typedef struct MTLALIGN(16)
 
             if (buffer_sem->stage_mask & SLANG_STAGE_FRAGMENT_MASK)
                [rce setFragmentBuffer:buffer offset:0 atIndex:buffer_sem->binding];
-#if !defined(HAVE_COCOATOUCH)
             [buffer didModifyRange:NSMakeRange(0, buffer.length)];
-#endif
          }
       }
 
@@ -1136,7 +1131,7 @@ typedef struct MTLALIGN(16)
          height = _viewport->height;
       }
 
-      /* Updating framebuffer size */
+      RARCH_LOG("[Metal]: Updating framebuffer size %u x %u.\n", width, height);
 
       MTLPixelFormat fmt = SelectOptimalPixelFormat(glslang_format_to_metal(_engine.pass[i].semantics.format));
       if ((i != (_shader->passes - 1)) ||
@@ -1206,6 +1201,7 @@ typedef struct MTLALIGN(16)
    [self _freeVideoShader:_shader];
    _shader = nil;
 
+   config_file_t         *conf  = video_shader_read_preset(path.UTF8String);
    struct video_shader *shader  = (struct video_shader *)calloc(1, sizeof(*shader));
    settings_t        *settings  = config_get_ptr();
    const char *dir_video_shader = settings->paths.directory_video_shader;
@@ -1215,7 +1211,7 @@ typedef struct MTLALIGN(16)
    {
       unsigned i;
       texture_t *source = NULL;
-      if (!video_shader_load_preset_into_shader(path.UTF8String, shader))
+      if (!video_shader_read_conf_preset(conf, shader))
          return NO;
 
       source = &_engine.frame.texture[0];
@@ -1352,7 +1348,7 @@ typedef struct MTLALIGN(16)
                if (size == 0)
                   continue;
 
-                id<MTLBuffer> buf = [_context.device newBufferWithLength:size options:PLATFORM_METAL_RESOURCE_STORAGE_MODE];
+               id<MTLBuffer> buf = [_context.device newBufferWithLength:size options:MTLResourceStorageModeManaged];
                STRUCT_ASSIGN(_engine.pass[i].buffers[j], buf);
             }
          } @finally
@@ -1362,7 +1358,7 @@ typedef struct MTLALIGN(16)
                NSError *err = nil;
                NSString *basePath = [[NSString stringWithUTF8String:shader->pass[i].source.path] stringByDeletingPathExtension];
 
-               /* Saving Metal shader files... */
+               RARCH_LOG("[Metal]: saving metal shader files to %s\n", basePath.UTF8String);
 
                [vs_src writeToFile:[basePath stringByAppendingPathExtension:@"vs.metal"]
                         atomically:NO
@@ -1415,6 +1411,8 @@ typedef struct MTLALIGN(16)
          /* TODO(sgc): generate mip maps */
          image_texture_free(&image);
       }
+
+      video_shader_resolve_current_parameters(conf, shader);
       _shader = shader;
       shader = nil;
    }
@@ -1423,6 +1421,12 @@ typedef struct MTLALIGN(16)
       if (shader)
       {
          [self _freeVideoShader:shader];
+      }
+
+      if (conf)
+      {
+         config_file_free(conf);
+         conf = nil;
       }
    }
 
@@ -1460,7 +1464,7 @@ typedef struct MTLALIGN(16)
    NSUInteger needed = sizeof(SpriteVertex) * count * 4;
    if (!_vert || _vert.length < needed)
    {
-      _vert = [_context.device newBufferWithLength:needed options:PLATFORM_METAL_RESOURCE_STORAGE_MODE];
+      _vert = [_context.device newBufferWithLength:needed options:MTLResourceStorageModeManaged];
    }
 
    for (NSUInteger i = 0; i < count; i++)
@@ -1478,13 +1482,11 @@ typedef struct MTLALIGN(16)
 
 - (void)drawWithEncoder:(id<MTLRenderCommandEncoder>)rce
 {
-#if !defined(HAVE_COCOATOUCH)
    if (_vertDirty)
    {
       [_vert didModifyRange:NSMakeRange(0, _vert.length)];
       _vertDirty = NO;
    }
-#endif
 
    NSUInteger count = _images.count;
    for (NSUInteger i = 0; i < count; ++i)

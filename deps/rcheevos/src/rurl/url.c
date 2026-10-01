@@ -1,16 +1,10 @@
-#include "rc_url.h"
+#include "rurl.h"
 
-#include "../rcheevos/rc_compat.h"
+#include "../rcheevos/compat.h"
 #include "../rhash/md5.h"
 
 #include <stdio.h>
 #include <string.h>
-
-#if RCHEEVOS_URL_SSL
-#define RCHEEVOS_URL_PROTOCOL "https"
-#else
-#define RCHEEVOS_URL_PROTOCOL "http"
-#endif
 
 static int rc_url_encode(char* encoded, size_t len, const char* str) {
   for (;;) {
@@ -73,7 +67,7 @@ int rc_url_award_cheevo(char* buffer, size_t size, const char* user_name, const 
   written = snprintf(
     buffer,
     size,
-    RCHEEVOS_URL_PROTOCOL"://retroachievements.org/dorequest.php?r=awardachievement&u=%s&t=%s&a=%u&h=%d",
+    "http://retroachievements.org/dorequest.php?r=awardachievement&u=%s&t=%s&a=%u&h=%d",
     urle_user_name,
     urle_login_token,
     cheevo_id,
@@ -104,7 +98,7 @@ int rc_url_submit_lboard(char* buffer, size_t size, const char* user_name, const
   }
 
   /* Evaluate the signature. */
-  snprintf(signature, sizeof(signature), "%u%s%d", lboard_id, user_name, value);
+  snprintf(signature, sizeof(signature), "%u%s%u", lboard_id, user_name, lboard_id);
   md5_init(&state);
   md5_append(&state, (unsigned char*)signature, (int)strlen(signature));
   md5_finish(&state, hash);
@@ -112,7 +106,7 @@ int rc_url_submit_lboard(char* buffer, size_t size, const char* user_name, const
   written = snprintf(
     buffer,
     size,
-    RCHEEVOS_URL_PROTOCOL"://retroachievements.org/dorequest.php?r=submitlbentry&u=%s&t=%s&i=%u&s=%d&v=%02x%02x%02x%02x%02x%02x%02x%02x%02x%02x%02x%02x%02x%02x%02x%02x",
+    "http://retroachievements.org/dorequest.php?r=submitlbentry&u=%s&t=%s&i=%u&s=%d&v=%02x%02x%02x%02x%02x%02x%02x%02x%02x%02x%02x%02x%02x%02x%02x%02x",
     urle_user_name,
     urle_login_token,
     lboard_id,
@@ -128,7 +122,7 @@ int rc_url_get_gameid(char* buffer, size_t size, const char* hash) {
   int written = snprintf(
     buffer,
     size,
-    RCHEEVOS_URL_PROTOCOL"://retroachievements.org/dorequest.php?r=gameid&m=%s",
+    "http://retroachievements.org/dorequest.php?r=gameid&m=%s",
     hash
   );
 
@@ -151,7 +145,7 @@ int rc_url_get_patch(char* buffer, size_t size, const char* user_name, const cha
   written = snprintf(
     buffer,
     size,
-    RCHEEVOS_URL_PROTOCOL"://retroachievements.org/dorequest.php?r=patch&u=%s&t=%s&g=%u",
+    "http://retroachievements.org/dorequest.php?r=patch&u=%s&t=%s&g=%u",
     urle_user_name,
     urle_login_token,
     gameid
@@ -173,7 +167,7 @@ int rc_url_get_badge_image(char* buffer, size_t size, const char* badge_name) {
 
 int rc_url_login_with_password(char* buffer, size_t size, const char* user_name, const char* password) {
   char urle_user_name[64];
-  char urle_password[256];
+  char urle_password[64];
   int written;
 
   if (rc_url_encode(urle_user_name, sizeof(urle_user_name), user_name) != 0) {
@@ -187,7 +181,7 @@ int rc_url_login_with_password(char* buffer, size_t size, const char* user_name,
   written = snprintf(
     buffer,
     size,
-    RCHEEVOS_URL_PROTOCOL"://retroachievements.org/dorequest.php?r=login&u=%s&p=%s",
+    "http://retroachievements.org/dorequest.php?r=login&u=%s&p=%s",
     urle_user_name,
     urle_password
   );
@@ -211,7 +205,7 @@ int rc_url_login_with_token(char* buffer, size_t size, const char* user_name, co
   written = snprintf(
     buffer,
     size,
-    RCHEEVOS_URL_PROTOCOL"://retroachievements.org/dorequest.php?r=login&u=%s&t=%s",
+    "http://retroachievements.org/dorequest.php?r=login&u=%s&t=%s",
     urle_user_name,
     urle_login_token
   );
@@ -235,7 +229,7 @@ int rc_url_get_unlock_list(char* buffer, size_t size, const char* user_name, con
   written = snprintf(
     buffer,
     size,
-    RCHEEVOS_URL_PROTOCOL"://retroachievements.org/dorequest.php?r=unlocks&u=%s&t=%s&g=%u&h=%d",
+    "http://retroachievements.org/dorequest.php?r=unlocks&u=%s&t=%s&g=%u&h=%d",
     urle_user_name,
     urle_login_token,
     gameid,
@@ -261,7 +255,7 @@ int rc_url_post_playing(char* buffer, size_t size, const char* user_name, const 
   written = snprintf(
     buffer,
     size,
-    RCHEEVOS_URL_PROTOCOL"://retroachievements.org/dorequest.php?r=postactivity&u=%s&t=%s&a=3&m=%u",
+    "http://retroachievements.org/dorequest.php?r=postactivity&u=%s&t=%s&a=3&m=%u",
     urle_user_name,
     urle_login_token,
     gameid
@@ -304,9 +298,10 @@ static int rc_url_append_unum(char* buffer, size_t buffer_size, size_t* buffer_o
   int written = rc_url_append_param_equals(buffer, buffer_size, *buffer_offset, param);
   if (written > 0) {
     char num[16];
-    int chars = snprintf(num, sizeof(num), "%u", value);
+    int chars = sprintf(num, "%u", value);
 
-    if (chars + written < (int)buffer_size) {
+    if (chars + written < (int)buffer_size)
+    {
       memcpy(&buffer[written], num, chars + 1);
       *buffer_offset = written + chars;
       return 0;
@@ -319,11 +314,13 @@ static int rc_url_append_unum(char* buffer, size_t buffer_size, size_t* buffer_o
 static int rc_url_append_str(char* buffer, size_t buffer_size, size_t* buffer_offset, const char* param, const char* value)
 {
   int written = rc_url_append_param_equals(buffer, buffer_size, *buffer_offset, param);
-  if (written > 0) {
+  if (written > 0)
+  {
     buffer += written;
     buffer_size -= written;
 
-    if (rc_url_encode(buffer, buffer_size, value) == 0) {
+    if (rc_url_encode(buffer, buffer_size, value) == 0)
+    {
       written += (int)strlen(buffer);
       *buffer_offset = written;
       return 0;
@@ -336,7 +333,7 @@ static int rc_url_append_str(char* buffer, size_t buffer_size, size_t* buffer_of
 static int rc_url_build_dorequest(char* url_buffer, size_t url_buffer_size, size_t* buffer_offset,
    const char* api, const char* user_name)
 {
-  const char* base_url = RCHEEVOS_URL_PROTOCOL"://retroachievements.org/dorequest.php";
+  const char* base_url = "http://retroachievements.org/dorequest.php";
   size_t written = strlen(base_url);
   int failure = 0;
 
@@ -346,8 +343,7 @@ static int rc_url_build_dorequest(char* url_buffer, size_t url_buffer_size, size
   url_buffer[written++] = '?';
 
   failure |= rc_url_append_str(url_buffer, url_buffer_size, &written, "r", api);
-  if (user_name)
-    failure |= rc_url_append_str(url_buffer, url_buffer_size, &written, "u", user_name);
+  failure |= rc_url_append_str(url_buffer, url_buffer_size, &written, "u", user_name);
 
   *buffer_offset += written;
   return failure;
@@ -375,28 +371,3 @@ int rc_url_ping(char* url_buffer, size_t url_buffer_size, char* post_buffer, siz
 
   return failure;
 }
-
-int rc_url_get_lboard_entries(char* buffer, size_t size, unsigned lboard_id, unsigned first_index, unsigned count)
-{
-  size_t written = 0;
-  int failure = rc_url_build_dorequest(buffer, size, &written, "lbinfo", NULL);
-  failure |= rc_url_append_unum(buffer, size, &written, "i", lboard_id);
-  if (first_index > 1)
-    failure |= rc_url_append_unum(buffer, size, &written, "o", first_index - 1);
-  failure |= rc_url_append_unum(buffer, size, &written, "c", count);
-
-  return failure;
-}
-
-int rc_url_get_lboard_entries_near_user(char* buffer, size_t size, unsigned lboard_id, const char* user_name, unsigned count)
-{
-  size_t written = 0;
-  int failure = rc_url_build_dorequest(buffer, size, &written, "lbinfo", NULL);
-  failure |= rc_url_append_unum(buffer, size, &written, "i", lboard_id);
-  failure |= rc_url_append_str(buffer, size, &written, "u", user_name);
-  failure |= rc_url_append_unum(buffer, size, &written, "c", count);
-
-  return failure;
-}
-
-#undef RCHEEVOS_URL_PROTOCOL

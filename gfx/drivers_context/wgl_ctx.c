@@ -54,11 +54,19 @@
 #endif
 #endif
 
-#if (defined(HAVE_OPENGL) || defined(HAVE_OPENGL1) || defined(HAVE_OPENGL_CORE)) && !defined(HAVE_OPENGLES)
+#if defined(HAVE_OPENGL) || defined(HAVE_OPENGLES)
 #include "../common/gl_common.h"
+#elif defined(HAVE_OPENGL_CORE)
+#include "../common/gl_core_common.h"
+#elif defined(HAVE_OPENGL1)
+#include "../common/gl1_common.h"
 #endif
 
-#if defined(HAVE_OPENGL) || defined(HAVE_OPENGL1) || defined(HAVE_OPENGL_CORE)
+#ifdef HAVE_VULKAN
+#include "../common/vulkan_common.h"
+#endif
+
+#if defined(HAVE_OPENGL) || defined(HAVE_OPENGL1) || defined(HAVE_OPENGL_CORE) || defined(HAVE_VULKAN)
 #ifndef WGL_CONTEXT_MAJOR_VERSION_ARB
 #define WGL_CONTEXT_MAJOR_VERSION_ARB 0x2091
 #endif
@@ -84,23 +92,35 @@
 #endif
 #endif
 
+static void gfx_ctx_wgl_destroy(void *data);
+
+#if defined(HAVE_OPENGL) || defined(HAVE_OPENGL1) || defined(HAVE_OPENGL_CORE)
+typedef HGLRC (APIENTRY *wglCreateContextAttribsProc)(HDC, HGLRC, const int*);
+static wglCreateContextAttribsProc pcreate_context;
+#endif
 static BOOL (APIENTRY *p_swap_interval)(int);
 
-/* TODO/FIXME - static globals */
 static HGLRC win32_hrc;
 static HGLRC win32_hw_hrc;
 static HDC   win32_hdc;
 static bool  win32_use_hw_ctx             = false;
 static bool  win32_core_hw_context_enable = false;
 static bool  wgl_adaptive_vsync           = false;
+
+#ifdef HAVE_VULKAN
+static gfx_ctx_vulkan_data_t win32_vk;
+#endif
 #ifdef HAVE_EGL
 static egl_ctx_data_t win32_egl;
 #endif
+
 static void             *dinput_wgl       = NULL;
+
 static unsigned         win32_major       = 0;
 static unsigned         win32_minor       = 0;
 static int              win32_interval    = 0;
 static enum gfx_ctx_api win32_api         = GFX_CTX_NONE;
+
 #ifdef HAVE_DYNAMIC
 static dylib_t          dll_handle        = NULL; /* Handle to OpenGL32.dll/libGLESv2.dll */
 #endif
@@ -168,16 +188,15 @@ static bool wgl_has_extension(const char *extension, const char *extensions)
 static void create_gl_context(HWND hwnd, bool *quit)
 {
    struct retro_hw_render_callback *hwr = video_driver_get_hw_context();
-   bool core_context                    = (win32_major * 1000 + win32_minor) >= 3001;
-#ifdef GL_DEBUG
-   bool debug                           = true;
-#else
    bool debug                           = hwr->debug_context;
-#endif
-
+   bool core_context                    = (win32_major * 1000 + win32_minor) >= 3001;
    win32_hdc                            = GetDC(hwnd);
 
    win32_setup_pixel_format(win32_hdc, true);
+
+#ifdef GL_DEBUG
+   debug = true;
+#endif
 
    if (win32_hrc)
    {
@@ -220,15 +239,8 @@ static void create_gl_context(HWND hwnd, bool *quit)
 
    if (core_context || debug)
    {
-      unsigned i;
-      int attribs[16];
+      int attribs[16] = {0};
       int *aptr = attribs;
-      typedef HGLRC (APIENTRY *wglCreateContextAttribsProc)
-         (HDC, HGLRC, const int*);
-      static wglCreateContextAttribsProc pcreate_context;
-
-      for (i = 0; i < 16; i++)
-         attribs[i] = 0;
 
       if (core_context)
       {
@@ -257,24 +269,23 @@ static void create_gl_context(HWND hwnd, bool *quit)
       *aptr = 0;
 
       if (!pcreate_context)
-         pcreate_context = (wglCreateContextAttribsProc)
-            gfx_ctx_wgl_get_proc_address("wglCreateContextAttribsARB");
+         pcreate_context = (wglCreateContextAttribsProc)gfx_ctx_wgl_get_proc_address("wglCreateContextAttribsARB");
 
-      /* In order to support the core info "required_hw_api" 
-       * field correctly, we should try to init the highest available
-       * version GL context possible. This means trying successively 
-       * lower versions until it works, because GL has
-       * no facility for determining the highest possible 
-       * supported version.
+      /* In order to support the core info "required_hw_api" field correctly, we should try to init the highest available
+       * version GL context possible. This means trying successively lower versions until it works, because GL has
+       * no facility for determining the highest possible supported version.
        */
       if (pcreate_context)
       {
          int i;
          int gl_versions[][2] = {{4, 6}, {4, 5}, {4, 4}, {4, 3}, {4, 2}, {4, 1}, {4, 0}, {3, 3}, {3, 2}, {3, 1}, {3, 0}};
-         int gl_version_rows  = ARRAY_SIZE(gl_versions);
-         HGLRC context        = NULL;
-         int version_rows     = gl_version_rows;
-         int (*versions)[2]   = gl_versions;
+         int gl_version_rows = ARRAY_SIZE(gl_versions);
+         int (*versions)[2];
+         int version_rows = 0;
+         HGLRC context = NULL;
+
+         versions = gl_versions;
+         version_rows = gl_version_rows;
 
          /* only try higher versions when core_context is true */
          if (!core_context)
@@ -318,13 +329,9 @@ static void create_gl_context(HWND hwnd, bool *quit)
                /* found a suitable version that is high enough, we can stop now */
                break;
             }
-            else if (
-                  versions[i][0] == win32_major && 
-                  versions[i][1] == win32_minor)
+            else if (versions[i][0] == win32_major && versions[i][1] == win32_minor)
             {
-               /* The requested version was tried and 
-                * is not supported, go ahead and fail 
-                * since everything else will be lower than that. */
+               /* The requested version was tried and is not supported, go ahead and fail since everything else will be lower than that. */
                break;
             }
          }
@@ -349,7 +356,7 @@ static void create_gl_context(HWND hwnd, bool *quit)
       if (wglGetExtensionsStringARB)
       {
          extensions = wglGetExtensionsStringARB(win32_hdc);
-         RARCH_LOG("[WGL]: Extensions: %s\n", extensions);
+         RARCH_LOG("[WGL] extensions: %s\n", extensions);
          if (wgl_has_extension("WGL_EXT_swap_control_tear", extensions))
          {
             RARCH_LOG("[WGL]: Adaptive VSync supported.\n");
@@ -363,18 +370,20 @@ static void create_gl_context(HWND hwnd, bool *quit)
 #if defined(HAVE_OPENGLES) && defined(HAVE_EGL)
 static void create_gles_context(HWND hwnd, bool *quit)
 {
+
    EGLint n, major, minor;
    EGLint format;
-   EGLint attribs[]            = {
-      EGL_RENDERABLE_TYPE, EGL_OPENGL_ES2_BIT,
-      EGL_SURFACE_TYPE, EGL_WINDOW_BIT,
-      EGL_BLUE_SIZE, 8,
-      EGL_GREEN_SIZE, 8,
-      EGL_RED_SIZE, 8,
-      EGL_ALPHA_SIZE, 8,
-      EGL_DEPTH_SIZE, 16,
-      EGL_NONE
+   EGLint attribs[] = {
+   EGL_RENDERABLE_TYPE, EGL_OPENGL_ES2_BIT,
+   EGL_SURFACE_TYPE, EGL_WINDOW_BIT,
+   EGL_BLUE_SIZE, 8,
+   EGL_GREEN_SIZE, 8,
+   EGL_RED_SIZE, 8,
+   EGL_ALPHA_SIZE, 8,
+   EGL_DEPTH_SIZE, 16,
+   EGL_NONE
    };
+
    EGLint context_attributes[] = {
       EGL_CONTEXT_CLIENT_VERSION, 2,
       EGL_NONE
@@ -413,7 +422,7 @@ error:
 }
 #endif
 
-void create_wgl_context(HWND hwnd, bool *quit)
+void create_graphics_context(HWND hwnd, bool *quit)
 {
    switch (win32_api)
    {
@@ -428,6 +437,30 @@ void create_wgl_context(HWND hwnd, bool *quit)
          create_gles_context(hwnd, quit);
 #endif
          break;
+
+      case GFX_CTX_VULKAN_API:
+      {
+#ifdef HAVE_VULKAN
+         RECT rect;
+         HINSTANCE instance;
+         unsigned width  = 0;
+         unsigned height = 0;
+
+         GetClientRect(hwnd, &rect);
+
+         instance = GetModuleHandle(NULL);
+         width    = rect.right - rect.left;
+         height   = rect.bottom - rect.top;
+
+         if (!vulkan_surface_create(&win32_vk, VULKAN_WSI_WIN32,
+                  &instance, &hwnd,
+                  width, height, win32_interval))
+            *quit = true;
+
+         g_win32_inited = true;
+#endif
+      }
+      break;
 
       case GFX_CTX_NONE:
       default:
@@ -444,11 +477,14 @@ static void gfx_ctx_wgl_swap_interval(void *data, int interval)
       case GFX_CTX_OPENGL_API:
 #if (defined(HAVE_OPENGL) || defined(HAVE_OPENGL1) || defined(HAVE_OPENGL_CORE)) && !defined(HAVE_OPENGLES)
          win32_interval = interval;
-         if (!win32_hrc || !p_swap_interval)
+         if (!win32_hrc)
+            return;
+         if (!p_swap_interval)
             return;
 
+         RARCH_LOG("[WGL]: wglSwapInterval(%i)\n", win32_interval);
          if (!p_swap_interval(win32_interval))
-            RARCH_WARN("[WGL]: wglSwapInterval(%i) failed.\n", win32_interval);
+            RARCH_WARN("[WGL]: wglSwapInterval() failed.\n");
 #endif
          break;
 
@@ -462,9 +498,40 @@ static void gfx_ctx_wgl_swap_interval(void *data, int interval)
 #endif
          break;
 
+      case GFX_CTX_VULKAN_API:
+#ifdef HAVE_VULKAN
+         if (win32_interval != interval)
+         {
+            win32_interval = interval;
+            if (win32_vk.swapchain)
+               win32_vk.need_new_swapchain = true;
+         }
+#endif
+         break;
+
       case GFX_CTX_NONE:
       default:
          win32_interval = interval;
+         break;
+   }
+}
+
+static void gfx_ctx_wgl_check_window(void *data, bool *quit,
+      bool *resize, unsigned *width, unsigned *height)
+{
+   win32_check_window(quit, resize, width, height);
+
+   switch (win32_api)
+   {
+      case GFX_CTX_VULKAN_API:
+#ifdef HAVE_VULKAN
+         if (win32_vk.need_new_swapchain)
+            *resize = true;
+#endif
+         break;
+
+      case GFX_CTX_NONE:
+      default:
          break;
    }
 }
@@ -478,6 +545,12 @@ static void gfx_ctx_wgl_swap_buffers(void *data)
       case GFX_CTX_OPENGL_API:
          SwapBuffers(win32_hdc);
          break;
+      case GFX_CTX_VULKAN_API:
+#ifdef HAVE_VULKAN
+         vulkan_present(&win32_vk, win32_vk.context.current_swapchain_index);
+         vulkan_acquire_next_image(&win32_vk);
+#endif
+         break;
       case GFX_CTX_OPENGL_ES_API:
 #if defined(HAVE_EGL)
          egl_swap_buffers(&win32_egl);
@@ -490,7 +563,36 @@ static void gfx_ctx_wgl_swap_buffers(void *data)
 }
 
 static bool gfx_ctx_wgl_set_resize(void *data,
-      unsigned width, unsigned height) { return false; }
+      unsigned width, unsigned height)
+{
+   (void)data;
+   (void)width;
+   (void)height;
+
+   switch (win32_api)
+   {
+      case GFX_CTX_VULKAN_API:
+#ifdef HAVE_VULKAN
+         if (!vulkan_create_swapchain(&win32_vk, width, height, win32_interval))
+         {
+            RARCH_ERR("[Win32/Vulkan]: Failed to update swapchain.\n");
+            return false;
+         }
+
+         if (win32_vk.created_new_swapchain)
+            vulkan_acquire_next_image(&win32_vk);
+         win32_vk.context.invalid_swapchain = true;
+         win32_vk.need_new_swapchain        = false;
+#endif
+         break;
+
+      case GFX_CTX_NONE:
+      default:
+         break;
+   }
+
+   return false;
+}
 
 static void gfx_ctx_wgl_update_title(void *data)
 {
@@ -512,14 +614,11 @@ static void gfx_ctx_wgl_update_title(void *data)
 static void gfx_ctx_wgl_get_video_size(void *data,
       unsigned *width, unsigned *height)
 {
-   HWND         window          = win32_get_window();
+   HWND         window  = win32_get_window();
 
-   if (window)
-   {
-      *width                    = g_win32_resize_width;
-      *height                   = g_win32_resize_height;
-   }
-   else
+   (void)data;
+
+   if (!window)
    {
       RECT mon_rect;
       MONITORINFOEX current_mon;
@@ -527,10 +626,62 @@ static void gfx_ctx_wgl_get_video_size(void *data,
       HMONITOR hm_to_use        = NULL;
 
       win32_monitor_info(&current_mon, &hm_to_use, &mon_id);
-      mon_rect                  = current_mon.rcMonitor;
-      *width                    = mon_rect.right - mon_rect.left;
-      *height                   = mon_rect.bottom - mon_rect.top;
+      mon_rect = current_mon.rcMonitor;
+      *width  = mon_rect.right - mon_rect.left;
+      *height = mon_rect.bottom - mon_rect.top;
    }
+   else
+   {
+      *width  = g_win32_resize_width;
+      *height = g_win32_resize_height;
+   }
+}
+
+static void *gfx_ctx_wgl_init(void *video_driver)
+{
+   WNDCLASSEX wndclass     = {0};
+   gfx_ctx_wgl_data_t *wgl = (gfx_ctx_wgl_data_t*)calloc(1, sizeof(*wgl));
+
+   if (!wgl)
+      return NULL;
+
+   if (g_win32_inited)
+      gfx_ctx_wgl_destroy(NULL);
+
+#ifdef HAVE_DYNAMIC
+#ifdef HAVE_OPENGL
+   dll_handle = dylib_load("OpenGL32.dll");
+#else
+   dll_handle = dylib_load("libGLESv2.dll");
+#endif
+#endif
+
+   win32_window_reset();
+   win32_monitor_init();
+
+   wndclass.lpfnWndProc   = WndProcWGL;
+   if (!win32_window_init(&wndclass, true, NULL))
+      goto error;
+
+   switch (win32_api)
+   {
+      case GFX_CTX_VULKAN_API:
+#ifdef HAVE_VULKAN
+         if (!vulkan_context_init(&win32_vk, VULKAN_WSI_WIN32))
+            goto error;
+#endif
+         break;
+      case GFX_CTX_NONE:
+      default:
+         break;
+   }
+
+   return wgl;
+
+error:
+   if (wgl)
+      free(wgl);
+   return NULL;
 }
 
 static void gfx_ctx_wgl_destroy(void *data)
@@ -544,7 +695,7 @@ static void gfx_ctx_wgl_destroy(void *data)
 #if (defined(HAVE_OPENGL) || defined(HAVE_OPENGL1) || defined(HAVE_OPENGL_CORE)) && !defined(HAVE_OPENGLES)
          if (win32_hrc)
          {
-            gl_finish();
+            glFinish();
             wglMakeCurrent(NULL, NULL);
 
             if (!video_driver_is_video_cache_context())
@@ -552,10 +703,19 @@ static void gfx_ctx_wgl_destroy(void *data)
                if (win32_hw_hrc)
                   wglDeleteContext(win32_hw_hrc);
                wglDeleteContext(win32_hrc);
-               win32_hrc    = NULL;
+               win32_hrc = NULL;
                win32_hw_hrc = NULL;
             }
          }
+#endif
+         break;
+
+      case GFX_CTX_VULKAN_API:
+#ifdef HAVE_VULKAN
+         vulkan_context_destroy(&win32_vk, win32_vk.vk_surface != VK_NULL_HANDLE);
+         if (win32_vk.context.queue_lock)
+            slock_free(win32_vk.context.queue_lock);
+         memset(&win32_vk, 0, sizeof(win32_vk));
 #endif
          break;
 
@@ -603,57 +763,14 @@ static void gfx_ctx_wgl_destroy(void *data)
    p_swap_interval              = NULL;
 }
 
-
-static void *gfx_ctx_wgl_init(void *video_driver)
-{
-   WNDCLASSEX wndclass     = {0};
-   gfx_ctx_wgl_data_t *wgl = (gfx_ctx_wgl_data_t*)calloc(1, sizeof(*wgl));
-
-   if (!wgl)
-      return NULL;
-
-   if (g_win32_inited)
-      gfx_ctx_wgl_destroy(NULL);
-
-#ifdef HAVE_DYNAMIC
-#ifdef HAVE_OPENGL
-   dll_handle = dylib_load("OpenGL32.dll");
-#else
-   dll_handle = dylib_load("libGLESv2.dll");
-#endif
-#endif
-
-   win32_window_reset();
-   win32_monitor_init();
-
-   {
-      settings_t *settings     = config_get_ptr();
-      wndclass.lpfnWndProc   = wnd_proc_wgl_common;
-#ifdef HAVE_DINPUT
-      if (string_is_equal(settings->arrays.input_driver, "dinput"))
-         wndclass.lpfnWndProc   = wnd_proc_wgl_dinput;
-#endif
-#ifdef HAVE_WINRAWINPUT
-      if (string_is_equal(settings->arrays.input_driver, "raw"))
-         wndclass.lpfnWndProc   = wnd_proc_wgl_winraw;
-#endif
-   }
-
-   if (!win32_window_init(&wndclass, true, NULL))
-      goto error;
-
-   return wgl;
-
-error:
-   if (wgl)
-      free(wgl);
-   return NULL;
-}
-
 static bool gfx_ctx_wgl_set_video_mode(void *data,
       unsigned width, unsigned height,
       bool fullscreen)
 {
+#ifdef HAVE_VULKAN
+   win32_vk.fullscreen = fullscreen;
+#endif
+
    if (!win32_set_video_mode(NULL, width, height, fullscreen))
    {
       RARCH_ERR("[WGL]: win32_set_video_mode failed.\n");
@@ -685,13 +802,12 @@ static void gfx_ctx_wgl_input_driver(void *data,
    settings_t *settings     = config_get_ptr();
 
 #if _WIN32_WINNT >= 0x0501
-#ifdef HAVE_WINRAWINPUT
    const char *input_driver = settings->arrays.input_driver;
 
    /* winraw only available since XP */
    if (string_is_equal(input_driver, "raw"))
    {
-      *input_data = input_driver_init_wrap(&input_winraw, joypad_name);
+      *input_data = input_winraw.init(joypad_name);
       if (*input_data)
       {
          *input     = &input_winraw;
@@ -700,10 +816,9 @@ static void gfx_ctx_wgl_input_driver(void *data,
       }
    }
 #endif
-#endif
 
 #ifdef HAVE_DINPUT
-   dinput_wgl  = input_driver_init_wrap(&input_dinput, joypad_name);
+   dinput_wgl  = input_dinput.init(joypad_name);
    *input      = dinput_wgl ? &input_dinput : NULL;
    *input_data = dinput_wgl;
 #endif
@@ -731,6 +846,10 @@ static bool gfx_ctx_wgl_bind_api(void *data,
    if (api == GFX_CTX_OPENGL_ES_API)
       return true;
 #endif
+#if defined(HAVE_VULKAN)
+   if (api == GFX_CTX_VULKAN_API)
+      return true;
+#endif
 
    return false;
 }
@@ -744,12 +863,7 @@ static void gfx_ctx_wgl_bind_hw_render(void *data, bool enable)
          win32_use_hw_ctx = enable;
 
          if (win32_hdc)
-         {
-            if (enable)
-               wglMakeCurrent(win32_hdc, win32_hw_hrc);
-            else
-               wglMakeCurrent(win32_hdc, win32_hrc);
-         }
+            wglMakeCurrent(win32_hdc, enable ? win32_hw_hrc : win32_hrc);
 #endif
          break;
 
@@ -764,6 +878,14 @@ static void gfx_ctx_wgl_bind_hw_render(void *data, bool enable)
          break;
    }
 }
+
+#ifdef HAVE_VULKAN
+static void *gfx_ctx_wgl_get_context_data(void *data)
+{
+   (void)data;
+   return &win32_vk.context;
+}
+#endif
 
 static uint32_t gfx_ctx_wgl_get_flags(void *data)
 {
@@ -796,6 +918,11 @@ static uint32_t gfx_ctx_wgl_get_flags(void *data)
 #endif
          }
 
+         break;
+      case GFX_CTX_VULKAN_API:
+#if defined(HAVE_SLANG) && defined(HAVE_SPIRV_CROSS)
+         BIT32_SET(flags, GFX_CTX_FLAGS_SHADERS_SLANG);
+#endif
          break;
 
       case GFX_CTX_OPENGL_ES_API:
@@ -836,13 +963,18 @@ static void gfx_ctx_wgl_set_flags(void *data, uint32_t flags)
 }
 
 static void gfx_ctx_wgl_get_video_output_size(void *data,
-      unsigned *width, unsigned *height, char *desc, size_t desc_len)
+      unsigned *width, unsigned *height)
 {
-   win32_get_video_output_size(width, height, desc, desc_len);
+   win32_get_video_output_size(width, height);
 }
 
-static void gfx_ctx_wgl_get_video_output_prev(void *data) { }
-static void gfx_ctx_wgl_get_video_output_next(void *data) { }
+static void gfx_ctx_wgl_get_video_output_prev(void *data)
+{
+}
+
+static void gfx_ctx_wgl_get_video_output_next(void *data)
+{
+}
 
 const gfx_ctx_driver_t gfx_ctx_wgl = {
    gfx_ctx_wgl_init,
@@ -859,7 +991,7 @@ const gfx_ctx_driver_t gfx_ctx_wgl = {
    win32_get_metrics,
    NULL,
    gfx_ctx_wgl_update_title,
-   win32_check_window,
+   gfx_ctx_wgl_check_window,
    gfx_ctx_wgl_set_resize,
    win32_has_focus,
    win32_suppress_screensaver,
@@ -874,6 +1006,10 @@ const gfx_ctx_driver_t gfx_ctx_wgl = {
    gfx_ctx_wgl_get_flags,
    gfx_ctx_wgl_set_flags,
    gfx_ctx_wgl_bind_hw_render,
+#ifdef HAVE_VULKAN
+   gfx_ctx_wgl_get_context_data,
+#else
    NULL,
+#endif
    NULL
 };

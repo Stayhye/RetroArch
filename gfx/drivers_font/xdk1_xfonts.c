@@ -80,12 +80,11 @@ static void xfonts_render_msg(
       const struct font_params *params)
 {
    float x, y;
-   wchar_t *wc           = NULL;
+   wchar_t str[PATH_MAX_LENGTH];
    xfonts_t     *xfonts  = (xfonts_t*)data;
    settings_t *settings  = config_get_ptr();
    float video_msg_pos_x = settings->floats.video_msg_pos_x;
    float video_msg_pos_y = settings->floats.video_msg_pos_y;
-   LPDIRECT3DDEVICE8 dev = xfonts->d3d->dev;
 
    if (params)
    {
@@ -98,24 +97,17 @@ static void xfonts_render_msg(
       y = video_msg_pos_y;
    }
 
-   IDirect3DDevice8_GetBackBuffer(dev, -1,
-         D3DBACKBUFFER_TYPE_MONO,
-         (LPDIRECT3DSURFACE8*)&xfonts->surf);
+   d3d8_device_get_backbuffer(xfonts->d3d->dev,
+         -1, 0, D3DBACKBUFFER_TYPE_MONO, &xfonts->surf);
 
-   wc = utf8_to_utf16_string_alloc(msg);
+   mbstowcs(str, msg, sizeof(str) / sizeof(wchar_t));
 
-   if (wc)
-   {
 #ifdef __cplusplus
-      xfonts->debug_font->TextOut(xfonts->surf,
-            wc, (unsigned)-1, x, y);
+   xfonts->debug_font->TextOut(xfonts->surf, str, (unsigned)-1, x, y);
 #else
-      XFONT_TextOut(xfonts->debug_font, xfonts->surf,
-            wc, (unsigned)-1, x, y);
+   XFONT_TextOut(xfonts->debug_font, xfonts->surf, str, (unsigned)-1, x, y);
 #endif
-      free(wc);
-   }
-   IDirect3DSurface8_Release((LPDIRECT3DSURFACE8)xfonts->surf);
+   d3d8_surface_free(xfonts->surf);
 }
 
 font_renderer_t d3d_xdk1_font = {

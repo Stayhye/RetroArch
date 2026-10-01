@@ -1283,13 +1283,11 @@ static bool exynos_gfx_frame(void *data, const void *frame, unsigned width,
 {
    struct exynos_video *vid = data;
    struct exynos_page *page = NULL;
-#ifdef HAVE_MENU
    bool menu_is_alive       = video_info->menu_is_alive;
 
    /* Check if neither menu nor core framebuffer is to be displayed. */
    if (!vid->menu_active && !frame)
       return true;
-#endif
 
    if (frame)
    {
@@ -1498,11 +1496,7 @@ static const video_poke_interface_t exynos_poke_interface = {
    NULL,                         /* grab_mouse_toggle */
    NULL,                         /* get_current_shader */
    NULL,                         /* get_current_software_framebuffer */
-   NULL,                         /* get_hw_render_interface */
-   NULL,                         /* set_hdr_max_nits */
-   NULL,                         /* set_hdr_paper_white_nits */
-   NULL,                         /* set_hdr_contrast */
-   NULL                          /* set_hdr_expand_gamut */
+   NULL                          /* get_hw_render_interface */
 };
 
 static void exynos_gfx_get_poke_interface(void *data,

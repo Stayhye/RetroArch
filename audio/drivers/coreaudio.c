@@ -31,24 +31,25 @@
 #include <retro_endianness.h>
 #include <string/stdstring.h>
 
-#include "../audio_driver.h"
+#include "../../retroarch.h"
 #include "../../verbosity.h"
-#include "defines/cocoa_defines.h"
 
 typedef struct coreaudio
 {
    slock_t *lock;
    scond_t *cond;
-#if !HAS_MACOSX_10_12
+
+#if (defined(__MACH__) && (defined(__ppc__) || defined(__ppc64__)))
    ComponentInstance dev;
 #else
    AudioComponentInstance dev;
 #endif
-   fifo_buffer_t *buffer;
-   size_t buffer_size;
    bool dev_alive;
    bool is_paused;
+
+   fifo_buffer_t *buffer;
    bool nonblock;
+   size_t buffer_size;
 } coreaudio_t;
 
 #if TARGET_OS_IOS
@@ -65,7 +66,7 @@ static void coreaudio_free(void *data)
    if (dev->dev_alive)
    {
       AudioOutputUnitStop(dev->dev);
-#if !HAS_MACOSX_10_12
+#if (defined(__MACH__) && (defined(__ppc__) || defined(__ppc64__)))
       CloseComponent(dev->dev);
 #else
       AudioComponentInstanceDispose(dev->dev);
@@ -102,7 +103,7 @@ static OSStatus audio_write_cb(void *userdata,
 
    slock_lock(dev->lock);
 
-   if (FIFO_READ_AVAIL(dev->buffer) < write_avail)
+   if (fifo_read_avail(dev->buffer) < write_avail)
    {
       *action_flags = kAudioUnitRenderAction_OutputIsSilence;
 
@@ -140,7 +141,7 @@ static void choose_output_device(coreaudio_t *dev, const char* device)
    UInt32 size                         = 0;
 
    propaddr.mSelector = kAudioHardwarePropertyDevices;
-#if HAS_MACOSX_10_12
+#if MAC_OS_X_VERSION_10_12
    propaddr.mScope    = kAudioObjectPropertyScopeOutput;
 #else
    propaddr.mScope    = kAudioObjectPropertyScopeGlobal;
@@ -158,7 +159,7 @@ static void choose_output_device(coreaudio_t *dev, const char* device)
             &propaddr, 0, 0, &size, devices) != noErr)
       goto done;
 
-#if HAS_MACOSX_10_12
+#if MAC_OS_X_VERSION_10_12
 #else
    propaddr.mScope    = kAudioDevicePropertyScopeOutput;
 #endif
@@ -193,7 +194,7 @@ static void *coreaudio_init(const char *device,
    size_t fifo_size;
    UInt32 i_size;
    AudioStreamBasicDescription real_desc;
-#if !HAS_MACOSX_10_12
+#if (defined(__MACH__) && (defined(__ppc__) || defined(__ppc64__)))
    Component comp;
 #else
    AudioComponent comp;
@@ -205,7 +206,7 @@ static void *coreaudio_init(const char *device,
    AudioStreamBasicDescription stream_desc = {0};
    bool component_unavailable              = false;
    static bool session_initialized         = false;
-#if !HAS_MACOSX_10_12
+#if (defined(__MACH__) && (defined(__ppc__) || defined(__ppc64__)))
    ComponentDescription desc               = {0};
 #else
    AudioComponentDescription desc          = {0};
@@ -239,7 +240,7 @@ static void *coreaudio_init(const char *device,
 #endif
    desc.componentManufacturer = kAudioUnitManufacturer_Apple;
 
-#if !HAS_MACOSX_10_12
+#if (defined(__MACH__) && (defined(__ppc__) || defined(__ppc64__)))
    comp = FindNextComponent(NULL, &desc);
 #else
    comp = AudioComponentFindNext(NULL, &desc);
@@ -247,7 +248,7 @@ static void *coreaudio_init(const char *device,
    if (!comp)
       goto error;
 
-#if !HAS_MACOSX_10_12
+#if (defined(__MACH__) && (defined(__ppc__) || defined(__ppc64__)))
    component_unavailable = (OpenAComponent(comp, &dev->dev) != noErr);
 #else
    component_unavailable = (AudioComponentInstanceNew(comp, &dev->dev) != noErr);
@@ -355,14 +356,14 @@ static ssize_t coreaudio_write(void *data, const void *buf_, size_t size)
 
       slock_lock(dev->lock);
 
-      write_avail = FIFO_WRITE_AVAIL(dev->buffer);
+      write_avail = fifo_write_avail(dev->buffer);
       if (write_avail > size)
          write_avail = size;
 
       fifo_write(dev->buffer, buf, write_avail);
-      buf     += write_avail;
+      buf += write_avail;
       written += write_avail;
-      size    -= write_avail;
+      size -= write_avail;
 
       if (dev->nonblock)
       {
@@ -429,7 +430,7 @@ static size_t coreaudio_write_avail(void *data)
    coreaudio_t *dev = (coreaudio_t*)data;
 
    slock_lock(dev->lock);
-   avail = FIFO_WRITE_AVAIL(dev->buffer);
+   avail = fifo_write_avail(dev->buffer);
    slock_unlock(dev->lock);
 
    return avail;

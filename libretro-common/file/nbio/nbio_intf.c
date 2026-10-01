@@ -32,32 +32,19 @@
 extern nbio_intf_t nbio_linux;
 extern nbio_intf_t nbio_mmap_unix;
 extern nbio_intf_t nbio_mmap_win32;
+#if defined(ORBIS) && defined(HAVE_LIBORBIS)
+extern nbio_intf_t nbio_orbis;
+#endif
 extern nbio_intf_t nbio_stdio;
-
-#ifndef _XBOX
-#if defined(_WIN32)
-#if defined(_MSC_VER) && _MSC_VER >= 1500
-
-#ifndef HAVE_MMAP_WIN32
-#define HAVE_MMAP_WIN32
-#endif
-
-#elif !defined(_MSC_VER)
-
-#ifndef HAVE_MMAP_WIN32
-#define HAVE_MMAP_WIN32
-#endif
-#endif
-#endif
-
-#endif
 
 #if defined(_linux__)
 static nbio_intf_t *internal_nbio = &nbio_linux;
 #elif defined(HAVE_MMAP) && defined(BSD)
 static nbio_intf_t *internal_nbio = &nbio_mmap_unix;
-#elif defined(HAVE_MMAP_WIN32)
+#elif defined(_WIN32) && !defined(_XBOX)
 static nbio_intf_t *internal_nbio = &nbio_mmap_win32;
+#elif defined(ORBIS) && defined(HAVE_LIBORBIS)
+static nbio_intf_t *internal_nbio = &nbio_orbis;
 #else
 static nbio_intf_t *internal_nbio = &nbio_stdio;
 #endif

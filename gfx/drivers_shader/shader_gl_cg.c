@@ -34,7 +34,7 @@
 #endif
 
 #ifdef HAVE_OPENGL
-#include "../common/gl2_common.h"
+#include "../common/gl_common.h"
 #include "../include/Cg/cgGL.h"
 #endif
 
@@ -49,9 +49,7 @@
 #include "../../core.h"
 #include "../../retroarch.h"
 #include "../../verbosity.h"
-#ifdef HAVE_REWIND
-#include "../../state_manager.h"
-#endif
+#include "../../managers/state_manager.h"
 
 #define PREV_TEXTURES         (GFX_MAX_TEXTURES - 1)
 
@@ -340,31 +338,16 @@ static void gl_cg_set_params(void *dat, void *shader_data)
    set_param_2f(cg->prg[cg->active_idx].vid_size_f, width, height);
    set_param_2f(cg->prg[cg->active_idx].tex_size_f, tex_width, tex_height);
    set_param_2f(cg->prg[cg->active_idx].out_size_f, out_width, out_height);
-
-#ifdef HAVE_REWIND
-   if (state_manager_frame_is_reversed())
-   {
-      cg_gl_set_param_1f(cg->prg[cg->active_idx].frame_dir_f,
-            -1.0);
-      cg_gl_set_param_1f(cg->prg[cg->active_idx].frame_dir_v,
-            -1.0);
-   }
-   else
-#else
-   {
-      cg_gl_set_param_1f(cg->prg[cg->active_idx].frame_dir_f,
-            1.0);
-      cg_gl_set_param_1f(cg->prg[cg->active_idx].frame_dir_v,
-            1.0);
-   }
-#endif
+   cg_gl_set_param_1f(cg->prg[cg->active_idx].frame_dir_f,
+         state_manager_frame_is_reversed() ? -1.0 : 1.0);
 
    set_param_2f(cg->prg[cg->active_idx].vid_size_v, width, height);
    set_param_2f(cg->prg[cg->active_idx].tex_size_v, tex_width, tex_height);
    set_param_2f(cg->prg[cg->active_idx].out_size_v, out_width, out_height);
+   cg_gl_set_param_1f(cg->prg[cg->active_idx].frame_dir_v,
+         state_manager_frame_is_reversed() ? -1.0 : 1.0);
 
-   if (  cg->prg[cg->active_idx].frame_cnt_f || 
-         cg->prg[cg->active_idx].frame_cnt_v)
+   if (cg->prg[cg->active_idx].frame_cnt_f || cg->prg[cg->active_idx].frame_cnt_v)
    {
       unsigned modulo = cg->shader->pass[cg->active_idx - 1].frame_count_mod;
       if (modulo)
@@ -664,8 +647,7 @@ static bool gl_cg_load_plain(void *data, const char *path)
          return false;
    }
 
-   video_shader_resolve_parameters(cg->shader);
-   video_shader_load_current_parameter_values(NULL, cg->shader);
+   video_shader_resolve_parameters(NULL, cg->shader);
    return true;
 }
 
@@ -689,24 +671,36 @@ static bool gl_cg_load_shader(void *data, unsigned i)
 static bool gl_cg_load_preset(void *data, const char *path)
 {
    unsigned i;
+   config_file_t  *conf = NULL;
    cg_shader_data_t *cg = (cg_shader_data_t*)data;
 
    if (!gl_cg_load_stock(cg))
       return false;
 
    RARCH_LOG("[CG]: Loading Cg meta-shader: %s\n", path);
+   conf = video_shader_read_preset(path);
+   if (!conf)
+   {
+      RARCH_ERR("Failed to load preset.\n");
+      return false;
+   }
 
    cg->shader = (struct video_shader*)calloc(1, sizeof(*cg->shader));
    if (!cg->shader)
    {
+      config_file_free(conf);
       return false;
    }
 
-   if (!video_shader_load_preset_into_shader(path, cg->shader))
+   if (!video_shader_read_conf_preset(conf, cg->shader))
    {
       RARCH_ERR("Failed to parse CGP file.\n");
+      config_file_free(conf);
       return false;
    }
+
+   video_shader_resolve_parameters(conf, cg->shader);
+   config_file_free(conf);
 
    if (cg->shader->passes > GFX_MAX_SHADERS - 3)
    {
@@ -733,7 +727,7 @@ static bool gl_cg_load_preset(void *data, const char *path)
       }
    }
 
-   if (!gl2_load_luts(cg->shader, cg->lut_textures))
+   if (!gl_load_luts(cg->shader, cg->lut_textures))
    {
       RARCH_ERR("Failed to load lookup textures ...\n");
       return false;

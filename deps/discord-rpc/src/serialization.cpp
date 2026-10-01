@@ -32,6 +32,13 @@ void NumberToString(char* dest, T number)
     *dest = 0;
 }
 
+// it's ever so slightly faster to not have to strlen the key
+template <typename T>
+void WriteKey(JsonWriter& w, T& k)
+{
+    w.Key(k, sizeof(T) - 1);
+}
+
 struct WriteObject {
     JsonWriter& writer;
     WriteObject(JsonWriter& w)
@@ -39,10 +46,11 @@ struct WriteObject {
     {
         writer.StartObject();
     }
-    WriteObject(JsonWriter& w, const char* name)
+    template <typename T>
+    WriteObject(JsonWriter& w, T& name)
       : writer(w)
     {
-        writer.Key(name);
+        WriteKey(writer, name);
         writer.StartObject();
     }
     ~WriteObject() { writer.EndObject(); }
@@ -50,20 +58,22 @@ struct WriteObject {
 
 struct WriteArray {
     JsonWriter& writer;
-    WriteArray(JsonWriter& w, const char* name)
+    template <typename T>
+    WriteArray(JsonWriter& w, T& name)
       : writer(w)
     {
-        writer.Key(name);
+        WriteKey(writer, name);
         writer.StartArray();
     }
     ~WriteArray() { writer.EndArray(); }
 };
 
-void WriteOptionalString(JsonWriter& w, const char* k, const char* value)
+template <typename T>
+void WriteOptionalString(JsonWriter& w, T& k, const char* value)
 {
     if (value && value[0])
     {
-        w.Key(k);
+        w.Key(k, sizeof(T) - 1);
         w.String(value);
     }
 }
@@ -71,7 +81,7 @@ void WriteOptionalString(JsonWriter& w, const char* k, const char* value)
 static void JsonWriteNonce(JsonWriter& writer, int nonce)
 {
     char nonceBuffer[32];
-    writer.Key("nonce");
+    WriteKey(writer, "nonce");
     NumberToString(nonceBuffer, nonce);
     writer.String(nonceBuffer);
 }
@@ -89,13 +99,13 @@ size_t JsonWriteRichPresenceObj(char* dest,
 
         JsonWriteNonce(writer, nonce);
 
-        writer.Key("cmd");
+        WriteKey(writer, "cmd");
         writer.String("SET_ACTIVITY");
 
         {
             WriteObject args(writer, "args");
 
-            writer.Key("pid");
+            WriteKey(writer, "pid");
             writer.Int(pid);
 
             if (presence)
@@ -111,13 +121,13 @@ size_t JsonWriteRichPresenceObj(char* dest,
 
                    if (presence->startTimestamp)
                    {
-                      writer.Key("start");
+                      WriteKey(writer, "start");
                       writer.Int64(presence->startTimestamp);
                    }
 
                    if (presence->endTimestamp)
                    {
-                      writer.Key("end");
+                      WriteKey(writer, "end");
                       writer.Int64(presence->endTimestamp);
                    }
                 }
@@ -173,9 +183,9 @@ size_t JsonWriteHandshakeObj(char* dest, size_t maxLen, int version, const char*
 
     {
         WriteObject obj(writer);
-        writer.Key("v");
+        WriteKey(writer, "v");
         writer.Int(version);
-        writer.Key("client_id");
+        WriteKey(writer, "client_id");
         writer.String(applicationId);
     }
 
@@ -191,10 +201,10 @@ size_t JsonWriteSubscribeCommand(char* dest, size_t maxLen, int nonce, const cha
 
         JsonWriteNonce(writer, nonce);
 
-        writer.Key("cmd");
+        WriteKey(writer, "cmd");
         writer.String("SUBSCRIBE");
 
-        writer.Key("evt");
+        WriteKey(writer, "evt");
         writer.String(evtName);
     }
 
@@ -210,10 +220,10 @@ size_t JsonWriteUnsubscribeCommand(char* dest, size_t maxLen, int nonce, const c
 
         JsonWriteNonce(writer, nonce);
 
-        writer.Key("cmd");
+        WriteKey(writer, "cmd");
         writer.String("UNSUBSCRIBE");
 
-        writer.Key("evt");
+        WriteKey(writer, "evt");
         writer.String(evtName);
     }
 
@@ -227,17 +237,17 @@ size_t JsonWriteJoinReply(char* dest, size_t maxLen, const char* userId, int rep
     {
         WriteObject obj(writer);
 
-        writer.Key("cmd");
+        WriteKey(writer, "cmd");
         if (reply == DISCORD_REPLY_YES)
             writer.String("SEND_ACTIVITY_JOIN_INVITE");
         else
             writer.String("CLOSE_ACTIVITY_JOIN_REQUEST");
 
-        writer.Key("args");
+        WriteKey(writer, "args");
         {
             WriteObject args(writer);
 
-            writer.Key("user_id");
+            WriteKey(writer, "user_id");
             writer.String(userId);
         }
 

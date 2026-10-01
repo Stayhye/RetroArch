@@ -26,14 +26,26 @@
 #include "../input_keymaps.h"
 #include "../drivers_keyboard/keyboard_event_dos.h"
 
-#define MAX_KEYS LAST_KEYCODE + 1
-
 /* TODO/FIXME -
  * fix game focus toggle */
 
+typedef struct dos_input
+{
+   const input_device_driver_t *joypad;
+} dos_input_t;
+
+#define MAX_KEYS LAST_KEYCODE + 1
+
 /* First ports are used to keeping track of gamepad states. Last port is used for keyboard state */
-/* TODO/FIXME - static globals */
 static uint16_t dos_key_state[DEFAULT_MAX_PADS+1][MAX_KEYS];
+
+static bool dos_keyboard_port_input_pressed(
+      const struct retro_keybind *binds, unsigned id)
+{
+   if (id < RARCH_BIND_LIST_END)
+      return dos_key_state[DOS_KEYBOARD_PORT][rarch_keysym_lut[binds[id].key]];
+   return false;
+}
 
 uint16_t *dos_keyboard_state_get(unsigned port)
 {
@@ -49,18 +61,22 @@ static void dos_keyboard_free(void)
          dos_key_state[i][j] = 0;
 }
 
-static int16_t dos_input_state(
-      void *data,
-      const input_device_driver_t *joypad,
-      const input_device_driver_t *sec_joypad,
-      rarch_joypad_info_t *joypad_info,
-      const retro_keybind_set *binds,
-      bool keyboard_mapping_blocked,
-      unsigned port,
-      unsigned device,
-      unsigned idx,
-      unsigned id)
+static void dos_input_poll(void *data)
 {
+   dos_input_t *dos = (dos_input_t*)data;
+
+   if (dos->joypad)
+      dos->joypad->poll();
+}
+
+static int16_t dos_input_state(void *data,
+      rarch_joypad_info_t *joypad_info,
+      const struct retro_keybind **binds,
+      unsigned port, unsigned device,
+      unsigned idx, unsigned id)
+{
+   dos_input_t *dos                   = (dos_input_t*)data;
+
    if (port > 0)
       return 0;
 
@@ -71,36 +87,54 @@ static int16_t dos_input_state(
          {
             unsigned i;
             int16_t ret = 0;
-
             for (i = 0; i < RARCH_FIRST_CUSTOM_BIND; i++)
             {
-               if (binds[port][i].valid)
+               /* Auto-binds are per joypad, not per user. */
+               const uint64_t joykey  = (binds[port][i].joykey != NO_BTN)
+                  ? binds[port][i].joykey : joypad_info->auto_binds[i].joykey;
+               const uint32_t joyaxis = (binds[port][i].joyaxis != AXIS_NONE)
+                  ? binds[port][i].joyaxis : joypad_info->auto_binds[i].joyaxis;
+               
+               if ((uint16_t)joykey != NO_BTN && dos->joypad->button(joypad_info->joy_idx, (uint16_t)joykey))
                {
-                  if (id < RARCH_BIND_LIST_END)
-                     if (dos_key_state[DOS_KEYBOARD_PORT]
-                           [rarch_keysym_lut[binds[port][i].key]])
-                        ret |= (1 << i);
+                  ret |= (1 << i);
+                  continue;
+               }
+               if (((float)abs(dos->joypad->axis(joypad_info->joy_idx, joyaxis)) / 0x8000) > joypad_info->axis_threshold)
+               {
+                  ret |= (1 << i);
+                  continue;
+               }
+               if (dos_keyboard_port_input_pressed(binds[port], i))
+               {
+                  ret |= (1 << i);
+                  continue;
                }
             }
 
             return ret;
          }
-
-         if (binds[port][id].valid)
+         else
          {
-            if (
-                  (id < RARCH_BIND_LIST_END
-                   && dos_key_state[DOS_KEYBOARD_PORT]
-                   [rarch_keysym_lut[binds[port][id].key]])
-               )
-               return 1;
+            /* Auto-binds are per joypad, not per user. */
+            const uint64_t joykey  = (binds[port][id].joykey != NO_BTN)
+               ? binds[port][id].joykey : joypad_info->auto_binds[id].joykey;
+            const uint32_t joyaxis = (binds[port][id].joyaxis != AXIS_NONE)
+               ? binds[port][id].joyaxis : joypad_info->auto_binds[id].joyaxis;
+
+            if ((uint16_t)joykey != NO_BTN && dos->joypad->button(
+                     joypad_info->joy_idx, (uint16_t)joykey))
+               return true;
+            if (((float)abs(dos->joypad->axis(
+                           joypad_info->joy_idx, joyaxis)) / 0x8000) > joypad_info->axis_threshold)
+               return true;
+
+            if (dos_keyboard_port_input_pressed(binds[port], id))
+               return true;
          }
          break;
       case RETRO_DEVICE_KEYBOARD:
-         if (id < RARCH_BIND_LIST_END)
-            return (dos_key_state[DOS_KEYBOARD_PORT]
-                  [rarch_keysym_lut[binds[port][id].key]]);
-         break;
+         return dos_keyboard_port_input_pressed(binds[port], id);
    }
 
    return 0;
@@ -108,30 +142,80 @@ static int16_t dos_input_state(
 
 static void dos_input_free_input(void *data)
 {
+   dos_input_t *dos = (dos_input_t*)data;
+
+   if (dos && dos->joypad)
+      dos->joypad->destroy();
+
    dos_keyboard_free();
+
+   if (data)
+      free(data);
 }
 
 static void* dos_input_init(const char *joypad_driver)
 {
+   dos_input_t *dos = (dos_input_t*)calloc(1, sizeof(*dos));
+
+   if (!dos)
+      return NULL;
+
+   dos_keyboard_free();
+
+   dos->joypad = input_joypad_init_driver(joypad_driver, dos);
+
    input_keymaps_init_keyboard_lut(rarch_key_map_dos);
 
-   return (void*)-1;
+   return dos;
 }
 
 static uint64_t dos_input_get_capabilities(void *data)
 {
-   return UINT64_C(1) << RETRO_DEVICE_JOYPAD;
+   uint64_t caps = 0;
+
+   caps |= UINT64_C(1) << RETRO_DEVICE_JOYPAD;
+
+   return caps;
+}
+
+static const input_device_driver_t *dos_input_get_joypad_driver(void *data)
+{
+   dos_input_t *dos = (dos_input_t*)data;
+   if (dos)
+      return dos->joypad;
+   return NULL;
+}
+
+static void dos_input_grab_mouse(void *data, bool state)
+{
+   (void)data;
+   (void)state;
+}
+
+static bool dos_input_set_rumble(void *data, unsigned port,
+      enum retro_rumble_effect effect, uint16_t strength)
+{
+   (void)data;
+   (void)port;
+   (void)effect;
+   (void)strength;
+
+   return false;
 }
 
 input_driver_t input_dos = {
    dos_input_init,
-   NULL,                         /* poll */
+   dos_input_poll,
    dos_input_state,
    dos_input_free_input,
    NULL,
    NULL,
    dos_input_get_capabilities,
    "dos",
-   NULL,                         /* grab_mouse */
-   NULL
+   dos_input_grab_mouse,
+   NULL,
+   dos_input_set_rumble,
+   dos_input_get_joypad_driver,
+   NULL,
+   false
 };

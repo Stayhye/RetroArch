@@ -33,7 +33,6 @@
 #include "frontend_driver.h"
 #include "../defaults.h"
 #include "../verbosity.h"
-#include "../file_path_special.h"
 
 struct defaults g_defaults;
 
@@ -118,83 +117,55 @@ static void find_and_set_first_file(char *s, size_t len,
 
 static void salamander_init(char *s, size_t len)
 {
-   /* Normal executable loading path */
-   config_file_t *config         = NULL;
-   const char *rarch_config_path = g_defaults.path_config;
-   bool config_valid             = false;
-   char config_path[PATH_MAX_LENGTH];
-   char config_dir[PATH_MAX_LENGTH];
+   /* normal executable loading path */
+   bool config_exists = config_file_exists(g_defaults.path.config);
 
-   config_path[0] = '\0';
-   config_dir[0]  = '\0';
-
-   /* Get salamander config file path */
-   if (!string_is_empty(rarch_config_path))
-      fill_pathname_resolve_relative(config_path,
-            rarch_config_path,
-            FILE_PATH_SALAMANDER_CONFIG,
-            sizeof(config_path));
-   else
-      strcpy_literal(config_path, FILE_PATH_SALAMANDER_CONFIG);
-
-   /* Ensure that config directory exists */
-   fill_pathname_parent_dir(config_dir, config_path, sizeof(config_dir));
-   if (!string_is_empty(config_dir) &&
-       !path_is_directory(config_dir))
-      path_mkdir(config_dir);
-
-   /* Attempt to open config file */
-   config = config_file_new_from_path_to_string(config_path);
-
-   if (config)
+   if (config_exists)
    {
-      char libretro_path[PATH_MAX_LENGTH];
+      char tmp_str[PATH_MAX_LENGTH] = {0};
+      config_file_t * conf          = config_file_new(g_defaults.path.config);
 
-      libretro_path[0] = '\0';
-
-      if (config_get_path(config, "libretro_path",
-            libretro_path, sizeof(libretro_path)) &&
-          !string_is_empty(libretro_path) &&
-          !string_is_equal(libretro_path, "builtin"))
+      if (conf)
       {
-         strlcpy(s, libretro_path, len);
-         config_valid = true;
-      }
+         config_get_array(conf, "libretro_path", tmp_str, sizeof(tmp_str));
+         config_file_free(conf);
 
-      config_file_free(config);
-      config = NULL;
+         if (memcmp(tmp_str, "builtin", 7) != 0)
+            strlcpy(s, tmp_str, len);
+      }
+#ifdef GEKKO
+      /* stupid libfat bug or something; sometimes it says
+       * the file is there when it doesn't. */
+      else
+      {
+         config_exists = false;
+      }
+#endif
    }
 
-   if (!config_valid)
+   if (!config_exists || string_is_equal(s, ""))
    {
-      char executable_name[PATH_MAX_LENGTH];
+      char executable_name[PATH_MAX_LENGTH] = {0};
 
-      executable_name[0] = '\0';
-
-      /* No config file - search filesystem for
-       * first available core */
       frontend_driver_get_core_extension(
             executable_name, sizeof(executable_name));
       find_and_set_first_file(s, len, executable_name);
-
-      /* Save result to new config file */
-      if (!string_is_empty(s))
-      {
-         config = config_file_new_alloc();
-
-         if (config)
-         {
-            config_set_path(config, "libretro_path", s);
-            config_file_write(config, config_path, false);
-            config_file_free(config);
-         }
-      }
    }
    else
-      RARCH_LOG("Start [%s] found in %s.\n", s,
-            FILE_PATH_SALAMANDER_CONFIG);
-}
+      RARCH_LOG("Start [%s] found in retroarch.cfg.\n", s);
 
+   if (!config_exists)
+   {
+      config_file_t *conf = config_file_new_alloc();
+
+      if (conf)
+      {
+         config_set_string(conf, "libretro_path", s);
+         config_file_write(conf, g_defaults.path.config, true);
+         config_file_free(conf);
+      }
+   }
+}
 #ifdef HAVE_MAIN
 int salamander_main(int argc, char *argv[])
 #else

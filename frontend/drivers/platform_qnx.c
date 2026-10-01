@@ -30,7 +30,6 @@
 #include "../../defaults.h"
 #include "../../dynamic.h"
 #include "../../verbosity.h"
-#include "../../paths.h"
 
 static void frontend_qnx_init(void *data)
 {
@@ -52,7 +51,7 @@ static int frontend_qnx_get_rating(void)
    return -1;
 }
 
-static void frontend_qnx_get_env_settings(int *argc, char *argv[],
+static void frontend_qnx_get_environment_settings(int *argc, char *argv[],
       void *data, void *params_data)
 {
    unsigned i;
@@ -139,8 +138,8 @@ static void frontend_qnx_get_env_settings(int *argc, char *argv[],
    /* history and main config */
    strlcpy(g_defaults.dirs[DEFAULT_DIR_CONTENT_HISTORY],
          user_path, sizeof(g_defaults.dirs[DEFAULT_DIR_CONTENT_HISTORY]));
-   fill_pathname_join(g_defaults.path_config, user_path,
-         FILE_PATH_MAIN_CONFIG, sizeof(g_defaults.path_config));
+   fill_pathname_join(g_defaults.path.config, user_path,
+         file_path_str(FILE_PATH_MAIN_CONFIG), sizeof(g_defaults.path.config));
 
    /* bundle copy */
    snprintf(data_assets_path,
@@ -163,21 +162,24 @@ static void frontend_qnx_get_env_settings(int *argc, char *argv[],
          RARCH_LOG( "Asset copy successful.\n");
    }
 
-   /* set GLUI as default menu */
-   snprintf(g_defaults.settings_menu, sizeof(g_defaults.settings_menu), "glui");
+   for (i = 0; i < DEFAULT_DIR_LAST; i++)
+   {
+      const char *dir_path = g_defaults.dirs[i];
+      if (!string_is_empty(dir_path))
+         path_mkdir(dir_path);
+   }
 
-#ifndef IS_SALAMANDER
-   dir_check_defaults("custom.ini");
-#endif
+   /* set glui as default menu */
+   snprintf(g_defaults.settings.menu, sizeof(g_defaults.settings.menu), "glui");
 }
 
-enum frontend_architecture frontend_qnx_get_arch(void)
+enum frontend_architecture frontend_qnx_get_architecture(void)
 {
    return FRONTEND_ARCH_ARM;
 }
 
 frontend_ctx_driver_t frontend_ctx_qnx = {
-   frontend_qnx_get_env_settings,
+   frontend_qnx_get_environment_settings,
    frontend_qnx_init,
    NULL,                         /* deinit */
    NULL,                         /* exitspawn */
@@ -189,19 +191,17 @@ frontend_ctx_driver_t frontend_ctx_qnx = {
    NULL,                         /* get_os */
    frontend_qnx_get_rating,
    NULL,                         /* load_content */
-   frontend_qnx_get_arch,        /* get_architecture */
+   frontend_qnx_get_architecture,
    NULL,                         /* get_powerstate */
    NULL,                         /* parse_drive_list */
-   NULL,                         /* get_total_mem */
-   NULL,                         /* get_free_mem */
+   NULL,                         /* get_mem_total */
+   NULL,                         /* get_mem_free */
    NULL,                         /* install_signal_handler */
    NULL,                         /* get_sighandler_state */
    NULL,                         /* set_sighandler_state */
    NULL,                         /* destroy_sighandler_state */
    NULL,                         /* attach_console */
    NULL,                         /* detach_console */
-   NULL,                         /* get_lakka_version */
-   NULL,                         /* set_screen_brightness */
    NULL,                         /* watch_path_for_changes */
    NULL,                         /* check_for_path_changes */
    NULL,                         /* set_sustained_performance_mode */
@@ -209,7 +209,5 @@ frontend_ctx_driver_t frontend_ctx_qnx = {
    NULL,                         /* get_user_language */
    NULL,                         /* is_narrator_running */
    NULL,                         /* accessibility_speak */
-   NULL,                         /* set_gamemode        */
-   "qnx",                        /* ident               */
-   NULL                          /* get_video_driver    */
+   "qnx",
 };

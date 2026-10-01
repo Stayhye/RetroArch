@@ -31,14 +31,14 @@
 #include "../../frontend/frontend_driver.h"
 
  /* Normal DirectX 11 backend */
-static const EGLint backendD3D11[] =
+const EGLint backendD3D11[] =
 {
     EGL_PLATFORM_ANGLE_TYPE_ANGLE, EGL_PLATFORM_ANGLE_TYPE_D3D11_ANGLE,
     EGL_NONE,
 };
 
 /* DirectX 11 Feature Level 9_3 backend, for Windows Mobile (UWP) */
-static const EGLint backendD3D11_FL9_3[] =
+const EGLint backendD3D11_FL9_3[] =
 {
     EGL_PLATFORM_ANGLE_TYPE_ANGLE, EGL_PLATFORM_ANGLE_TYPE_D3D11_ANGLE,
     EGL_PLATFORM_ANGLE_MAX_VERSION_MAJOR_ANGLE, 9,
@@ -47,21 +47,21 @@ static const EGLint backendD3D11_FL9_3[] =
 };
 
 /* Normal DirectX 9 backend */
-static const EGLint backendD3D9[] =
+const EGLint backendD3D9[] =
 {
     EGL_PLATFORM_ANGLE_TYPE_ANGLE, EGL_PLATFORM_ANGLE_TYPE_D3D9_ANGLE,
     EGL_NONE,
 };
 
 /* WARP software renderer */
-static const EGLint backendWARP[] =
+const EGLint backendWARP[] =
 {
     EGL_PLATFORM_ANGLE_TYPE_ANGLE, EGL_PLATFORM_ANGLE_TYPE_D3D11_ANGLE,
     EGL_PLATFORM_ANGLE_DEVICE_TYPE_ANGLE, EGL_PLATFORM_ANGLE_DEVICE_TYPE_D3D_WARP_ANGLE,
     EGL_NONE,
 };
 
-static const EGLint* backendList[] = {
+const EGLint* backendList[] = {
    backendD3D11,
 #ifdef __WINRT__
    backendD3D11_FL9_3,
@@ -72,7 +72,7 @@ static const EGLint* backendList[] = {
    NULL
 };
 
-static const char* backendNamesList[] = {
+const char* backendNamesList[] = {
    "D3D11 Backend",
 #ifdef __WINRT__
    "D3D11 FL9_3 Backend",

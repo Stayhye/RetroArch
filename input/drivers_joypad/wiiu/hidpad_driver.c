@@ -16,93 +16,86 @@
 
 #include "../../include/wiiu/input.h"
 
-static void hidpad_poll(void)
+static bool hidpad_init(void *data);
+static bool hidpad_query_pad(unsigned pad);
+static void hidpad_destroy(void);
+static bool hidpad_button(unsigned pad, uint16_t button);
+static void hidpad_get_buttons(unsigned pad, input_bits_t *state);
+static int16_t hidpad_axis(unsigned pad, uint32_t axis);
+static void hidpad_poll(void);
+static const char *hidpad_name(unsigned pad);
+
+static bool hidpad_ready = false;
+
+static bool init_hid_driver(void)
 {
-   if (joypad_state.hid.ready)
-      wiiu_hid.poll(hid_driver_get_data());
+   return hid_init(&hid_instance, &wiiu_hid, &hidpad_driver, MAX_USERS);
 }
 
-static void *hidpad_init(void *data)
+static bool hidpad_init(void *data)
 {
+   (void)data;
+
+   if(!init_hid_driver())
+   {
+      RARCH_ERR("Failed to initialize HID driver.\n");
+      return false;
+   }
+
    hidpad_poll();
-   joypad_state.hid.ready = true;
+   hidpad_ready = true;
 
-   return (void*)-1;
+   return true;
 }
 
-static bool hidpad_query_pad(unsigned port)
+static bool hidpad_query_pad(unsigned pad)
 {
-   return joypad_state.hid.ready && port < MAX_USERS;
+   return hidpad_ready && pad < MAX_USERS;
 }
 
 static void hidpad_destroy(void)
 {
-   joypad_state.hid.ready = false;
+   hidpad_ready = false;
+
+   hid_deinit(&hid_instance);
 }
 
-static int32_t hidpad_button(unsigned port, uint16_t joykey)
+static bool hidpad_button(unsigned pad, uint16_t button)
 {
-   if (!hidpad_query_pad(port))
+   if (!hidpad_query_pad(pad))
+      return false;
+
+   return HID_BUTTON(pad, button);
+}
+
+static void hidpad_get_buttons(unsigned pad, input_bits_t *state)
+{
+  if (!hidpad_query_pad(pad))
+    BIT256_CLEAR_ALL_PTR(state);
+
+  HID_GET_BUTTONS(pad, state);
+}
+
+static int16_t hidpad_axis(unsigned pad, uint32_t axis)
+{
+   if (!hidpad_query_pad(pad))
       return 0;
 
-   return wiiu_hid.button(hid_driver_get_data(), port, joykey);
+   return HID_AXIS(pad, axis);
 }
 
-static void hidpad_get_buttons(unsigned port, input_bits_t *state)
+static void hidpad_poll(void)
 {
-   if (!hidpad_query_pad(port))
-      BIT256_CLEAR_ALL_PTR(state);
-
-   wiiu_hid.get_buttons(hid_driver_get_data(), port, state);
+   if (hidpad_ready)
+      HID_POLL();
 }
 
-static int16_t hidpad_axis(unsigned port, uint32_t axis)
+static const char *hidpad_name(unsigned pad)
 {
-   if (!hidpad_query_pad(port))
-      return 0;
-
-   return wiiu_hid.axis(hid_driver_get_data(), port, axis);
-}
-
-static int16_t hidpad_state(
-      rarch_joypad_info_t *joypad_info,
-      const struct retro_keybind *binds,
-      unsigned port)
-{
-   unsigned i;
-   int16_t ret                          = 0;
-   uint16_t port_idx                    = joypad_info->joy_idx;
-
-   if (!hidpad_query_pad(port_idx))
-      return 0;
-
-   for (i = 0; i < RARCH_FIRST_CUSTOM_BIND; i++)
-   {
-      /* Auto-binds are per joypad, not per user. */
-      const uint64_t joykey  = (binds[i].joykey != NO_BTN)
-         ? binds[i].joykey  : joypad_info->auto_binds[i].joykey;
-      const uint32_t joyaxis = (binds[i].joyaxis != AXIS_NONE)
-         ? binds[i].joyaxis : joypad_info->auto_binds[i].joyaxis;
-      if (
-               (uint16_t)joykey != NO_BTN
-            && wiiu_hid.button(hid_driver_get_data(), port_idx, (uint16_t)joykey)
-         )
-         ret |= ( 1 << i);
-      else if (joyaxis != AXIS_NONE &&
-            ((float)abs(wiiu_hid.axis(hid_driver_get_data(), port_idx, joyaxis)) 
-             / 0x8000) > joypad_info->axis_threshold)
-         ret |= (1 << i);
-   }
-
-   return ret;
-}
-
-static const char *hidpad_name(unsigned port)
-{
-   if (!hidpad_query_pad(port))
+   if (!hidpad_query_pad(pad))
       return "N/A";
 
-   return wiiu_hid.name(hid_driver_get_data(), port);
+   return HID_PAD_NAME(pad);
 }
 
 input_device_driver_t hidpad_driver =
@@ -111,12 +104,10 @@ input_device_driver_t hidpad_driver =
   hidpad_query_pad,
   hidpad_destroy,
   hidpad_button,
-  hidpad_state,
   hidpad_get_buttons,
   hidpad_axis,
   hidpad_poll,
-  NULL, /* set_rumble */
-  NULL, /* set_rumble_gain */
+  NULL,
   hidpad_name,
   "hid"
 };

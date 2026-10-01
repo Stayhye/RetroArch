@@ -43,12 +43,12 @@
 #include <lv2/systime.h>
 #endif
 
-#if defined(_XBOX360)
-#include <PPCIntrinsics.h>
-#elif !defined(__MACH__) && (defined(__POWERPC__) || defined(__powerpc__) || defined(__ppc__) || defined(__PPC64__) || defined(__powerpc64__))
+#if defined(__CELLOS_LV2__)
 #ifndef _PPU_INTRINSICS_H
 #include <ppu_intrinsics.h>
 #endif
+#elif defined(_XBOX360)
+#include <PPCIntrinsics.h>
 #elif defined(_POSIX_MONOTONIC_CLOCK) || defined(ANDROID) || defined(__QNX__) || defined(DJGPP)
 /* POSIX_MONOTONIC_CLOCK is not being defined in Android headers despite support being present. */
 #include <time.h>
@@ -60,13 +60,7 @@
 
 #if defined(PSP)
 #include <pspkernel.h>
-#endif
-
-#if defined(PSP) || defined(__PSL1GHT__)
 #include <sys/time.h>
-#endif
-
-#if defined(PSP)
 #include <psprtc.h>
 #endif
 
@@ -77,13 +71,16 @@
 
 #if defined(ORBIS)
 #include <orbis/libkernel.h>
+#include <orbis/Rtc.h>
 #endif
 
 #if defined(PS2)
 #include <ps2sdkapi.h>
 #endif
 
-#if !defined(__PSL1GHT__) && defined(__PS3__)
+#if defined(__PSL1GHT__)
+#include <sys/time.h>
+#elif defined(__CELLOS_LV2__)
 #include <sys/sys_time.h>
 #endif
 
@@ -177,11 +174,7 @@ retro_perf_tick_t cpu_features_get_perf_counter(void)
    tv_sec     = (long)((ularge.QuadPart - epoch) / 10000000L);
    tv_usec    = (long)(system_time.wMilliseconds * 1000);
    time_ticks = (1000000 * tv_sec + tv_usec);
-#elif defined(GEKKO)
-   time_ticks = gettime();
-#elif !defined(__MACH__) && (defined(_XBOX360) || defined(__powerpc__) || defined(__ppc__) || defined(__POWERPC__) || defined(__PSL1GHT__) || defined(__PPC64__) || defined(__powerpc64__))
-   time_ticks = __mftb();
-#elif (defined(_POSIX_MONOTONIC_CLOCK) && _POSIX_MONOTONIC_CLOCK > 0) || defined(__QNX__) || defined(ANDROID)
+#elif defined(_POSIX_MONOTONIC_CLOCK) || defined(__QNX__) || defined(ANDROID) || defined(__MACH__)
    struct timespec tv = {0};
    if (ra_clock_gettime(CLOCK_MONOTONIC, &tv) == 0)
       time_ticks = (retro_perf_tick_t)tv.tv_sec * 1000000000 +
@@ -195,8 +188,10 @@ retro_perf_tick_t cpu_features_get_perf_counter(void)
    time_ticks = (retro_perf_tick_t)a | ((retro_perf_tick_t)d << 32);
 #elif defined(__ARM_ARCH_6__)
    __asm__ volatile( "mrc p15, 0, %0, c9, c13, 0" : "=r"(time_ticks) );
-#elif defined(__aarch64__)
-   __asm__ volatile( "mrs %0, cntvct_el0" : "=r"(time_ticks) );
+#elif defined(__CELLOS_LV2__) || defined(_XBOX360) || defined(__powerpc__) || defined(__ppc__) || defined(__POWERPC__) || defined(__PSL1GHT__)
+   time_ticks = __mftb();
+#elif defined(GEKKO)
+   time_ticks = gettime();
 #elif defined(PSP) || defined(VITA)
    time_ticks = sceKernelGetSystemTimeWide();
 #elif defined(ORBIS)
@@ -238,7 +233,7 @@ retro_time_t cpu_features_get_time_usec(void)
    return (count.QuadPart / freq.QuadPart * 1000000) + (count.QuadPart % freq.QuadPart * 1000000 / freq.QuadPart);
 #elif defined(__PSL1GHT__)
    return sysGetSystemTime();
-#elif !defined(__PSL1GHT__) && defined(__PS3__)
+#elif defined(__CELLOS_LV2__)
    return sys_time_get_system_time();
 #elif defined(GEKKO)
    return ticks_to_microsecs(gettime());
@@ -246,9 +241,7 @@ retro_time_t cpu_features_get_time_usec(void)
    return ticks_to_us(OSGetSystemTime());
 #elif defined(SWITCH) || defined(HAVE_LIBNX)
    return (svcGetSystemTick() * 10) / 192;
-#elif defined(_3DS)
-   return osGetTime() * 1000;
-#elif defined(_POSIX_MONOTONIC_CLOCK) || defined(__QNX__) || defined(ANDROID) || defined(__MACH__)
+#elif defined(_POSIX_MONOTONIC_CLOCK) || defined(__QNX__) || defined(ANDROID) || defined(__MACH__) || defined(DJGPP)
    struct timespec tv = {0};
    if (ra_clock_gettime(CLOCK_MONOTONIC, &tv) < 0)
       return 0;
@@ -259,10 +252,10 @@ retro_time_t cpu_features_get_time_usec(void)
    return ps2_clock() / PS2_CLOCKS_PER_MSEC * 1000;
 #elif defined(VITA) || defined(PSP)
    return sceKernelGetSystemTimeWide();
-#elif defined(DJGPP)
-   return uclock() * 1000000LL / UCLOCKS_PER_SEC;
 #elif defined(ORBIS)
    return sceKernelGetProcessTime();
+#elif defined(_3DS)
+   return osGetTime() * 1000;
 #else
 #error "Your platform does not have a timer function implemented in cpu_features_get_time_usec(). Cannot continue."
 #endif
@@ -301,9 +294,7 @@ void x86_cpuid(int func, int flags[4])
 #elif defined(_MSC_VER)
    __cpuid(flags, func);
 #else
-#ifndef NDEBUG
    printf("Unknown compiler. Cannot check CPUID with inline assembly.\n");
-#endif
    memset(flags, 0, 4 * sizeof(int));
 #endif
 }
@@ -325,16 +316,13 @@ static uint64_t xgetbv_x86(uint32_t idx)
    /* Intrinsic only works on 2010 SP1 and above. */
    return _xgetbv(idx);
 #else
-#ifndef NDEBUG
    printf("Unknown compiler. Cannot check xgetbv bits.\n");
-#endif
    return 0;
 #endif
 }
 #endif
 
 #if defined(__ARM_NEON__)
-#if defined(__arm__)
 static void arm_enable_runfast_mode(void)
 {
    /* RunFast mode. Enables flush-to-zero and some
@@ -351,7 +339,6 @@ static void arm_enable_runfast_mode(void)
          : "r"(x), "r"(y)
         );
 }
-#endif
 #endif
 
 #if defined(__linux__) && !defined(CPU_X86)
@@ -460,7 +447,7 @@ static void cpulist_parse(CpuList* list, char **buf, ssize_t length)
       for (val = start_value; val <= end_value; val++)
       {
          if ((unsigned)val < 32)
-            list->mask |= (uint32_t)(UINT32_C(1) << val);
+            list->mask |= (uint32_t)(1U << val);
       }
 
       /* Jump to next item */
@@ -510,10 +497,8 @@ unsigned cpu_features_get_core_amount(void)
    return sysinfo.dwNumberOfProcessors;
 #elif defined(GEKKO)
    return 1;
-#elif defined(PSP) || defined(PS2)
+#elif defined(PSP) || defined(PS2) || defined(__CELLOS_LV2__)
    return 1;
-#elif defined(__PSL1GHT__) || !defined(__PSL1GHT__) && defined(__PS3__)
-   return 1; /* Only one PPU, SPUs don't really count */
 #elif defined(VITA)
    return 4;
 #elif defined(HAVE_LIBNX) || defined(SWITCH)
@@ -612,18 +597,16 @@ uint64_t cpu_features_get(void)
 #endif
 #if defined(__MACH__)
    size_t len          = sizeof(size_t);
-
-   if (sysctlbyname("hw.optional.floatingpoint", NULL, &len, NULL, 0) == 0)
-   {
-      cpu |= RETRO_SIMD_CMOV;
-   }
-
-#if defined(CPU_X86)
-   len            = sizeof(size_t);
    if (sysctlbyname("hw.optional.mmx", NULL, &len, NULL, 0) == 0)
    {
       cpu |= RETRO_SIMD_MMX;
       cpu |= RETRO_SIMD_MMXEXT;
+   }
+
+   len            = sizeof(size_t);
+   if (sysctlbyname("hw.optional.floatingpoint", NULL, &len, NULL, 0) == 0)
+   {
+      cpu |= RETRO_SIMD_CMOV;
    }
 
    len            = sizeof(size_t);
@@ -666,19 +649,10 @@ uint64_t cpu_features_get(void)
    if (sysctlbyname("hw.optional.altivec", NULL, &len, NULL, 0) == 0)
       cpu |= RETRO_SIMD_VMX;
 
-#else
    len            = sizeof(size_t);
    if (sysctlbyname("hw.optional.neon", NULL, &len, NULL, 0) == 0)
       cpu |= RETRO_SIMD_NEON;
 
-   len            = sizeof(size_t);
-   if (sysctlbyname("hw.optional.neon_fp16", NULL, &len, NULL, 0) == 0)
-      cpu |= RETRO_SIMD_VFPV3;
-
-   len            = sizeof(size_t);
-   if (sysctlbyname("hw.optional.neon_hpfp", NULL, &len, NULL, 0) == 0)
-      cpu |= RETRO_SIMD_VFPV4;
-#endif
 #elif defined(_XBOX1)
    cpu |= RETRO_SIMD_MMX;
    cpu |= RETRO_SIMD_SSE;
@@ -774,7 +748,7 @@ uint64_t cpu_features_get(void)
    if (check_arm_cpu_feature("neon"))
    {
       cpu |= RETRO_SIMD_NEON;
-#if defined(__ARM_NEON__) && defined(__arm__)
+#ifdef __ARM_NEON__
       arm_enable_runfast_mode();
 #endif
    }
@@ -790,9 +764,7 @@ uint64_t cpu_features_get(void)
       cpu |= RETRO_SIMD_ASIMD;
 #ifdef __ARM_NEON__
       cpu |= RETRO_SIMD_NEON;
-#if defined(__arm__)
       arm_enable_runfast_mode();
-#endif
 #endif
    }
 
@@ -811,9 +783,7 @@ uint64_t cpu_features_get(void)
 
 #elif defined(__ARM_NEON__)
    cpu |= RETRO_SIMD_NEON;
-#if defined(__arm__)
    arm_enable_runfast_mode();
-#endif
 #elif defined(__ALTIVEC__)
    cpu |= RETRO_SIMD_VMX;
 #elif defined(XBOX360)
@@ -878,35 +848,6 @@ end:
    {
       size_t len_size = len;
       sysctlbyname("machdep.cpu.brand_string", name, &len_size, NULL, 0);
-   }
-#elif defined(__linux__)
-   if (!name)
-      return;
-   {
-      char *model_name, line[128];
-      RFILE *fp = filestream_open("/proc/cpuinfo",
-            RETRO_VFS_FILE_ACCESS_READ,
-            RETRO_VFS_FILE_ACCESS_HINT_NONE);
-
-      if (!fp)
-         return;
-
-      while (filestream_gets(fp, line, sizeof(line)))
-      {
-         if (strncmp(line, "model name", 10))
-            continue;
-
-         if ((model_name = strstr(line + 10, ": ")))
-         {
-            model_name += 2;
-            strncpy(name, model_name, len);
-            name[len - 1] = '\0';
-         }
-
-         break;
-      }
-
-      filestream_close(fp);
    }
 #else
    if (!name)

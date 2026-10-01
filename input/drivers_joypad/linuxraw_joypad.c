@@ -48,7 +48,6 @@ struct linuxraw_joypad
    char *ident;
 };
 
-/* TODO/FIXME - static globals */
 static struct linuxraw_joypad linuxraw_pads[MAX_USERS];
 static int linuxraw_epoll                              = 0;
 static int linuxraw_inotify                            = 0;
@@ -99,16 +98,28 @@ static bool linuxraw_joypad_init_pad(const char *path,
    {
       struct epoll_event event;
 
-      ioctl(pad->fd,
-               JSIOCGNAME(input_config_get_device_name_size(0)), pad->ident);
+      if (ioctl(pad->fd,
+               JSIOCGNAME(sizeof(input_device_names[0])), pad->ident) >= 0)
+      {
+         RARCH_LOG("[Device]: Found pad: %s on %s.\n", pad->ident, path);
+      }
+      else
+         RARCH_ERR("[Device]: Didn't find ident of %s.\n", path);
 
       event.events             = EPOLLIN;
       event.data.ptr           = pad;
 
-      if (epoll_ctl(linuxraw_epoll, EPOLL_CTL_ADD, pad->fd, &event) >= 0)
+      if (epoll_ctl(linuxraw_epoll, EPOLL_CTL_ADD, pad->fd, &event) < 0)
+      {
+         RARCH_ERR("Failed to add FD (%d) to epoll list (%s).\n",
+               pad->fd, strerror(errno));
+      }
+      else
          return true;
    }
 
+   RARCH_ERR("[Device]: Failed to open pad %s (error: %s).\n",
+         path, strerror(errno));
    return false;
 }
 
@@ -217,13 +228,13 @@ retry:
    }
 }
 
-static void *linuxraw_joypad_init(void *data)
+static bool linuxraw_joypad_init(void *data)
 {
    unsigned i;
    int fd = epoll_create(32);
 
    if (fd < 0)
-      return NULL;
+      return false;
 
    linuxraw_epoll = fd;
 
@@ -235,7 +246,7 @@ static void *linuxraw_joypad_init(void *data)
       path[0]                     = '\0';
 
       pad->fd                     = -1;
-      pad->ident                  = input_config_get_device_name_ptr(i);
+      pad->ident                  = input_device_names[i];
 
       snprintf(path, sizeof(path), "/dev/input/js%u", i);
 
@@ -273,7 +284,7 @@ static void *linuxraw_joypad_init(void *data)
 
    linuxraw_hotplug = true;
 
-   return (void*)-1;
+   return true;
 }
 
 static void linuxraw_joypad_destroy(void)
@@ -302,15 +313,12 @@ static void linuxraw_joypad_destroy(void)
    linuxraw_hotplug = false;
 }
 
-static int32_t linuxraw_joypad_button(unsigned port, uint16_t joykey)
+static bool linuxraw_joypad_button(unsigned port, uint16_t joykey)
 {
-   const struct linuxraw_joypad    *pad = (const struct linuxraw_joypad*)
+   const struct linuxraw_joypad *pad = (const struct linuxraw_joypad*)
       &linuxraw_pads[port];
-   if (port >= DEFAULT_MAX_PADS)
-      return 0;
-   if (joykey < NUM_BUTTONS)
-      return (BIT32_GET(pad->buttons, joykey));
-   return 0;
+
+   return joykey < NUM_BUTTONS && BIT32_GET(pad->buttons, joykey);
 }
 
 static void linuxraw_joypad_get_buttons(unsigned port, input_bits_t *state)
@@ -326,65 +334,31 @@ static void linuxraw_joypad_get_buttons(unsigned port, input_bits_t *state)
 		BIT256_CLEAR_ALL_PTR(state);
 }
 
-static int16_t linuxraw_joypad_axis_state(
-      const struct linuxraw_joypad *pad,
-      unsigned port, uint32_t joyaxis)
+static int16_t linuxraw_joypad_axis(unsigned port, uint32_t joyaxis)
 {
+   int16_t val = 0;
+   const struct linuxraw_joypad *pad = NULL;
+
+   if (joyaxis == AXIS_NONE)
+      return 0;
+
+   pad = (const struct linuxraw_joypad*)&linuxraw_pads[port];
+
    if (AXIS_NEG_GET(joyaxis) < NUM_AXES)
    {
+      val = pad->axes[AXIS_NEG_GET(joyaxis)];
+      if (val > 0)
+         val = 0;
       /* Kernel returns values in range [-0x7fff, 0x7fff]. */
-      int16_t val = pad->axes[AXIS_NEG_GET(joyaxis)];
-      if (val < 0)
-         return val;
    }
    else if (AXIS_POS_GET(joyaxis) < NUM_AXES)
    {
-      int16_t val = pad->axes[AXIS_POS_GET(joyaxis)];
-      if (val > 0)
-         return val;
-   }
-   return 0;
-}
-
-static int16_t linuxraw_joypad_axis(unsigned port, uint32_t joyaxis)
-{
-   const struct linuxraw_joypad *pad = (const struct linuxraw_joypad*)
-      &linuxraw_pads[port];
-   return linuxraw_joypad_axis_state(pad, port, joyaxis);
-}
-
-static int16_t linuxraw_joypad_state(
-      rarch_joypad_info_t *joypad_info,
-      const struct retro_keybind *binds,
-      unsigned port)
-{
-   unsigned i;
-   int16_t ret                          = 0;
-   uint16_t port_idx                    = joypad_info->joy_idx;
-   const struct linuxraw_joypad    *pad = (const struct linuxraw_joypad*)
-      &linuxraw_pads[port_idx];
-
-   if (port_idx >= DEFAULT_MAX_PADS)
-      return 0;
-
-   for (i = 0; i < RARCH_FIRST_CUSTOM_BIND; i++)
-   {
-      /* Auto-binds are per joypad, not per user. */
-      const uint64_t joykey  = (binds[i].joykey != NO_BTN)
-         ? binds[i].joykey  : joypad_info->auto_binds[i].joykey;
-      const uint32_t joyaxis = (binds[i].joyaxis != AXIS_NONE)
-         ? binds[i].joyaxis : joypad_info->auto_binds[i].joyaxis;
-      if ((uint16_t)joykey != NO_BTN && 
-            (joykey < NUM_BUTTONS)   &&
-            (BIT32_GET(pad->buttons, joykey)))
-         ret |= ( 1 << i);
-      else if (joyaxis != AXIS_NONE &&
-            ((float)abs(linuxraw_joypad_axis_state(pad, port_idx, joyaxis)) 
-             / 0x8000) > joypad_info->axis_threshold)
-         ret |= (1 << i);
+      val = pad->axes[AXIS_POS_GET(joyaxis)];
+      if (val < 0)
+         val = 0;
    }
 
-   return ret;
+   return val;
 }
 
 static bool linuxraw_joypad_query_pad(unsigned pad)
@@ -397,11 +371,9 @@ input_device_driver_t linuxraw_joypad = {
    linuxraw_joypad_query_pad,
    linuxraw_joypad_destroy,
    linuxraw_joypad_button,
-   linuxraw_joypad_state,
    linuxraw_joypad_get_buttons,
    linuxraw_joypad_axis,
    linuxraw_joypad_poll,
-   NULL,
    NULL,
    linuxraw_joypad_name,
    "linuxraw",

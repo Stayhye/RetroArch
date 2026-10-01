@@ -34,7 +34,7 @@
 #pragma warning(disable:4566)
 #endif
 
-int msg_hash_get_help_de_enum(enum msg_hash_enums msg, char *s, size_t len)
+int menu_hash_get_help_de_enum(enum msg_hash_enums msg, char *s, size_t len)
 {
    settings_t *settings = config_get_ptr();
 
@@ -2047,7 +2047,7 @@ static const char *menu_hash_to_str_de_label_enum(enum msg_hash_enums msg)
    {
       static char hotkey_lbl[128] = {0};
       unsigned idx = msg - MENU_ENUM_LABEL_INPUT_HOTKEY_BIND_BEGIN;
-      snprintf(hotkey_lbl, sizeof(hotkey_lbl), "input_hotkey_binds_%u", idx);
+      snprintf(hotkey_lbl, sizeof(hotkey_lbl), "input_hotkey_binds_%d", idx);
       return hotkey_lbl;
    }
 

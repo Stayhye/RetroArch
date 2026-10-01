@@ -37,27 +37,6 @@
 #include "gfx/common/ctr_common.h"
 #endif
 
-/* Required for OpenDingux IPU filter + refresh
- * rate settings */
-#if defined(DINGUX)
-#include "dingux/dingux_utils.h"
-#endif
-
-/* Required for menu screensaver animation */
-#if defined(HAVE_MATERIALUI) || defined(HAVE_XMB) || defined(HAVE_OZONE)
-#include "menu/menu_screensaver.h"
-#endif
-
-/* Required for 'show inputs on overlay' setting */
-#if defined(HAVE_OVERLAY)
-#include "../input/input_overlay.h"
-#endif
-
-/* Required for Steam enum settings */
-#if defined(HAVE_MIST)
-#include "steam/steam.h"
-#endif
-
 #if defined(HW_RVL)
 #define MAX_GAMMA_SETTING 30
 #elif defined(GEKKO)
@@ -66,21 +45,63 @@
 #define MAX_GAMMA_SETTING 1
 #endif
 
-#if defined(XENON) || defined(_XBOX360) || defined(__PSL1GHT__) || defined(__PS3__)
+#if defined(XENON) || defined(_XBOX360) || defined(__CELLOS_LV2__)
 #define DEFAULT_ASPECT_RATIO 1.7778f
 #elif defined(_XBOX1) || defined(GEKKO) || defined(ANDROID)
 #define DEFAULT_ASPECT_RATIO 1.3333f
 #else
-#define DEFAULT_ASPECT_RATIO 1.3333f
+#define DEFAULT_ASPECT_RATIO -1.0f
+#endif
+
+#if defined(ANDROID)
+#define DEFAULT_MAX_PADS 8
+#define ANDROID_KEYBOARD_PORT DEFAULT_MAX_PADS
+#elif defined(_3DS)
+#define DEFAULT_MAX_PADS 1
+#elif defined(SWITCH) || defined(HAVE_LIBNX)
+#define DEFAULT_MAX_PADS 8
+#elif defined(WIIU)
+#ifdef WIIU_HID
+#define DEFAULT_MAX_PADS 16
+#else
+#define DEFAULT_MAX_PADS 5
+#endif
+#elif defined(DJGPP)
+#define DEFAULT_MAX_PADS 1
+#define DOS_KEYBOARD_PORT DEFAULT_MAX_PADS
+#elif defined(XENON)
+#define DEFAULT_MAX_PADS 4
+#elif defined(VITA) || defined(SN_TARGET_PSP2)
+#define DEFAULT_MAX_PADS 4
+#elif defined(PSP)
+#define DEFAULT_MAX_PADS 1
+#elif defined(PS2)
+#define DEFAULT_MAX_PADS 2
+#elif defined(GEKKO) || defined(HW_RVL)
+#define DEFAULT_MAX_PADS 4
+#elif defined(__linux__) || (defined(BSD) && !defined(__MACH__))
+#define DEFAULT_MAX_PADS 8
+#elif defined(__QNX__)
+#define DEFAULT_MAX_PADS 8
+#elif defined(__CELLOS_LV2__)
+#define DEFAULT_MAX_PADS 7
+#elif defined(_XBOX)
+#define DEFAULT_MAX_PADS 4
+#elif defined(HAVE_XINPUT) && !defined(HAVE_DINPUT)
+#define DEFAULT_MAX_PADS 4
+#elif defined(DINGUX)
+#define DEFAULT_MAX_PADS 2
+#elif defined(ORBIS)
+#define DEFAULT_MAX_PADS 4
+#else
+#define DEFAULT_MAX_PADS 16
 #endif
 
 #if defined(GEKKO)
 #define DEFAULT_MOUSE_SCALE 1
 #endif
 
-#define DEFAULT_TOUCH_SCALE 1
-
-#if defined(RARCH_MOBILE) || defined(HAVE_LIBNX) || defined(__WINRT__) || defined(EMSCRIPTEN)
+#if defined(RARCH_MOBILE) || defined(HAVE_LIBNX) || defined(__WINRT__)
 #define DEFAULT_POINTER_ENABLE true
 #else
 #define DEFAULT_POINTER_ENABLE false
@@ -90,7 +111,7 @@
  * we need to extract to a user-writable directory on first boot.
  *
  * Examples include: Android, iOS/OSX) */
-#if defined(ANDROID) || defined(__APPLE__)
+#if defined(ANDROID) || defined(IOS)
 #define DEFAULT_BUNDLE_ASSETS_EXTRACT_ENABLE true
 #else
 #define DEFAULT_BUNDLE_ASSETS_EXTRACT_ENABLE false
@@ -99,8 +120,6 @@
 #ifdef HAVE_MATERIALUI
 /* Show icons to the left of each menu entry */
 #define DEFAULT_MATERIALUI_ICONS_ENABLE true
-/* Show system-specific icons in the playlists tab */
-#define DEFAULT_MATERIALUI_PLAYLIST_ICONS_ENABLE true
 #endif
 
 /* Material UI colour theme */
@@ -152,23 +171,15 @@
  *   thumbnails of different sizes */
 #define DEFAULT_MATERIALUI_THUMBNAIL_BACKGROUND_ENABLE true
 
-#define DEFAULT_SCREEN_BRIGHTNESS 100
-
 #define DEFAULT_CRT_SWITCH_RESOLUTION CRT_SWITCH_NONE
 
 #define DEFAULT_CRT_SWITCH_RESOLUTION_SUPER 2560
 
 #define DEFAULT_CRT_SWITCH_CENTER_ADJUST 0
 
-#define DEFAULT_CRT_SWITCH_PORCH_ADJUST 0
-
-#define DEFAULT_CRT_SWITCH_HIRES_MENU true
-
 #define DEFAULT_HISTORY_LIST_ENABLE true
 
 #define DEFAULT_PLAYLIST_ENTRY_RENAME true
-
-#define DEFAULT_WIFI_ENABLE true
 
 #define DEFAULT_ACCESSIBILITY_ENABLE false
 
@@ -177,8 +188,6 @@
 #define DEFAULT_DRIVER_SWITCH_ENABLE true
 
 #define DEFAULT_USER_LANGUAGE 0
-
-#define DEFAULT_GAMEMODE_ENABLE true
 
 #if (defined(_WIN32) && !defined(_XBOX)) || (defined(__linux) && !defined(ANDROID) && !defined(HAVE_LAKKA)) || (defined(__MACH__) && !defined(IOS)) || defined(EMSCRIPTEN)
 #define DEFAULT_MOUSE_ENABLE true
@@ -208,97 +217,41 @@
 
 /* To start in Fullscreen, or not. */
 
-#if defined(HAVE_STEAM) || defined(DINGUX) || defined(__WINRT__) || defined(WINAPI_FAMILY) && WINAPI_FAMILY == WINAPI_FAMILY_PHONE_APP
-/* Start in fullscreen mode for Steam and Dingux
- * WinRT and Winapi Family builds */
+#ifdef HAVE_STEAM
+/* Start in fullscreen mode for Steam build */
 #define DEFAULT_FULLSCREEN true
 #else
 #define DEFAULT_FULLSCREEN false
 #endif
 
 /* To use windowed mode or not when going fullscreen. */
-#if defined(__WINRT__) || defined(WINAPI_FAMILY) && WINAPI_FAMILY == WINAPI_FAMILY_PHONE_APP
-/* Do not use windowed mode for WinRT and Winapi Family builds on the Xbox UWP with fixed resolution shrinks the image into the left top corner of the screen with some libretro cores */
-#define DEFAULT_WINDOWED_FULLSCREEN false
-#else
-#define DEFAULT_WINDOWED_FULLSCREEN true 
-#endif 
-
-/* Enable automatic switching of the screen refresh rate when using the specified screen mode(s),
- * based on running core/content */
-#define DEFAULT_AUTOSWITCH_REFRESH_RATE AUTOSWITCH_REFRESH_RATE_EXCLUSIVE_FULLSCREEN
+#define DEFAULT_WINDOWED_FULLSCREEN true
 
 /* Which monitor to prefer. 0 is any monitor, 1 and up selects
  * specific monitors, 1 being the first monitor. */
 #define DEFAULT_MONITOR_INDEX 0
 
 /* Window */
-
-/* DEFAULT_WINDOW_DECORATIONS:
-   Whether to show the usual window decorations like border, titlebar etc. */
-#ifdef WEBOS
-#define DEFAULT_WINDOW_DECORATIONS false
-#else
-#define DEFAULT_WINDOW_DECORATIONS true
-#endif
-
-/* Amount of transparency to use for the main window.
- * 1 is the most transparent while 100 is opaque. */
-#define DEFAULT_WINDOW_OPACITY 100
-
-/* DEFAULT_WINDOW_SAVE_POSITIONS:
- * Whether to remember window positions
- * NOTE: Only enabled for desktop Windows
- * at present. */
-#define DEFAULT_WINDOW_SAVE_POSITIONS false
-
-/* Whether to use custom (fixed size)
- * window dimensions in windowed mode. */
-#ifdef WEBOS
-#define DEFAULT_WINDOW_CUSTOM_SIZE_ENABLE true
-#else
-#define DEFAULT_WINDOW_CUSTOM_SIZE_ENABLE false
-#endif
-
-/* Window dimensions when using a fixed size
- * window. A value of 0 disables fixed size
- * windows, using nominal dimensions of
- * window scale multiplied by the core
- * framebuffer size. */
-#if defined(WEBOS)
-#define DEFAULT_WINDOW_WIDTH  1920
-#define DEFAULT_WINDOW_HEIGHT 1080
-#else
-#define DEFAULT_WINDOW_WIDTH  1280
+/* Window size. A value of 0 uses window scale
+ * multiplied by the core framebuffer size. */
+#define DEFAULT_WINDOW_WIDTH 1280
 #define DEFAULT_WINDOW_HEIGHT 720
-#endif
-
-/* Maximum auto-set window dimensions
- * when not using a fixed size window */
-#define DEFAULT_WINDOW_AUTO_WIDTH_MAX  1920
-#define DEFAULT_WINDOW_AUTO_HEIGHT_MAX 1080
 
 /* Fullscreen resolution. A value of 0 uses the desktop
  * resolution. */
-#if defined(DINGUX)
-#define DEFAULT_FULLSCREEN_X 320
-#define DEFAULT_FULLSCREEN_Y 240
-#elif defined(__WINRT__) || defined(WINAPI_FAMILY) && WINAPI_FAMILY == WINAPI_FAMILY_PHONE_APP
-#define DEFAULT_FULLSCREEN_X 1920
-#define DEFAULT_FULLSCREEN_Y 1080
-#else
 #define DEFAULT_FULLSCREEN_X 0
 #define DEFAULT_FULLSCREEN_Y 0
-#endif
-
-#if defined(HAVE_WINDOW_OFFSET)
-/* Screen offsets to center content in CTRs */
-#define DEFAULT_WINDOW_OFFSET_X 0
-#define DEFAULT_WINDOW_OFFSET_Y 0
-#endif
 
 /* Number of threads to use for video recording */
 #define DEFAULT_VIDEO_RECORD_THREADS 2
+
+/* Amount of transparency to use for the main window.
+ * 1 is the most transparent while 100 is opaque.
+ */
+#define DEFAULT_WINDOW_OPACITY 100
+
+/* Whether to show the usual window decorations like border, titlebar etc. */
+#define DEFAULT_WINDOW_DECORATIONS true
 
 #if defined(RARCH_CONSOLE) || defined(__APPLE__)
 #define DEFAULT_LOAD_DUMMY_ON_CORE_SHUTDOWN false
@@ -306,27 +259,6 @@
 #define DEFAULT_LOAD_DUMMY_ON_CORE_SHUTDOWN true
 #endif
 #define DEFAULT_CHECK_FIRMWARE_BEFORE_LOADING false
-
-/* Specifies whether cores are allowed to
- * present core options in category submenus */
-#define DEFAULT_CORE_OPTION_CATEGORY_ENABLE true
-
-/* Specifies whether to cache core info
- * into a single (compressed) file for improved
- * load times on platforms with slow IO */
-#define DEFAULT_CORE_INFO_CACHE_ENABLE true
-
-/* Specifies whether to 'reload' (fork and quit)
- * RetroArch when launching content with the
- * currently loaded core
- * > Only relevant on platforms without dynamic core
- *   loading support
- * > Setting this to 'false' will decrease loading
- *   times when required core is already running,
- *   but may cause stability issues (if core misbehaves) */
-#ifndef HAVE_DYNAMIC
-#define DEFAULT_ALWAYS_RELOAD_CORE_ON_RUN_CONTENT true
-#endif
 
 /* Forcibly disable composition.
  * Only valid on Windows Vista/7/8 for now. */
@@ -354,16 +286,13 @@
  * Can reduce latency at cost of higher risk of stuttering.
  */
 #define DEFAULT_FRAME_DELAY 0
-#define MAXIMUM_FRAME_DELAY 19
-#define DEFAULT_FRAME_DELAY_AUTO false
 
-/* Inserts black frame(s) inbetween frames.
- * Useful for Higher Hz monitors (set to multiples of 60 Hz) who want to play 60 Hz 
- * material with eliminated  ghosting. video_refresh_rate should still be configured
- * as if it is a 60 Hz monitor (divide refresh rate by multiple of 60 Hz).
+/* Inserts a black frame inbetween frames.
+ * Useful for 120 Hz monitors who want to play 60 Hz material with eliminated
+ * ghosting. video_refresh_rate should still be configured as if it
+ * is a 60 Hz monitor (divide refresh rate by 2).
  */
-#define DEFAULT_BLACK_FRAME_INSERTION 0
-
+#define DEFAULT_BLACK_FRAME_INSERTION false
 
 /* Uses a custom swap interval for VSync.
  * Set this to effectively halve monitor refresh rate.
@@ -407,7 +336,7 @@
 #endif
 
 /* Smooths picture. */
-#if defined(_3DS) || defined(GEKKO) || defined(HW_RVL) || defined(PSP) || defined(VITA) || defined(SN_TARGET_PSP2) || defined(PS2) || defined(_XBOX) || defined(DINGUX)
+#if defined(_3DS) || defined(GEKKO) || defined(HW_RVL) || defined(PSP) || defined(VITA) || defined(SN_TARGET_PSP2) || defined(PS2) || defined(_XBOX)
 #define DEFAULT_VIDEO_SMOOTH true
 #else
 #define DEFAULT_VIDEO_SMOOTH false
@@ -419,10 +348,6 @@
 /* On resize and fullscreen, rendering area will stay 4:3 */
 #define DEFAULT_FORCE_ASPECT true
 
-/* Only applies to Android 9.0 (API 28) and up */
-/* Choose if the screen will be able to write around the notch or not */
-#define DEFAULT_NOTCH_WRITE_OVER_ENABLE false
-
 /* Enable use of shaders. */
 #ifdef RARCH_CONSOLE
 #define DEFAULT_SHADER_ENABLE true
@@ -430,41 +355,20 @@
 #define DEFAULT_SHADER_ENABLE false
 #endif
 
-/* Should we enable hdr when its supported*/
-#define DEFAULT_VIDEO_HDR_ENABLE false
-
-/* The maximum nunmber of nits the actual display can show - needs to be calibrated */
-#define DEFAULT_VIDEO_HDR_MAX_NITS 1000.0f
-
-/* The number of nits that paper white is at */
-#define DEFAULT_VIDEO_HDR_PAPER_WHITE_NITS 200.0f
-
-/* The contrast setting for hdr used to calculate the display gamma by dividing this value by gamma 2.2  */
-#define DEFAULT_VIDEO_HDR_CONTRAST 5.0f
-
-/* Should we expand the colour gamut when using hdr */
-#define DEFAULT_VIDEO_HDR_EXPAND_GAMUT true
-
-/* When presets are saved they will be saved using the #reference 
- * directive by default */
-#define DEFAULT_VIDEO_SHADER_PRESET_SAVE_REFERENCE_ENABLE true
-
 #define DEFAULT_SHADER_DELAY 0
 
 /* Only scale in integer steps.
  * The base size depends on system-reported geometry and aspect ratio.
  * If video_force_aspect is not set, X/Y will be integer scaled independently.
- * Overscale rounds up instead of down, default is downscale.
  */
 #define DEFAULT_SCALE_INTEGER false
-#define DEFAULT_SCALE_INTEGER_OVERSCALE false
 
 /* Controls aspect ratio handling. */
 
 /* 1:1 PAR */
 #define DEFAULT_ASPECT_RATIO_AUTO false
 
-#if defined(_XBOX360) || defined(__PS3__)
+#if defined(__CELLOS_LV2) || defined(_XBOX360)
 #define DEFAULT_ASPECT_RATIO_IDX ASPECT_RATIO_16_9
 #elif defined(PSP) || defined(_3DS) || defined(HAVE_LIBNX) || defined(VITA)
 #define DEFAULT_ASPECT_RATIO_IDX ASPECT_RATIO_CORE
@@ -474,49 +378,12 @@
 #define DEFAULT_ASPECT_RATIO_IDX ASPECT_RATIO_CORE
 #endif
 
-#if defined(DINGUX)
-/* Enables aspect ratio correction (1:1 PAR) when
- * using the IPU hardware scaler in Dingux devices */
-#define DEFAULT_DINGUX_IPU_KEEP_ASPECT true
-/* Sets image filtering method when using the
- * IPU hardware scaler in Dingux devices */
-#if defined(RETROFW)
-#define DEFAULT_DINGUX_IPU_FILTER_TYPE DINGUX_IPU_FILTER_NEAREST
-#else
-#define DEFAULT_DINGUX_IPU_FILTER_TYPE DINGUX_IPU_FILTER_BICUBIC
-#endif
-
-#if defined(DINGUX_BETA)
-/* Sets refresh rate of integral LCD panel
- * in Dingux devices */
-#define DEFAULT_DINGUX_REFRESH_RATE DINGUX_REFRESH_RATE_60HZ
-#endif
-#if defined(RS90) || defined(MIYOO)
-/* Sets image filtering method on the RS90
- * when integer scaling is disabled */
-#define DEFAULT_DINGUX_RS90_SOFTFILTER_TYPE DINGUX_RS90_SOFTFILTER_POINT
-#endif
-#endif
-
 /* Save configuration file on exit. */
 #define DEFAULT_CONFIG_SAVE_ON_EXIT true
 
-/* Save active input remap file on exit/close content */
-#define DEFAULT_REMAP_SAVE_ON_EXIT true
-
 #define DEFAULT_SHOW_HIDDEN_FILES false
 
-/* Initialise file browser with the last used start directory */
-#define DEFAULT_USE_LAST_START_DIRECTORY false
-
-#define DEFAULT_OVERLAY_BEHIND_MENU false
-
 #define DEFAULT_OVERLAY_HIDE_IN_MENU true
-
-/* Automatically disable overlays when a
- * controller is connected in port 1 */
-#define DEFAULT_OVERLAY_HIDE_WHEN_GAMEPAD_CONNECTED false
-
 #define DEFAULT_OVERLAY_SHOW_MOUSE_CURSOR true
 
 #define DEFAULT_DISPLAY_KEYBOARD_OVERLAY false
@@ -527,30 +394,10 @@
 #define DEFAULT_INPUT_OVERLAY_OPACITY 0.7f
 #endif
 
-#define DEFAULT_INPUT_OVERLAY_SCALE_LANDSCAPE 1.0f
-#define DEFAULT_INPUT_OVERLAY_ASPECT_ADJUST_LANDSCAPE 0.0f
-#define DEFAULT_INPUT_OVERLAY_X_SEPARATION_LANDSCAPE 0.0f
-#define DEFAULT_INPUT_OVERLAY_Y_SEPARATION_LANDSCAPE 0.0f
-#define DEFAULT_INPUT_OVERLAY_X_OFFSET_LANDSCAPE 0.0f
-#define DEFAULT_INPUT_OVERLAY_Y_OFFSET_LANDSCAPE 0.0f
-
-#define DEFAULT_INPUT_OVERLAY_SCALE_PORTRAIT 1.0f
-#define DEFAULT_INPUT_OVERLAY_ASPECT_ADJUST_PORTRAIT 0.0f
-#define DEFAULT_INPUT_OVERLAY_X_SEPARATION_PORTRAIT 0.0f
-#define DEFAULT_INPUT_OVERLAY_Y_SEPARATION_PORTRAIT 0.0f
-#define DEFAULT_INPUT_OVERLAY_X_OFFSET_PORTRAIT 0.0f
-#define DEFAULT_INPUT_OVERLAY_Y_OFFSET_PORTRAIT 0.0f
-
 #if defined(RARCH_MOBILE)
 #define DEFAULT_OVERLAY_AUTO_ROTATE true
 #else
 #define DEFAULT_OVERLAY_AUTO_ROTATE false
-#endif
-
-#if defined(RARCH_MOBILE)
-#define DEFAULT_INPUT_OVERLAY_AUTO_SCALE true
-#else
-#define DEFAULT_INPUT_OVERLAY_AUTO_SCALE false
 #endif
 
 #include "runtime_file.h"
@@ -570,7 +417,6 @@
 #define DEFAULT_OZONE_TRUNCATE_PLAYLIST_NAME true
 #define DEFAULT_OZONE_SORT_AFTER_TRUNCATE_PLAYLIST_NAME true
 #define DEFAULT_OZONE_SCROLL_CONTENT_METADATA false
-#define DEFAULT_OZONE_THUMBNAIL_SCALE_FACTOR 1.0f
 #endif
 
 #define DEFAULT_SETTINGS_SHOW_DRIVERS true
@@ -591,8 +437,6 @@
 
 #define DEFAULT_SETTINGS_SHOW_LOGGING true
 
-#define DEFAULT_SETTINGS_SHOW_FILE_BROWSER true
-
 #define DEFAULT_SETTINGS_SHOW_FRAME_THROTTLE true
 
 #define DEFAULT_SETTINGS_SHOW_RECORDING true
@@ -602,8 +446,6 @@
 #define DEFAULT_SETTINGS_SHOW_USER_INTERFACE true
 
 #define DEFAULT_SETTINGS_SHOW_AI_SERVICE true
-
-#define DEFAULT_SETTINGS_SHOW_ACCESSIBILITY true
 
 #define DEFAULT_SETTINGS_SHOW_POWER_MANAGEMENT true
 
@@ -617,8 +459,6 @@
 
 #define DEFAULT_SETTINGS_SHOW_DIRECTORY true
 
-#define DEFAULT_SETTINGS_SHOW_STEAM true
-
 #define DEFAULT_QUICK_MENU_SHOW_RESUME_CONTENT true
 
 #define DEFAULT_QUICK_MENU_SHOW_RESTART_CONTENT true
@@ -626,8 +466,6 @@
 #define DEFAULT_QUICK_MENU_SHOW_CLOSE_CONTENT true
 
 #define DEFAULT_QUICK_MENU_SHOW_TAKE_SCREENSHOT true
-
-#define DEFAULT_QUICK_MENU_SHOW_SAVESTATE_SUBMENU false
 
 #define DEFAULT_QUICK_MENU_SHOW_SAVE_LOAD_STATE true
 
@@ -639,9 +477,6 @@ static const bool quick_menu_show_start_streaming             = true;
 static const bool quick_menu_show_set_core_association        = true;
 static const bool quick_menu_show_reset_core_association      = true;
 static const bool quick_menu_show_options                     = true;
-
-#define DEFAULT_QUICK_MENU_SHOW_CORE_OPTIONS_FLUSH false
-
 static const bool quick_menu_show_controls                    = true;
 static const bool quick_menu_show_cheats                      = true;
 static const bool quick_menu_show_shaders                     = true;
@@ -667,9 +502,6 @@ static const bool menu_show_load_content       = true;
 #ifdef HAVE_CDROM
 static const bool menu_show_load_disc          = true;
 static const bool menu_show_dump_disc          = true;
-#ifdef HAVE_LAKKA
-static const bool menu_show_eject_disc         = true;
-#endif /* HAVE_LAKKA */
 #endif
 static const bool menu_show_information        = true;
 static const bool menu_show_configurations     = true;
@@ -678,23 +510,18 @@ static const bool menu_show_quit_retroarch     = true;
 static const bool menu_show_restart_retroarch  = true;
 static const bool menu_show_reboot             = true;
 static const bool menu_show_shutdown           = true;
-#if defined(HAVE_LAKKA) || defined(VITA)
+#if defined(HAVE_LAKKA) || defined(VITA) || defined(_3DS)
 static const bool menu_show_core_updater       = false;
 #else
 static const bool menu_show_core_updater       = true;
 #endif
-#ifdef HAVE_MIST
-static const bool menu_show_core_manager_steam = true;
-#endif
 static const bool menu_show_legacy_thumbnail_updater = false;
-static const bool menu_show_sublabels                = true;
-static const bool menu_dynamic_wallpaper_enable      = true;
-static const bool menu_scroll_fast                   = false;
+static const bool menu_show_sublabels          = true;
 
-#define DEFAULT_MENU_SCROLL_DELAY 256
+static const bool menu_scroll_fast             = false;
 
-#define DEFAULT_MENU_TICKER_TYPE (TICKER_TYPE_LOOP)
-static const float menu_ticker_speed        = 2.0f;
+#define DEFAULT_MENU_TICKER_TYPE                 (TICKER_TYPE_LOOP)
+static const float menu_ticker_speed           = 2.0f;
 
 #define DEFAULT_MENU_TICKER_SMOOTH true
 
@@ -705,21 +532,6 @@ static const bool menu_savestate_resume     = false;
 #endif
 
 #define DEFAULT_MENU_INSERT_DISK_RESUME true
-
-#define DEFAULT_QUIT_ON_CLOSE_CONTENT QUIT_ON_CLOSE_CONTENT_DISABLED
-
-/* While the menu is active, supported drivers
- * will display a screensaver after SCREENSAVER_TIMEOUT
- * seconds of inactivity. A timeout of zero disables
- * the screensaver */
-#define DEFAULT_MENU_SCREENSAVER_TIMEOUT 0
-
-#if defined(HAVE_MATERIALUI) || defined(HAVE_XMB) || defined(HAVE_OZONE)
-/* When menu screensaver is enabled, specifies
- * animation effect and animation speed */
-#define DEFAULT_MENU_SCREENSAVER_ANIMATION MENU_SCREENSAVER_BLANK
-#define DEFAULT_MENU_SCREENSAVER_ANIMATION_SPEED 1.0f
-#endif
 
 static const bool content_show_settings     = true;
 static const bool content_show_favorites    = true;
@@ -738,25 +550,10 @@ static const bool content_show_netplay      = true;
 #endif
 #endif
 static const bool content_show_history      = true;
-
-/* Specifies 'add content' visibility when using
- * menus WITH a dedicated 'Import Content' tab */
-#define DEFAULT_MENU_CONTENT_SHOW_ADD true
-/* Specifies 'add content' visibility when using
- * menus WITHOUT a dedicated 'Import Content' tab */
-#define DEFAULT_MENU_CONTENT_SHOW_ADD_ENTRY MENU_ADD_CONTENT_ENTRY_DISPLAY_PLAYLISTS_TAB
-
+static const bool content_show_add     	    = true;
 static const bool content_show_playlists    = true;
-#if defined(HAVE_LIBRETRODB)
-#define DEFAULT_MENU_CONTENT_SHOW_EXPLORE true
-#endif
-#define DEFAULT_MENU_CONTENT_SHOW_CONTENTLESS_CORES MENU_CONTENTLESS_CORES_DISPLAY_SINGLE_PURPOSE
 
 #ifdef HAVE_XMB
-#define DEFAULT_XMB_ANIMATION 0
-#define DEFAULT_XMB_VERTICAL_FADE_FACTOR 100
-#define DEFAULT_XMB_TITLE_MARGIN 5
-
 static const unsigned xmb_alpha_factor      = 75;
 static const unsigned menu_font_color_red   = 255;
 static const unsigned menu_font_color_green = 255;
@@ -784,7 +581,7 @@ static const float menu_footer_opacity = 1.000;
 
 static const float menu_header_opacity = 1.000;
 
-#if defined(HAVE_OPENGLES2) || (defined(__MACH__)  && defined(MAC_OS_X_VERSION_MAX_ALLOWED) && (MAC_OS_X_VERSION_MAX_ALLOWED < 101200))
+#if defined(HAVE_OPENGLES2) || (defined(__MACH__) && (defined(__ppc__) || defined(__ppc64__)))
 #define DEFAULT_MENU_SHADER_PIPELINE 1
 #else
 #define DEFAULT_MENU_SHADER_PIPELINE 2
@@ -793,7 +590,6 @@ static const float menu_header_opacity = 1.000;
 #define DEFAULT_SHOW_ADVANCED_SETTINGS false
 
 #define DEFAULT_RGUI_COLOR_THEME RGUI_THEME_CLASSIC_GREEN
-#define DEFAULT_RGUI_TRANSPARENCY true
 
 static const bool rgui_inline_thumbnails = false;
 static const bool rgui_swap_thumbnails = false;
@@ -806,9 +602,7 @@ static const unsigned rgui_aspect_lock = RGUI_ASPECT_RATIO_LOCK_NONE;
 static const bool rgui_shadows = false;
 static const unsigned rgui_particle_effect = RGUI_PARTICLE_EFFECT_NONE;
 #define DEFAULT_RGUI_PARTICLE_EFFECT_SPEED 1.0f
-#define DEFAULT_RGUI_PARTICLE_EFFECT_SCREENSAVER true
 static const bool rgui_extended_ascii = false;
-#define DEFAULT_RGUI_SWITCH_ICONS true
 #endif
 
 #ifdef HAVE_MENU
@@ -828,60 +622,39 @@ static const bool default_auto_shaders_enable = true;
 
 static const bool default_sort_savefiles_enable = false;
 static const bool default_sort_savestates_enable = false;
-static const bool default_sort_savefiles_by_content_enable = false;
-static const bool default_sort_savestates_by_content_enable = false;
-static const bool default_sort_screenshots_by_content_enable = false;
 
 static const bool default_savestates_in_content_dir = false;
 static const bool default_savefiles_in_content_dir = false;
 static const bool default_systemfiles_in_content_dir = false;
 static const bool default_screenshots_in_content_dir = false;
 
-#if defined(RS90) || defined(RETROFW) || defined(MIYOO)
-#define DEFAULT_MENU_TOGGLE_GAMEPAD_COMBO INPUT_COMBO_START_SELECT
-#elif defined(_XBOX1) || defined(__PS3__) || defined(_XBOX360) || defined(DINGUX)
-#define DEFAULT_MENU_TOGGLE_GAMEPAD_COMBO INPUT_COMBO_L3_R3
+#if defined(__CELLOS_LV2__) || defined(_XBOX1) || defined(_XBOX360) || defined(DINGUX)
+static const unsigned menu_toggle_gamepad_combo    = INPUT_TOGGLE_L3_R3;
 #elif defined(PS2) || defined(PSP)
-#define DEFAULT_MENU_TOGGLE_GAMEPAD_COMBO INPUT_COMBO_HOLD_START
+static const unsigned menu_toggle_gamepad_combo    = INPUT_TOGGLE_HOLD_START;
 #elif defined(VITA)
-#define DEFAULT_MENU_TOGGLE_GAMEPAD_COMBO INPUT_COMBO_L1_R1_START_SELECT
+static const unsigned menu_toggle_gamepad_combo    = INPUT_TOGGLE_L1_R1_START_SELECT;
 #elif defined(SWITCH) || defined(ORBIS)
-#define DEFAULT_MENU_TOGGLE_GAMEPAD_COMBO INPUT_COMBO_START_SELECT
+static const unsigned menu_toggle_gamepad_combo    = INPUT_TOGGLE_START_SELECT;
 #elif TARGET_OS_TV
-#define DEFAULT_MENU_TOGGLE_GAMEPAD_COMBO INPUT_COMBO_DOWN_Y_L_R
+static const unsigned menu_toggle_gamepad_combo    = INPUT_TOGGLE_DOWN_Y_L_R;
 #else
-#define DEFAULT_MENU_TOGGLE_GAMEPAD_COMBO INPUT_COMBO_NONE
+static const unsigned menu_toggle_gamepad_combo    = INPUT_TOGGLE_NONE;
 #endif
-
-#define DEFAULT_QUIT_GAMEPAD_COMBO INPUT_COMBO_NONE
 
 #if defined(VITA)
 static const unsigned input_backtouch_enable       = false;
 static const unsigned input_backtouch_toggle       = false;
 #endif
 
-#define DEFAULT_OVERLAY_ENABLE_AUTOPREFERRED true
+#define DEFAULT_SHOW_PHYSICAL_INPUTS true
 
-#if defined(HAVE_OVERLAY)
-#if defined(RARCH_MOBILE)
-#define DEFAULT_OVERLAY_SHOW_INPUTS OVERLAY_SHOW_INPUT_TOUCHED
-#else
-#define DEFAULT_OVERLAY_SHOW_INPUTS OVERLAY_SHOW_INPUT_PHYSICAL
-#endif
-#endif
+#define DEFAULT_ALL_USERS_CONTROL_MENU false
 
-#define DEFAULT_OVERLAY_SHOW_INPUTS_PORT 0
-
-#if defined(ANDROID) || defined(_WIN32) || defined(HAVE_STEAM)
+#if defined(ANDROID) || defined(_WIN32)
 #define DEFAULT_MENU_SWAP_OK_CANCEL_BUTTONS true
 #else
 #define DEFAULT_MENU_SWAP_OK_CANCEL_BUTTONS false
-#endif
-
-#if defined(WIIU)
-#define DEFAULT_ALL_USERS_CONTROL_MENU true
-#else
-#define DEFAULT_ALL_USERS_CONTROL_MENU false
 #endif
 
 #define DEFAULT_QUIT_PRESS_TWICE true
@@ -896,8 +669,6 @@ static const unsigned input_backtouch_toggle       = false;
 /* Font size for on-screen messages. */
 #if defined(DINGUX)
 #define DEFAULT_FONT_SIZE 12
-#elif defined(PS2)
-#define DEFAULT_FONT_SIZE 16
 #else
 #define DEFAULT_FONT_SIZE 32
 #endif
@@ -927,10 +698,6 @@ static const float message_bgcolor_opacity = 1.0f;
 
 /* Watch shader files for changes and auto-apply as necessary. */
 #define DEFAULT_VIDEO_SHADER_WATCH_FILES false
-
-/* Initialise file browser with last used directory
- * when selecting shader presets/passes via the menu */
-#define DEFAULT_VIDEO_SHADER_REMEMBER_LAST_DIR false
 
 /* Screenshots named automatically. */
 #define DEFAULT_AUTO_SCREENSHOT_FILENAME true
@@ -966,18 +733,10 @@ static const float message_bgcolor_opacity = 1.0f;
 #define DEFAULT_ALLOW_ROTATE true
 
 #if defined(_3DS)
-/* Enable New3DS clock and L2 cache */
-static const bool new3ds_speedup_enable      = true;
 /* Enable bottom LCD screen */
-static const bool video_3ds_lcd_bottom       = true;
+static const bool video_3ds_lcd_bottom = true;
 /* Sets video display mode (3D, 2D, etc.) */
 static const unsigned video_3ds_display_mode = CTR_VIDEO_MODE_3D;
-#endif
-
-#ifdef WIIU
-/* On Wii U, whether to optimize for the native TV resolution
- * or exactly 2x the Wii U GamePad resolution. */
-#define DEFAULT_WIIU_PREFER_DRC false
 #endif
 
 /* AUDIO */
@@ -998,78 +757,10 @@ static const bool audio_enable_menu_bgm    = false;
 #define DEFAULT_MENU_ENABLE_WIDGETS false
 #endif
 
-/* Display an animation when loading content
- * > Currently implemented only as a widget */
-#define DEFAULT_MENU_SHOW_LOAD_CONTENT_ANIMATION DEFAULT_MENU_ENABLE_WIDGETS
-
-/* Display a notification when successfully
- * connecting/disconnecting an autoconfigured
- * controller
- * > Disabled by default on the Switch */
-#if defined(HAVE_LIBNX) && defined(HAVE_GFX_WIDGETS)
-#define DEFAULT_NOTIFICATION_SHOW_AUTOCONFIG false
-#else
-#define DEFAULT_NOTIFICATION_SHOW_AUTOCONFIG true
-#endif
-
-/* Display a notification when cheats are being
- * applied */
-#define DEFAULT_NOTIFICATION_SHOW_CHEATS_APPLIED true
-
-/* Display a notification when applying an
- * IPS/BPS/UPS patch file */
-#define DEFAULT_NOTIFICATION_SHOW_PATCH_APPLIED true
-
-/* Display a notification when loading an
- * input remap file */
-#define DEFAULT_NOTIFICATION_SHOW_REMAP_LOAD true
-
-/* Display a notification when loading a
- * configuration override file */
-#define DEFAULT_NOTIFICATION_SHOW_CONFIG_OVERRIDE_LOAD true
-
-/* Display a notification when automatically restoring
- * at launch the last used disk of multi-disk content */
-#define DEFAULT_NOTIFICATION_SHOW_SET_INITIAL_DISK true
-
-/* Display a notification when fast forwarding
- * content */
-#define DEFAULT_NOTIFICATION_SHOW_FAST_FORWARD true
-
-#if defined(HAVE_SCREENSHOTS)
-/*Display a notification when taking a screenshot*/
-#define DEFAULT_NOTIFICATION_SHOW_SCREENSHOT true
-
-/*Desired duration of the screenshot notification*/
-#define DEFAULT_NOTIFICATION_SHOW_SCREENSHOT_DURATION 0
-
-/* Display a white flashing effect with the desired 
- * duration when taking a screenshot*/
-#define DEFAULT_NOTIFICATION_SHOW_SCREENSHOT_FLASH 0
-#endif
-
-/* Display a notification when setting the refresh rate*/
-#if defined(_3DS) || (defined(DINGUX) && defined(DINGUX_BETA))
-/* 3DS and OpenDingux Beta devices set refresh rate
- * on gfx driver init - set default notification
- * state to 'false' in order to avoid OSD log spam */
-#define DEFAULT_NOTIFICATION_SHOW_REFRESH_RATE false
-#else
-#define DEFAULT_NOTIFICATION_SHOW_REFRESH_RATE true
-#endif
-
-#ifdef HAVE_NETWORKING
-#define DEFAULT_NOTIFICATION_SHOW_NETPLAY_EXTRA false
-#endif
-
-#ifdef HAVE_MENU
-#define DEFAULT_NOTIFICATION_SHOW_WHEN_MENU_IS_ALIVE false
-#endif
-
 /* Output samplerate. */
-#if defined(GEKKO) || defined(MIYOO)
+#ifdef GEKKO
 #define DEFAULT_OUTPUT_RATE 32000
-#elif defined(_3DS) || defined(RETROFW)
+#elif defined(_3DS)
 #define DEFAULT_OUTPUT_RATE 32730
 #else
 #define DEFAULT_OUTPUT_RATE 48000
@@ -1080,7 +771,7 @@ static const bool audio_enable_menu_bgm    = false;
 
 /* Desired audio latency in milliseconds. Might not be honored
  * if driver can't provide given latency. */
-#if defined(ANDROID) || defined(EMSCRIPTEN) || defined(RETROFW) || defined(MIYOO)
+#if defined(ANDROID) || defined(EMSCRIPTEN)
 /* For most Android devices, 64ms is way too low. */
 #define DEFAULT_OUT_LATENCY 128
 #else
@@ -1131,9 +822,6 @@ static const bool audio_enable_menu_bgm    = false;
 /* FPS display will be updated at the set interval (in frames) */
 #define DEFAULT_FPS_UPDATE_INTERVAL 256
 
-/* Memory status display will be updated at the set interval (in frames) */
-#define DEFAULT_MEMORY_UPDATE_INTERVAL 256
-
 /* Enables displaying the current frame count. */
 #define DEFAULT_FRAMECOUNT_SHOW false
 
@@ -1142,9 +830,6 @@ static const bool audio_enable_menu_bgm    = false;
 
 /* Enables displaying various timing statistics. */
 #define DEFAULT_STATISTICS_SHOW false
-
-/* Enables displaying the current netplay room ping. */
-#define DEFAULT_NETPLAY_PING_SHOW false
 
 /* Enables use of rewind. This will incur some memory footprint
  * depending on the save state buffer. */
@@ -1156,13 +841,6 @@ static const bool audio_enable_menu_bgm    = false;
 /* When set, all enabled cheats are auto-applied when a game is loaded. */
 #define DEFAULT_APPLY_CHEATS_AFTER_LOAD false
 
-
-#if defined(RETROFW) || defined(MIYOO)
-/*RETROFW jz4760 has signficant slowdown with default settings */
-#define DEFAULT_REWIND_BUFFER_SIZE (1 << 20)
-#define DEFAULT_REWIND_BUFFER_SIZE_STEP 1 
-#define DEFAULT_REWIND_GRANULARITY 6
-#else
 /* The buffer size for the rewind buffer. This needs to be about
  * 15-20MB per minute. Very game dependant. */
 #define DEFAULT_REWIND_BUFFER_SIZE (20 << 20) /* 20MiB */
@@ -1172,9 +850,9 @@ static const bool audio_enable_menu_bgm    = false;
 
 /* How many frames to rewind at a time. */
 #define DEFAULT_REWIND_GRANULARITY 1
-#endif
+
 /* Pause gameplay when gameplay loses focus. */
-#if defined(EMSCRIPTEN)
+#ifdef EMSCRIPTEN
 #define DEFAULT_PAUSE_NONACTIVE false
 #else
 #define DEFAULT_PAUSE_NONACTIVE true
@@ -1182,7 +860,7 @@ static const bool audio_enable_menu_bgm    = false;
 
 /* Saves non-volatile SRAM at a regular interval.
  * It is measured in seconds. A value of 0 disables autosave. */
-#if defined(__i386__) || defined(__i486__) || defined(__i686__) || defined(__x86_64__) || defined(_M_X64) || defined(_WIN32) || defined(OSX) || defined(ANDROID) || defined(IOS) || defined(DINGUX)
+#if defined(__i386__) || defined(__i486__) || defined(__i686__) || defined(__x86_64__) || defined(_M_X64) || defined(_WIN32) || defined(OSX) || defined(ANDROID) || defined(IOS)
 /* Flush to file every 10 seconds on modern platforms by default */
 #define DEFAULT_AUTOSAVE_INTERVAL 10
 #else
@@ -1190,21 +868,11 @@ static const bool audio_enable_menu_bgm    = false;
 #define DEFAULT_AUTOSAVE_INTERVAL 0
 #endif
 
-/* Netplay lobby filters */
-#define DEFAULT_NETPLAY_SHOW_ONLY_CONNECTABLE true
-#define DEFAULT_NETPLAY_SHOW_PASSWORDED       true
-
 /* Publicly announce netplay */
 #define DEFAULT_NETPLAY_PUBLIC_ANNOUNCE true
 
 /* Start netplay in spectator mode */
 static const bool netplay_start_as_spectator = false;
-
-/* Netplay chat fading toggle */
-static const bool netplay_fade_chat = true;
-
-/* Allow players to pause */
-static const bool netplay_allow_pausing = false;
 
 /* Allow connections in slave mode */
 static const bool netplay_allow_slaves = true;
@@ -1230,11 +898,9 @@ static const bool netplay_use_mitm_server = false;
 #define DEFAULT_NETPLAY_MITM_SERVER "nyc"
 
 #ifdef HAVE_NETWORKING
-static const unsigned netplay_max_connections = 3;
-static const unsigned netplay_max_ping        = 0;
-
 static const unsigned netplay_share_digital = RARCH_NETPLAY_SHARE_DIGITAL_NO_PREFERENCE;
-static const unsigned netplay_share_analog  = RARCH_NETPLAY_SHARE_ANALOG_NO_PREFERENCE;
+
+static const unsigned netplay_share_analog = RARCH_NETPLAY_SHARE_ANALOG_NO_PREFERENCE;
 #endif
 
 /* On save state load, block SRAM from being overwritten.
@@ -1247,15 +913,6 @@ static const unsigned netplay_share_analog  = RARCH_NETPLAY_SHARE_ANALOG_NO_PREF
  * to the highest existing value. */
 static const bool savestate_auto_index = false;
 
-/* Specifies the maximum number of savestates to keep
- * when savestate auto index is enabled
- * > When limit is exceeded, savestate with the lowest
- *   index will be deleted automatically when creating
- *   a new savestate
- * > Setting value to zero disables the limit (no
- *   savestates will be deleted in this case) */
-#define DEFAULT_SAVESTATE_MAX_KEEP 0
-
 /* Automatically saves a savestate at the end of RetroArch's lifetime.
  * The path is $SRAM_PATH.auto.
  * RetroArch will automatically load any savestate with this path on
@@ -1267,26 +924,21 @@ static const bool savestate_thumbnail_enable = false;
 
 /* When creating save (srm) files, compress
  * written data */
+#if defined(__WINRT__) || defined(WINAPI_FAMILY) && WINAPI_FAMILY == WINAPI_FAMILY_PHONE_APP
+#define DEFAULT_SAVE_FILE_COMPRESSION true
+#else
 #define DEFAULT_SAVE_FILE_COMPRESSION false
+#endif
 
 /* When creating save state files, compress
  * written data */
-#if defined(__WINRT__) || defined(WINAPI_FAMILY) && WINAPI_FAMILY == WINAPI_FAMILY_PHONE_APP
-/* TODO/FIXME Apparently this is an issue on UWP for now, so disable it for now */
-#define DEFAULT_SAVESTATE_FILE_COMPRESSION false
-#else
 #define DEFAULT_SAVESTATE_FILE_COMPRESSION true
-#endif
 
 /* Slowmotion ratio. */
 #define DEFAULT_SLOWMOTION_RATIO 3.0
 
 /* Maximum fast forward ratio. */
 #define DEFAULT_FASTFORWARD_RATIO 0.0
-#define MAXIMUM_FASTFORWARD_RATIO 50.0
-
-/* Skip frames when fast forwarding. */
-#define DEFAULT_FASTFORWARD_FRAMESKIP true
 
 /* Enable runloop for variable refresh rate screens. Force x1 speed while handling fast forward too. */
 #define DEFAULT_VRR_RUNLOOP_ENABLE false
@@ -1310,21 +962,7 @@ static const uint16_t network_remote_base_port = 55400;
 #define DEFAULT_NETWORK_BUILDBOT_AUTO_EXTRACT_ARCHIVE true
 #define DEFAULT_NETWORK_BUILDBOT_SHOW_EXPERIMENTAL_CORES false
 
-/* Automatically create a backup whenever a core is
- * updated via the online updater
- * > Enable by default on all modern platforms with
- *   online updater support */
-#if defined(HAVE_ONLINE_UPDATER) && (defined(__i386__) || defined(__i486__) || defined(__i686__) || defined(__x86_64__) || defined(_M_X64) || defined(_WIN32) || defined(OSX) || defined(ANDROID) || defined(IOS))
-#define DEFAULT_CORE_UPDATER_AUTO_BACKUP true
-#else
-#define DEFAULT_CORE_UPDATER_AUTO_BACKUP false
-#endif
-/* Number of automatic core backups to retain
- * (oldest backup will be deleted when creating
- * a new one) */
-#define DEFAULT_CORE_UPDATER_AUTO_BACKUP_HISTORY_SIZE 1
-
-#if defined(ANDROID) || defined(__APPLE__)
+#if defined(ANDROID) || defined(IOS)
 #define DEFAULT_NETWORK_ON_DEMAND_THUMBNAILS true
 #else
 #define DEFAULT_NETWORK_ON_DEMAND_THUMBNAILS false
@@ -1344,7 +982,11 @@ static const int default_content_favorites_size = 200;
 #define DEFAULT_PLAYLIST_USE_OLD_FORMAT false
 
 /* When creating/updating playlists, compress written data */
+#if defined(__WINRT__) || defined(WINAPI_FAMILY) && WINAPI_FAMILY == WINAPI_FAMILY_PHONE_APP
+#define DEFAULT_PLAYLIST_COMPRESSION true
+#else
 #define DEFAULT_PLAYLIST_COMPRESSION false
+#endif
 
 #ifdef HAVE_MENU
 /* Specify when to display 'core name' inline on playlist entries */
@@ -1369,26 +1011,14 @@ static const int default_content_favorites_size = 200;
 #define DEFAULT_PLAYLIST_SHOW_SUBLABELS true
 #endif
 
-#define DEFAULT_PLAYLIST_SHOW_HISTORY_ICONS PLAYLIST_SHOW_HISTORY_ICONS_DEFAULT
-
-/* Show the indices of playlist entries in
- * a menu-driver-specific fashion */
-#define DEFAULT_PLAYLIST_SHOW_ENTRY_IDX true
-
 #define DEFAULT_PLAYLIST_FUZZY_ARCHIVE_MATCH false
-
-#define DEFAULT_PLAYLIST_PORTABLE_PATHS false
 
 /* Show Menu start-up screen on boot. */
 #define DEFAULT_MENU_SHOW_START_SCREEN true
 
 /* Default scale factor for non-frambuffer-based display
  * drivers and display widgets */
-#if defined(VITA)
-#define DEFAULT_MENU_SCALE_FACTOR 1.5f
-#else
 #define DEFAULT_MENU_SCALE_FACTOR 1.0f
-#endif
 /* Specifies whether display widgets should be scaled
  * automatically using the default menu scale factor */
 #define DEFAULT_MENU_WIDGET_SCALE_AUTO true
@@ -1433,39 +1063,19 @@ static const unsigned turbo_default_btn   = RETRO_DEVICE_ID_JOYPAD_B;
  * gamepads, plug-and-play style. */
 static const bool input_autodetect_enable = true;
 
-/* Enables accelerometer/gyroscope/illuminance
- * sensor input, if supported */
-#if defined(ANDROID)
-/* Hardware sensors cause substantial battery
- * drain on Android... */
-#define DEFAULT_INPUT_SENSORS_ENABLE false
-#else
-#define DEFAULT_INPUT_SENSORS_ENABLE true
-#endif
-
-/* Automatically enable game focus when running or
- * resuming content */
-#define DEFAULT_INPUT_AUTO_GAME_FOCUS AUTO_GAME_FOCUS_OFF
-
 /* Show the input descriptors set by the core instead
  * of the default ones. */
 static const bool input_descriptor_label_show = true;
 
 static const bool input_descriptor_hide_unbound = false;
 
-#if defined(DINGUX)
-static const unsigned input_max_users = 1;
-#else
 static const unsigned input_max_users = 5;
-#endif
 
 static const unsigned input_poll_type_behavior = 2;
 
 static const unsigned input_bind_timeout = 5;
 
 static const unsigned input_bind_hold = 2;
-
-#define DEFAULT_INPUT_HOTKEY_BLOCK_DELAY 5
 
 static const unsigned gfx_thumbnails_default = 3;
 
@@ -1474,14 +1084,6 @@ static const unsigned menu_left_thumbnails_default = 0;
 static const unsigned gfx_thumbnail_upscale_threshold = 0;
 
 #ifdef HAVE_MENU
-#if defined(RS90) || defined(MIYOO)
-/* The RS-90 has a hardware clock that is neither
- * configurable nor persistent, rendering it useless.
- * We therefore hide it in the menu by default. */
-#define DEFAULT_MENU_TIMEDATE_ENABLE false
-#else
-#define DEFAULT_MENU_TIMEDATE_ENABLE true
-#endif
 #define DEFAULT_MENU_TIMEDATE_STYLE          MENU_TIMEDATE_STYLE_DDMM_HM
 #define DEFAULT_MENU_TIMEDATE_DATE_SEPARATOR MENU_TIMEDATE_DATE_SEPARATOR_HYPHEN
 #endif
@@ -1520,7 +1122,7 @@ static const bool ui_companion_toggle = false;
 
 #define DEFAULT_UI_MENUBAR_ENABLE true
 
-#if defined(__QNX__) || defined(_XBOX1) || defined(_XBOX360) || (defined(__MACH__) && defined(IOS)) || defined(ANDROID) || defined(WIIU) || defined(HAVE_NEON) || defined(GEKKO) || defined(__ARM_NEON__) || defined(__PS3__)
+#if defined(__QNX__) || defined(_XBOX1) || defined(_XBOX360) || defined(__CELLOS_LV2__) || (defined(__MACH__) && defined(IOS)) || defined(ANDROID) || defined(WIIU) || defined(HAVE_NEON) || defined(GEKKO) || defined(__ARM_NEON__)
 static const enum resampler_quality audio_resampler_quality_level = RESAMPLER_QUALITY_LOWER;
 #elif defined(PSP) || defined(_3DS) || defined(VITA) || defined(PS2) || defined(DINGUX)
 static const enum resampler_quality audio_resampler_quality_level = RESAMPLER_QUALITY_LOWEST;
@@ -1535,24 +1137,11 @@ static const enum resampler_quality audio_resampler_quality_level = RESAMPLER_QU
 
 static const unsigned midi_volume = 100;
 
-#ifdef HAVE_MIST
-/* Steam */
-#define DEFAULT_STEAM_RICH_PRESENCE_FORMAT STEAM_RICH_PRESENCE_FORMAT_CONTENT_SYSTEM
-#endif
-
 /* Only applies to Android 7.0 (API 24) and up */
 static const bool sustained_performance_mode = false;
 
 static const bool vibrate_on_keypress        = false;
 static const bool enable_device_vibration    = false;
-
-/* Defines the strength of rumble effects
- * on OpenDingux devices */
-#if defined(DINGUX) && defined(HAVE_LIBSHAKE)
-#define DEFAULT_RUMBLE_GAIN 50
-#else
-#define DEFAULT_RUMBLE_GAIN 100
-#endif
 
 #ifdef HAVE_VULKAN
 #define DEFAULT_VULKAN_GPU_INDEX 0
@@ -1595,8 +1184,6 @@ static const bool enable_device_vibration    = false;
 #define DEFAULT_BUILDBOT_SERVER_URL "http://buildbot.libretro.com/nightly/apple/osx/x86_64/latest/"
 #elif defined(__i386__) || defined(__i486__) || defined(__i686__)
 #define DEFAULT_BUILDBOT_SERVER_URL "http://bot.libretro.com/nightly/apple/osx/x86/latest/"
-#elif defined(__aarch64__)
-#define DEFAULT_BUILDBOT_SERVER_URL "http://buildbot.libretro.com/nightly/apple/osx/arm64/latest/"
 #else
 #define DEFAULT_BUILDBOT_SERVER_URL "http://buildbot.libretro.com/nightly/apple/osx/ppc/latest/"
 #endif
@@ -1654,8 +1241,12 @@ static const bool enable_device_vibration    = false;
 #define DEFAULT_BUILDBOT_SERVER_URL "http://buildbot.libretro.com/nightly/nintendo/wiiu/latest/"
 #elif defined(HAVE_LIBNX)
 #define DEFAULT_BUILDBOT_SERVER_URL "http://buildbot.libretro.com/nightly/nintendo/switch/libnx/latest/"
-#elif defined(_3DS)
-#define DEFAULT_BUILDBOT_SERVER_URL envIsHomebrew() ? "http://buildbot.libretro.com/nightly/nintendo/3ds/latest/3dsx/" : "http://buildbot.libretro.com/nightly/nintendo/3ds/latest/cia/"
+#elif defined(__CELLOS_LV2__) && defined(DEX_BUILD)
+#define DEFAULT_BUILDBOT_SERVER_URL "http://libretro.xbins.org/libretro/nightly/playstation/ps3/latest/dex-ps3/"
+#elif defined(__CELLOS_LV2__) && defined(CEX_BUILD)
+#define DEFAULT_BUILDBOT_SERVER_URL "http://libretro.xbins.org/libretro/nightly/playstation/ps3/latest/cex-ps3/"
+#elif defined(__CELLOS_LV2__) && defined(ODE_BUILD)
+#define DEFAULT_BUILDBOT_SERVER_URL "http://libretro.xbins.org/libretro/nightly/playstation/ps3/latest/ode-ps3/"
 #else
 #define DEFAULT_BUILDBOT_SERVER_URL ""
 #endif
@@ -1668,26 +1259,12 @@ static const bool enable_device_vibration    = false;
 
 #define DEFAULT_AI_SERVICE_TARGET_LANG 0
 
-#define DEFAULT_AI_SERVICE_ENABLE false
+#define DEFAULT_AI_SERVICE_ENABLE true
 
 #define DEFAULT_AI_SERVICE_PAUSE false
 
 #define DEFAULT_AI_SERVICE_MODE 1
 
 #define DEFAULT_AI_SERVICE_URL "http://localhost:4404/"
-
-#if defined(HAVE_FFMPEG) || defined(HAVE_MPV)
-#define DEFAULT_BUILTIN_MEDIAPLAYER_ENABLE true
-#else
-#define DEFAULT_BUILTIN_MEDIAPLAYER_ENABLE false
-#endif
-
-#if defined(HAVE_IMAGEVIEWER)
-#define DEFAULT_BUILTIN_IMAGEVIEWER_ENABLE true
-#else
-#define DEFAULT_BUILTIN_IMAGEVIEWER_ENABLE false
-#endif
-
-#define DEFAULT_FILTER_BY_CURRENT_CORE false
 
 #endif

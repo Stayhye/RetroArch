@@ -1,6 +1,6 @@
 BUILD_PRX         = 0
 PSP_LARGE_MEMORY  = 1
-HAVE_KERNEL_PRX   = 1
+HAVE_FILE_LOGGER  = 0
 DEBUG             = 0
 
 TARGET = retroarchpsp_salamander
@@ -8,18 +8,22 @@ TARGET = retroarchpsp_salamander
 ifeq ($(DEBUG), 1)
    OPTIMIZE_LV	:= -O0 -g
 else
-   OPTIMIZE_LV	:= -O3
+   OPTIMIZE_LV	:= -O2
 endif
 
 INCDIR = $(PSPPATH)/include libretro-common/include
-CFLAGS = $(OPTIMIZE_LV) -ffast-math -fsingle-precision-constant
+CFLAGS = $(OPTIMIZE_LV) -G0 -std=gnu99 -ffast-math
 ASFLAGS = $(CFLAGS)
 
 RARCH_DEFINES = -DPSP -DIS_SALAMANDER -DRARCH_CONSOLE
 
 LIBDIR =
 LDFLAGS =
-LIBS = -lstdc++ -lpsppower
+LIBS = -lstdc++ -lm -lpsppower
+
+ifeq ($(HAVE_FILE_LOGGER), 1)
+CFLAGS		+= -DHAVE_FILE_LOGGER
+endif
 
 CFLAGS += $(RARCH_DEFINES)
 
@@ -44,14 +48,10 @@ OBJS = frontend/frontend_salamander.o \
 		 libretro-common/file/config_file.o \
 		 libretro-common/streams/file_stream.o \
 		 libretro-common/vfs/vfs_implementation.o \
-		 libretro-common/hash/lrc_hash.o \
-		 libretro-common/time/rtime.o \
-		 verbosity.o
-
-ifeq ($(HAVE_KERNEL_PRX), 1)
-OBJS += bootstrap/psp1/kernel_functions.o
-CFLAGS += -DHAVE_KERNEL_PRX
-endif
+		 libretro-common/hash/rhash.o \
+		 file_path_str.o \
+		 verbosity.o \
+		 bootstrap/psp1/kernel_functions.o
 
 PSPSDK=$(shell psp-config --pspsdk-path)
 include $(PSPSDK)/lib/build.mak

@@ -18,7 +18,6 @@
 #include <fstream>
 #include <sstream>
 #include <cstring>
-#include <string/stdstring.h>
 
 using namespace peg;
 using namespace std;
@@ -173,7 +172,7 @@ vector<string> derived_types_list =
    "IDXGIFactory1",
    "IDXGIAdapter1",
    "IDXGISurface1",
-   "IDXGISwapChain4",
+   "IDXGISwapChain3",
    "IDXGIOutput",
    "IDXGIDevice",
 };
@@ -199,7 +198,7 @@ string insert_name(const string& fname, const string& name)
       {
          if(name.length() == 2 && name[1] == 'S')
          {
-             if(!strncmp(fname.c_str() + action.length(), "Shader", STRLEN_CONST("Shader")))
+             if(!strncmp(fname.c_str() + action.length(), "Shader", strlen("Shader")))
                return action + name[0] + (fname.c_str() + action.length());
             else
                return action + name[0] + "Shader" + (fname.c_str() + action.length());
@@ -589,8 +588,7 @@ public:
             char* str = line;
             while (*str && ::isspace(*str))
                str++;
-            if (*str && !strncmp(str, "typedef struct ",
-                     STRLEN_CONST("typedef struct ")))
+            if (*str && !strncmp(str, "typedef struct ", strlen("typedef struct ")))
             {
                if(*str && strstr(str, "Vtbl"))
                {

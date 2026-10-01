@@ -8,9 +8,6 @@
 *.dol
 *.map
 *.swp
-*.cache
-*.gcda
-*.gcno
 .tmp
 .tmp.c
 .tmp.cxx
@@ -36,7 +33,6 @@ Release
 ipch
 *.user
 /bootstrap/gx/wii/app_booter/app_booter.bin
-/wii/app_booter/app_booter.bin
 *.zip
 RetroArch-w32/
 RetroArch-w64/
@@ -71,7 +67,6 @@ apple/RetroArch_iOS.xcodeproj/project.xcworkspace/*
 /rsound.h
 .pc
 /media/shaders_glsl/
-/media/shaders_slang/
 /obj-w32/
 .cproject
 .settings
@@ -81,30 +76,10 @@ convert_rumble.awk
 *~
 assets
 info
-content_favorites.lpl
-content_history.lpl
 content_image_history.lpl
-content_music_history.lpl
-content_video_history.lpl
 saves
 screenshots
-autoconfig
-config
-database
-overlays
-playlists
-states
-shaders/shaders_cg
-shaders/shaders_glsl
-shaders/shaders_slang
 
-# Qt Creator
-*.cflags
-*.cxxflags
-*.creator*
-*.config
-*.files
-*.includes
 
 # Wii U
 *.depend
@@ -198,7 +173,8 @@ retroarch_switch.nro
 retroarch_switch.nso
 
 # PS2
-*_irx.c
+ps2/irx/*.c
+ps2/libcdvd/lib/
 
 # Wayland
 gfx/common/wayland/idle-inhibit-unstable-v1.c
@@ -209,21 +185,3 @@ gfx/common/wayland/xdg-decoration-unstable-v1.h
 gfx/common/wayland/xdg-decoration-unstable-v1.c
 gfx/common/wayland/xdg-shell.c
 gfx/common/wayland/xdg-shell.h
-
-# libretro-common samples
-libretro-common/samples/streams/rzip/rzip
-
-# DINGUX
-*.opk
-
-#VITA
-param.sfo
-*.wo
-*.elf
-*.self
-*.vpk
-/.vs
-/deps/SPIRV-Cross/out/build/x64-Debug
-
-# Visual Studio Code
-.vscode/

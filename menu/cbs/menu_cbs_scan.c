@@ -24,7 +24,6 @@
 #include "../menu_driver.h"
 #include "../menu_cbs.h"
 #include "../menu_setting.h"
-#include "../../input/input_remapping.h"
 
 #include "../../input/input_driver.h"
 
@@ -136,6 +135,9 @@ int action_switch_thumbnail(const char *path,
       if (settings->uints.menu_left_thumbnails > 3)
          configuration_set_uint(settings,
                settings->uints.menu_left_thumbnails, 1);
+
+      menu_driver_ctl(RARCH_MENU_CTL_UPDATE_THUMBNAIL_PATH, NULL);
+      menu_driver_ctl(RARCH_MENU_CTL_UPDATE_THUMBNAIL_IMAGE, NULL);
    }
    else
    {
@@ -146,10 +148,10 @@ int action_switch_thumbnail(const char *path,
       if (settings->uints.gfx_thumbnails > 3)
          configuration_set_uint(settings,
                settings->uints.gfx_thumbnails, 1);
-   }
 
-   menu_driver_ctl(RARCH_MENU_CTL_UPDATE_THUMBNAIL_PATH, NULL);
-   menu_driver_ctl(RARCH_MENU_CTL_UPDATE_THUMBNAIL_IMAGE, NULL);
+      menu_driver_ctl(RARCH_MENU_CTL_UPDATE_THUMBNAIL_PATH, NULL);
+      menu_driver_ctl(RARCH_MENU_CTL_UPDATE_THUMBNAIL_IMAGE, NULL);
+   }
 
    return 0;
 }
@@ -164,38 +166,14 @@ static int action_scan_input_desc(const char *path,
 
    menu_entries_get_last_stack(NULL, &menu_label, NULL, NULL, NULL);
 
-   if (string_is_equal(menu_label,
-            msg_hash_to_str(MENU_ENUM_LABEL_DEFERRED_REMAPPINGS_PORT_LIST)))
-   {
-      settings_t *settings = config_get_ptr();
-      inp_desc_user        = atoi(label);
-      /* Skip 'Device Type', 'Analog to Digital Type' and 'Mapped Port' */
-      key                  = (unsigned)(idx - 3);
-      /* Select the reorderer bind */
-      key                  =
-            (key < RARCH_ANALOG_BIND_LIST_END) ? input_config_bind_order[key] : key;
-
-      if (type >= MENU_SETTINGS_INPUT_DESC_BEGIN
-            && type <= MENU_SETTINGS_INPUT_DESC_END)
-         settings->uints.input_remap_ids[inp_desc_user][key] = RARCH_UNMAPPED;
-      else if (type >= MENU_SETTINGS_INPUT_DESC_KBD_BEGIN
-            && type <= MENU_SETTINGS_INPUT_DESC_KBD_END)
-         settings->uints.input_keymapper_ids[inp_desc_user][key] = RETROK_UNKNOWN;
-
-      return 0;
-   }
-   else if (string_is_equal(menu_label,
-            msg_hash_to_str(MENU_ENUM_LABEL_DEFERRED_USER_BINDS_LIST)))
+   if (string_is_equal(menu_label, "deferred_user_binds_list"))
    {
       unsigned char player_no_str = atoi(&label[1]);
 
       inp_desc_user      = (unsigned)(player_no_str - 1);
       /* This hardcoded value may cause issues if any entries are added on
          top of the input binds */
-      key                = (unsigned)(idx - 6);
-      /* Select the reorderer bind */
-      key                =
-            (key < RARCH_ANALOG_BIND_LIST_END) ? input_config_bind_order[key] : key;
+      key                = (unsigned)(idx - 7);
    }
    else
       key = input_config_translate_str_to_bind_id(label);
@@ -204,9 +182,6 @@ static int action_scan_input_desc(const char *path,
 
    if (target)
    {
-      /* Clear mapping bit */
-      input_keyboard_mapping_bits(0, target->key);
-
       target->key     = RETROK_UNKNOWN;
       target->joykey  = NO_BTN;
       target->joyaxis = AXIS_NONE;
@@ -239,17 +214,6 @@ static int menu_cbs_init_bind_scan_compare_type(menu_file_list_cbs_t *cbs,
          break;
    }
 
-   if (type >= MENU_SETTINGS_INPUT_DESC_BEGIN
-         && type <= MENU_SETTINGS_INPUT_DESC_END)
-   {
-      BIND_ACTION_SCAN(cbs, action_scan_input_desc);
-   }
-   else if (type >= MENU_SETTINGS_INPUT_DESC_KBD_BEGIN
-         && type <= MENU_SETTINGS_INPUT_DESC_KBD_END)
-   {
-      BIND_ACTION_SCAN(cbs, action_scan_input_desc);
-   }
-
    return -1;
 }
 
@@ -263,7 +227,7 @@ int menu_cbs_init_bind_scan(menu_file_list_cbs_t *cbs,
 
    if (cbs->setting)
    {
-      if (cbs->setting->type == ST_BIND)
+      if (setting_get_type(cbs->setting) == ST_BIND)
       {
          BIND_ACTION_SCAN(cbs, action_scan_input_desc);
          return 0;

@@ -21,19 +21,20 @@
 
 #include "drm_common.h"
 
-/* TODO/FIXME - globals */
-drmEventContext g_drm_evctx;
 struct pollfd g_drm_fds;
+
 uint32_t g_connector_id               = 0;
 int g_drm_fd                          = 0;
 uint32_t g_crtc_id                    = 0;
+
 drmModeCrtc *g_orig_crtc              = NULL;
+
+static drmModeRes *g_drm_resources    = NULL;
 drmModeConnector *g_drm_connector     = NULL;
+static drmModeEncoder *g_drm_encoder  = NULL;
 drmModeModeInfo *g_drm_mode           = NULL;
 
-/* TODO/FIXME - static globals */
-static drmModeRes *g_drm_resources    = NULL;
-static drmModeEncoder *g_drm_encoder  = NULL;
+drmEventContext g_drm_evctx;
 
 /* Restore the original CRTC. */
 void drm_restore_crtc(void)
@@ -121,12 +122,6 @@ bool drm_get_connector(int fd, unsigned monitor_index)
    return true;
 }
 
-float drm_calc_refresh_rate(drmModeModeInfo *mode)
-{
-   float refresh_rate = (mode->clock * 1000.0f) / (mode->htotal * mode->vtotal);
-   return refresh_rate;
-}
-
 bool drm_get_encoder(int fd)
 {
    unsigned i;
@@ -153,12 +148,12 @@ bool drm_get_encoder(int fd)
 
    for (i = 0; (int)i < g_drm_connector->count_modes; i++)
    {
-      RARCH_LOG("[DRM]: Mode %d: (%s) %d x %d, %f Hz\n",
+      RARCH_LOG("[DRM]: Mode %d: (%s) %d x %d, %u Hz\n",
             i,
             g_drm_connector->modes[i].name,
             g_drm_connector->modes[i].hdisplay,
             g_drm_connector->modes[i].vdisplay,
-            drm_calc_refresh_rate(&g_drm_connector->modes[i]));
+            g_drm_connector->modes[i].vrefresh);
    }
 
    return true;
@@ -179,7 +174,7 @@ float drm_get_refresh_rate(void *data)
 
    if (g_drm_mode)
    {
-      refresh_rate = drm_calc_refresh_rate(g_drm_mode);
+      refresh_rate = g_drm_mode->clock * 1000.0f / g_drm_mode->htotal / g_drm_mode->vtotal;
    }
 
    return refresh_rate;

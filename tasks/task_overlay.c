@@ -23,12 +23,11 @@
 #include <lists/string_list.h>
 #include <streams/file_stream.h>
 #include <string/stdstring.h>
-#include <lrc_hash.h>
+#include <rhash.h>
 
 #include "tasks_internal.h"
 
 #include "../input/input_overlay.h"
-#include "../input/input_remapping.h"
 #include "../retroarch.h"
 #include "../verbosity.h"
 
@@ -36,26 +35,24 @@ typedef struct overlay_loader overlay_loader_t;
 
 struct overlay_loader
 {
-   config_file_t *conf;
-   char *overlay_path;
-   struct overlay *overlays;
-   struct overlay *active;
+   bool driver_rgba_support;
+   bool overlay_enable;
+   bool overlay_hide_in_menu;
+
+   enum overlay_status state;
+   enum overlay_image_transfer_status loading_status;
 
    size_t resolve_pos;
    unsigned size;
    unsigned pos;
    unsigned pos_increment;
-
    float overlay_opacity;
-   overlay_layout_desc_t layout_desc;
+   float overlay_scale;
 
-   enum overlay_status state;
-   enum overlay_image_transfer_status loading_status;
-
-   bool driver_rgba_support;
-   bool overlay_enable;
-   bool overlay_hide_in_menu;
-   bool overlay_hide_when_gamepad_connected;
+   config_file_t *conf;
+   char *overlay_path;
+   struct overlay *overlays;
+   struct overlay *active;
 };
 
 static void task_overlay_image_done(struct overlay *overlay)
@@ -72,7 +69,7 @@ static void task_overlay_load_desc_image(
       struct overlay *input_overlay,
       unsigned ol_idx, unsigned desc_idx)
 {
-   char overlay_desc_image_key[32];
+   char overlay_desc_image_key[64];
    char image_path[PATH_MAX_LENGTH];
    config_file_t              *conf = loader->conf;
 
@@ -115,25 +112,23 @@ static bool task_overlay_load_desc(
       bool normalized, float alpha_mod, float range_mod)
 {
    float width_mod, height_mod;
-   char conf_key[32];
-   char overlay_desc_key[32];
-   char overlay_desc_normalized_key[32];
+   char overlay_desc_key[64];
+   char conf_key[64];
+   char overlay_desc_normalized_key[64];
    char overlay[256];
    float tmp_float                      = 0.0f;
    bool tmp_bool                        = false;
    bool ret                             = true;
    bool by_pixel                        = false;
    char *key                            = NULL;
-   struct string_list list              = {0};
+   struct string_list *list             = NULL;
    const char *x                        = NULL;
    const char *y                        = NULL;
    const char *box                      = NULL;
    config_file_t *conf                  = loader->conf;
 
-   overlay_desc_key[0]                  = 
-      conf_key[0]                       =
-      overlay_desc_normalized_key[0]    = 
-      overlay[0]                        = '\0';
+   overlay_desc_key[0] = conf_key[0] =
+      overlay_desc_normalized_key[0] = overlay[0] = '\0';
 
    snprintf(overlay_desc_key, sizeof(overlay_desc_key),
          "overlay%u_desc%u", ol_idx, desc_idx);
@@ -159,25 +154,26 @@ static bool task_overlay_load_desc(
       goto end;
    }
 
-   string_list_initialize(&list);
-   if (!string_split_noalloc(&list, overlay, ", "))
+   list = string_split(overlay, ", ");
+
+   if (!list)
    {
       RARCH_ERR("[Overlay]: Failed to split overlay desc.\n");
       ret = false;
       goto end;
    }
 
-   if (list.size < 6)
+   if (list->size < 6)
    {
       RARCH_ERR("[Overlay]: Overlay desc is invalid. Requires at least 6 tokens.\n");
       ret = false;
       goto end;
    }
 
-   key            = list.elems[0].data;
-   x              = list.elems[1].data;
-   y              = list.elems[2].data;
-   box            = list.elems[3].data;
+   key            = list->elems[0].data;
+   x              = list->elems[1].data;
+   y              = list->elems[2].data;
+   box            = list->elems[3].data;
 
    desc->retro_key_idx = 0;
    BIT256_CLEAR_ALL(desc->button_mask);
@@ -224,10 +220,8 @@ static bool task_overlay_load_desc(
       height_mod /= height;
    }
 
-   desc->x       = (float)strtod(x, NULL) * width_mod;
-   desc->y       = (float)strtod(y, NULL) * height_mod;
-   desc->x_shift = desc->x;
-   desc->y_shift = desc->y;
+   desc->x = (float)strtod(x, NULL) * width_mod;
+   desc->y = (float)strtod(y, NULL) * height_mod;
 
    if (string_is_equal(box, "radial"))
       desc->hitbox = OVERLAY_HITBOX_RADIAL;
@@ -272,8 +266,8 @@ static bool task_overlay_load_desc(
          break;
    }
 
-   desc->range_x = (float)strtod(list.elems[4].data, NULL) * width_mod;
-   desc->range_y = (float)strtod(list.elems[5].data, NULL) * height_mod;
+   desc->range_x = (float)strtod(list->elems[4].data, NULL) * width_mod;
+   desc->range_y = (float)strtod(list->elems[5].data, NULL) * height_mod;
 
    desc->mod_x   = desc->x - desc->range_x;
    desc->mod_w   = 2.0f * desc->range_x;
@@ -307,7 +301,8 @@ static bool task_overlay_load_desc(
    input_overlay->pos ++;
 
 end:
-   string_list_deinitialize(&list);
+   if (list)
+      string_list_free(list);
    return ret;
 }
 
@@ -485,9 +480,9 @@ static void task_overlay_deferred_load(retro_task_t *task)
 
    for (i = 0; i < loader->pos_increment; i++, loader->pos++)
    {
-      char conf_key[32];
-      char overlay_full_screen_key[32];
       char tmp_str[PATH_MAX_LENGTH];
+      char conf_key[64];
+      char overlay_full_screen_key[64];
       float tmp_float                   = 0.0;
       bool tmp_bool                     = false;
       struct texture_image *texture_img = NULL;
@@ -603,26 +598,6 @@ static void task_overlay_deferred_load(retro_task_t *task)
       config_get_array(conf, overlay->config.names.key,
             overlay->name, sizeof(overlay->name));
 
-      /* Attempt to determine native aspect ratio */
-      snprintf(conf_key, sizeof(conf_key),
-            "overlay%u_aspect_ratio", loader->pos);
-      overlay->aspect_ratio = 0.0f;
-      if (config_get_float(conf, conf_key, &tmp_float))
-         overlay->aspect_ratio = tmp_float;
-
-      if (overlay->aspect_ratio <= 0.0f)
-      {
-         /* No ratio has been set - assume 16:9
-          * (or 16:9 rotated) */
-
-         /* Check whether overlay name indicates a
-          * portrait layout */
-         if (strstr(overlay->name, "portrait"))
-            overlay->aspect_ratio = 0.5625f;    /* 1 / (16/9) */
-         else
-            overlay->aspect_ratio = 1.7777778f; /* 16/9 */
-      }
-
       /* By default, we stretch the overlay out in full. */
       overlay->x = overlay->y = 0.0f;
       overlay->w = overlay->h = 1.0f;
@@ -633,25 +608,21 @@ static void task_overlay_deferred_load(retro_task_t *task)
       if (config_get_array(conf, overlay->config.rect.key,
                overlay->config.rect.array, sizeof(overlay->config.rect.array)))
       {
-         struct string_list  list = {0};
+         struct string_list *list = string_split(overlay->config.rect.array, ", ");
 
-         string_list_initialize(&list);
-
-         if (     !string_split_noalloc(
-                  &list, overlay->config.rect.array, ", ")  
-               || list.size < 4)
+         if (!list || list->size < 4)
          {
             RARCH_ERR("[Overlay]: Failed to split rect \"%s\" into at least four tokens.\n",
                   overlay->config.rect.array);
-            string_list_deinitialize(&list);
+            string_list_free(list);
             goto error;
          }
 
-         overlay->x = (float)strtod(list.elems[0].data, NULL);
-         overlay->y = (float)strtod(list.elems[1].data, NULL);
-         overlay->w = (float)strtod(list.elems[2].data, NULL);
-         overlay->h = (float)strtod(list.elems[3].data, NULL);
-         string_list_deinitialize(&list);
+         overlay->x = (float)strtod(list->elems[0].data, NULL);
+         overlay->y = (float)strtod(list->elems[1].data, NULL);
+         overlay->w = (float)strtod(list->elems[2].data, NULL);
+         overlay->h = (float)strtod(list->elems[3].data, NULL);
+         string_list_free(list);
       }
 
       /* Assume for now that scaling center is in the middle.
@@ -659,20 +630,6 @@ static void task_overlay_deferred_load(retro_task_t *task)
       overlay->block_scale = false;
       overlay->center_x    = overlay->x + 0.5f * overlay->w;
       overlay->center_y    = overlay->y + 0.5f * overlay->h;
-
-      /* Check whether x/y separation are force disabled
-       * for this overlay */
-      snprintf(conf_key, sizeof(conf_key),
-            "overlay%u_block_x_separation", loader->pos);
-      overlay->block_x_separation = false;
-      if (config_get_bool(conf, conf_key, &tmp_bool))
-         overlay->block_x_separation = tmp_bool;
-
-      snprintf(conf_key, sizeof(conf_key),
-            "overlay%u_block_y_separation", loader->pos);
-      overlay->block_y_separation = false;
-      if (config_get_bool(conf, conf_key, &tmp_bool))
-         overlay->block_y_separation = tmp_bool;
    }
 
    return;
@@ -742,16 +699,13 @@ static void task_overlay_handler(retro_task_t *task)
       overlay_task_data_t *data = (overlay_task_data_t*)
          calloc(1, sizeof(*data));
 
-      data->overlays                    = loader->overlays;
-      data->active                      = loader->active;
-      data->size                        = loader->size;
-      data->overlay_opacity             = loader->overlay_opacity;
-      data->overlay_enable              = loader->overlay_enable;
-      data->hide_in_menu                = loader->overlay_hide_in_menu;
-      data->hide_when_gamepad_connected = loader->overlay_hide_when_gamepad_connected;
-
-      memcpy(&data->layout_desc, &loader->layout_desc,
-            sizeof(overlay_layout_desc_t));
+      data->overlays        = loader->overlays;
+      data->size            = loader->size;
+      data->active          = loader->active;
+      data->hide_in_menu    = loader->overlay_hide_in_menu;
+      data->overlay_enable  = loader->overlay_enable;
+      data->overlay_opacity = loader->overlay_opacity;
+      data->overlay_scale   = loader->overlay_scale;
 
       task_set_data(task, data);
    }
@@ -778,18 +732,17 @@ bool task_push_overlay_load_default(
       retro_task_callback_t cb,
       const char *overlay_path,
       bool overlay_hide_in_menu,
-      bool overlay_hide_when_gamepad_connected,
       bool input_overlay_enable,
       float input_overlay_opacity,
-      overlay_layout_desc_t *layout_desc,
+      float input_overlay_scale,
       void *user_data)
 {
    task_finder_data_t find_data;
    retro_task_t *t          = NULL;
    config_file_t *conf      = NULL;
    overlay_loader_t *loader = NULL;
-
-   if (string_is_empty(overlay_path) || !layout_desc)
+   
+   if (string_is_empty(overlay_path))
       return false;
 
    /* Prevent overlay from being loaded if it already is being loaded */
@@ -828,21 +781,17 @@ bool task_push_overlay_load_default(
       return false;
    }
 
-   loader->overlay_hide_in_menu                = overlay_hide_in_menu;
-   loader->overlay_hide_when_gamepad_connected = overlay_hide_when_gamepad_connected;
-   loader->overlay_enable                      = input_overlay_enable;
-   loader->overlay_opacity                     = input_overlay_opacity;
-   loader->conf                                = conf;
-   loader->state                               = OVERLAY_STATUS_DEFERRED_LOAD;
-   loader->pos_increment                       = (loader->size / 4) ? (loader->size / 4) : 4;
+   loader->overlay_hide_in_menu = overlay_hide_in_menu;
+   loader->overlay_enable       = input_overlay_enable;
+   loader->overlay_opacity      = input_overlay_opacity;
+   loader->overlay_scale        = input_overlay_scale;
+   loader->conf                 = conf;
+   loader->state                = OVERLAY_STATUS_DEFERRED_LOAD;
+   loader->pos_increment        = (loader->size / 4) ? (loader->size / 4) : 4;
 #ifdef RARCH_INTERNAL
-   loader->driver_rgba_support                 = video_driver_supports_rgba();
+   loader->driver_rgba_support  = video_driver_supports_rgba();
 #endif
-
-   memcpy(&loader->layout_desc, layout_desc,
-         sizeof(overlay_layout_desc_t));
-
-   t                                           = task_init();
+   t                            = task_init();
 
    if (!t)
    {

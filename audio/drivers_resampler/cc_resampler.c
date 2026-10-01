@@ -49,9 +49,10 @@
 
 typedef struct rarch_CC_resampler
 {
-   void (*process)(void *re, struct resampler_data *data);
    audio_frame_float_t buffer[4];
+
    float distance;
+   void (*process)(void *re, struct resampler_data *data);
 } rarch_CC_resampler_t;
 
 #ifdef _MIPS_ARCH_ALLEGREX
@@ -344,7 +345,7 @@ static void resampler_CC_upsample(void *re_, struct resampler_data *data)
    data->output_frames = outp - (audio_frame_float_t*)data->data_out;
 }
 
-#elif defined(HAVE_ARM_NEON_ASM_OPTIMIZATIONS)
+#elif defined (__ARM_NEON__) && !defined(DONT_WANT_ARM_OPTIMIZATIONS)
 
 #define CC_RESAMPLER_IDENT "NEON"
 
@@ -356,13 +357,13 @@ size_t resampler_CC_upsample_neon  (float *outp, const float *inp,
 static void resampler_CC_downsample(void *re_, struct resampler_data *data)
 {
    data->output_frames = resampler_CC_downsample_neon(
-         data->data_out, data->data_in, (struct rarch_CC_resampler*)re_, data->input_frames, data->ratio);
+         data->data_out, data->data_in, re_, data->input_frames, data->ratio);
 }
 
 static void resampler_CC_upsample(void *re_, struct resampler_data *data)
 {
    data->output_frames = resampler_CC_upsample_neon(
-         data->data_out, data->data_in, (struct rarch_CC_resampler*)re_, data->input_frames, data->ratio);
+         data->data_out, data->data_in, re_, data->input_frames, data->ratio);
 }
 
 #else

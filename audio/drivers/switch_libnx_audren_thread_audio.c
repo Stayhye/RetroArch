@@ -21,8 +21,7 @@
 #include <switch.h>
 
 #include <queues/fifo_queue.h>
-
-#include "../audio_driver.h"
+#include "../../retroarch.h"
 #include "../../verbosity.h"
 #include "../../tasks/tasks_internal.h"
 
@@ -97,7 +96,7 @@ static void thread_job(void* data)
       if (current_wavebuf)
       {
          mutexLock(&aud->fifo_lock);
-         available = aud->paused ? 0 : FIFO_READ_AVAIL(aud->fifo);
+         available = aud->paused ? 0 : fifo_read_avail(aud->fifo);
          written_tmp = MIN(available, aud->buffer_size - current_size);
          dstbuf = current_pool_ptr + current_size;
          if (written_tmp > 0)
@@ -145,7 +144,7 @@ static void *libnx_audren_thread_audio_init(const char *device, unsigned rate, u
    int mpid;
    size_t mempool_size;
    unsigned real_latency;
-   int32_t thread_priority;
+   uint32_t thread_priority;
 
    RARCH_LOG("[Audio]: Using libnx_audren_thread driver\n");
 
@@ -296,7 +295,7 @@ static ssize_t libnx_audren_thread_audio_write(void *data,
    if (aud->nonblock)
    {
       mutexLock(&aud->fifo_lock);
-      available = FIFO_WRITE_AVAIL(aud->fifo);
+      available = fifo_write_avail(aud->fifo);
       written = MIN(available, size);
       if (written > 0)
          fifo_write(aud->fifo, buf, written);
@@ -308,7 +307,7 @@ static ssize_t libnx_audren_thread_audio_write(void *data,
       while (written < size && aud->running)
       {
          mutexLock(&aud->fifo_lock);
-         available = FIFO_WRITE_AVAIL(aud->fifo);
+         available = fifo_write_avail(aud->fifo);
          if (available)
          {
             written_tmp = MIN(size - written, available);
@@ -408,7 +407,7 @@ static size_t libnx_audren_thread_audio_write_avail(void *data)
       return 0;
 
    mutexLock(&aud->fifo_lock);
-   available = FIFO_WRITE_AVAIL(aud->fifo);
+   available = fifo_write_avail(aud->fifo);
    mutexUnlock(&aud->fifo_lock);
 
    return available;

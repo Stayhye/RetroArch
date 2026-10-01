@@ -18,7 +18,7 @@
 #include <retro_miscellaneous.h>
 
 #ifdef HAVE_CONFIG_H
-#include "../../config.h"
+#include "config.h"
 #endif
 
 #include "../gfx_display.h"
@@ -26,6 +26,21 @@
 #include "../../retroarch.h"
 #include "../font_driver.h"
 #include "../common/d3d12_common.h"
+
+static const float* gfx_display_d3d12_get_default_vertices(void)
+{
+   return NULL;
+}
+
+static const float* gfx_display_d3d12_get_default_tex_coords(void)
+{
+   return NULL;
+}
+
+static void* gfx_display_d3d12_get_default_mvp(void *data)
+{
+   return NULL;
+}
 
 static void gfx_display_d3d12_blend_begin(void *data)
 {
@@ -43,16 +58,18 @@ static void gfx_display_d3d12_blend_end(void *data)
    D3D12SetPipelineState(d3d12->queue.cmd, d3d12->sprites.pipe);
 }
 
+static void gfx_display_d3d12_viewport(gfx_display_ctx_draw_t *draw, void *data) { }
+
 static void gfx_display_d3d12_draw(gfx_display_ctx_draw_t *draw,
       void *data, unsigned video_width, unsigned video_height)
 {
-   int vertex_count     = 1;
+   int vertex_count;
    d3d12_video_t *d3d12 = (d3d12_video_t*)data;
 
    if (!d3d12 || !draw || !draw->texture)
       return;
 
-   switch (draw->pipeline_id)
+   switch (draw->pipeline.id)
    {
       case VIDEO_SHADER_MENU:
       case VIDEO_SHADER_MENU_2:
@@ -60,7 +77,7 @@ static void gfx_display_d3d12_draw(gfx_display_ctx_draw_t *draw,
       case VIDEO_SHADER_MENU_4:
       case VIDEO_SHADER_MENU_5:
       case VIDEO_SHADER_MENU_6:
-         D3D12SetPipelineState(d3d12->queue.cmd, d3d12->pipes[draw->pipeline_id]);
+         D3D12SetPipelineState(d3d12->queue.cmd, d3d12->pipes[draw->pipeline.id]);
          D3D12DrawInstanced(d3d12->queue.cmd, draw->coords->vertices, 1, 0, 0);
          D3D12SetPipelineState(d3d12->queue.cmd, d3d12->sprites.pipe);
          D3D12IASetPrimitiveTopology(d3d12->queue.cmd, D3D_PRIMITIVE_TOPOLOGY_POINTLIST);
@@ -70,6 +87,8 @@ static void gfx_display_d3d12_draw(gfx_display_ctx_draw_t *draw,
 
    if (draw->coords->vertex && draw->coords->tex_coord && draw->coords->color)
       vertex_count = draw->coords->vertices;
+   else
+      vertex_count = 1;
 
    if (!d3d12->sprites.enabled || vertex_count > d3d12->sprites.capacity)
       return;
@@ -79,9 +98,7 @@ static void gfx_display_d3d12_draw(gfx_display_ctx_draw_t *draw,
 
    {
       d3d12_sprite_t* sprite;
-      D3D12_RANGE range;
-      range.Begin           = 0;
-      range.End             = 0;
+      D3D12_RANGE     range = { 0, 0 };
       D3D12Map(d3d12->sprites.vbo, 0, &range, (void**)&sprite);
       sprite += d3d12->sprites.offset;
 
@@ -181,7 +198,6 @@ static void gfx_display_d3d12_draw(gfx_display_ctx_draw_t *draw,
 }
 
 static void gfx_display_d3d12_draw_pipeline(gfx_display_ctx_draw_t *draw,
-      gfx_display_t *p_disp,
       void *data, unsigned video_width, unsigned video_height)
 {
    d3d12_video_t *d3d12 = (d3d12_video_t*)data;
@@ -189,17 +205,17 @@ static void gfx_display_d3d12_draw_pipeline(gfx_display_ctx_draw_t *draw,
    if (!d3d12 || !draw)
       return;
 
-   switch (draw->pipeline_id)
+   switch (draw->pipeline.id)
    {
       case VIDEO_SHADER_MENU:
       case VIDEO_SHADER_MENU_2:
       {
-         video_coord_array_t* ca   = &p_disp->dispca;
+         video_coord_array_t* ca = gfx_display_get_coords_array();
 
          if (!d3d12->menu_pipeline_vbo)
          {
-            D3D12_RANGE read_range;
             void*       vertex_data_begin;
+            D3D12_RANGE read_range = { 0, 0 };
 
             d3d12->menu_pipeline_vbo_view.StrideInBytes = 2 * sizeof(float);
             d3d12->menu_pipeline_vbo_view.SizeInBytes =
@@ -208,8 +224,6 @@ static void gfx_display_d3d12_draw_pipeline(gfx_display_ctx_draw_t *draw,
                   d3d12->device, d3d12->menu_pipeline_vbo_view.SizeInBytes,
                   &d3d12->menu_pipeline_vbo);
 
-            read_range.Begin           = 0;
-            read_range.End             = 0;
             D3D12Map(d3d12->menu_pipeline_vbo, 0, &read_range, &vertex_data_begin);
             memcpy(vertex_data_begin, ca->coords.vertex, d3d12->menu_pipeline_vbo_view.SizeInBytes);
             D3D12Unmap(d3d12->menu_pipeline_vbo, 0, NULL);
@@ -234,17 +248,29 @@ static void gfx_display_d3d12_draw_pipeline(gfx_display_ctx_draw_t *draw,
    d3d12->ubo_values.time += 0.01f;
 
    {
-      D3D12_RANGE read_range;
+      D3D12_RANGE      read_range = { 0, 0 };
       d3d12_uniform_t* mapped_ubo;
-
-      read_range.Begin     = 0;
-      read_range.End       = 0;
       D3D12Map(d3d12->ubo, 0, &read_range, (void**)&mapped_ubo);
       *mapped_ubo = d3d12->ubo_values;
       D3D12Unmap(d3d12->ubo, 0, NULL);
    }
    D3D12SetGraphicsRootConstantBufferView(
          d3d12->queue.cmd, ROOT_ID_UBO, d3d12->ubo_view.BufferLocation);
+}
+
+static void gfx_display_d3d12_restore_clear_color(void) {}
+
+static void gfx_display_d3d12_clear_color(
+      gfx_display_ctx_clearcolor_t* clearcolor, void *data)
+{
+   d3d12_video_t *d3d12 = (d3d12_video_t*)data;
+
+   if (!d3d12 || !clearcolor)
+      return;
+
+   D3D12ClearRenderTargetView(
+         d3d12->queue.cmd, d3d12->chain.desc_handles[d3d12->chain.frame_index], (float*)clearcolor,
+         0, NULL);
 }
 
 static bool gfx_display_d3d12_font_init_first(
@@ -302,11 +328,14 @@ void gfx_display_d3d12_scissor_end(void *data,
 gfx_display_ctx_driver_t gfx_display_ctx_d3d12 = {
    gfx_display_d3d12_draw,
    gfx_display_d3d12_draw_pipeline,
+   gfx_display_d3d12_viewport,
    gfx_display_d3d12_blend_begin,
    gfx_display_d3d12_blend_end,
-   NULL,                                     /* get_default_mvp        */
-   NULL,                                     /* get_default_vertices   */
-   NULL,                                     /* get_default_tex_coords */
+   gfx_display_d3d12_restore_clear_color,
+   gfx_display_d3d12_clear_color,
+   gfx_display_d3d12_get_default_mvp,
+   gfx_display_d3d12_get_default_vertices,
+   gfx_display_d3d12_get_default_tex_coords,
    gfx_display_d3d12_font_init_first,
    GFX_VIDEO_DRIVER_DIRECT3D12,
    "d3d12",

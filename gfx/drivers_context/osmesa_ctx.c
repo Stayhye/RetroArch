@@ -31,6 +31,7 @@
 
 #include "../../configuration.h"
 #include "../../verbosity.h"
+#include "../common/gl_common.h"
 
 #if (OSMESA_MAJOR_VERSION * 1000 + OSMESA_MINOR_VERSION) >= 11002
 #define HAVE_OSMESA_CREATE_CONTEXT_ATTRIBS 1
@@ -40,14 +41,14 @@
 #define HAVE_OSMESA_CREATE_CONTEXT_EXT 1
 #endif
 
-#define OSMESA_DEFAULT_FORMAT OSMESA_RGBA
-#define OSMESA_BPP            4
-#define OSMESA_FIFO_PATH      "/tmp/osmesa-retroarch.sock"
-
-/* TODO/FIXME - static globals */
 static bool           g_osmesa_profile = OSMESA_COMPAT_PROFILE;
 static int            g_osmesa_major   = 2;
 static int            g_osmesa_minor   = 1;
+static const int      g_osmesa_format  = OSMESA_RGBA;
+static const int      g_osmesa_bpp     = 4;
+static const char    *g_osmesa_fifo    = "/tmp/osmesa-retroarch.sock";
+
+static enum gfx_ctx_api osmesa_api     = GFX_CTX_NONE;
 
 typedef struct gfx_osmesa_ctx_data
 {
@@ -76,12 +77,11 @@ static void osmesa_fifo_open(gfx_ctx_osmesa_data_t *osmesa)
 
    saun.sun_family = AF_UNIX;
 
-   strlcpy(saun.sun_path, OSMESA_FIFO_PATH, sizeof(saun.sun_path));
+   strlcpy(saun.sun_path, g_osmesa_fifo, sizeof(saun.sun_path));
 
-   unlink(OSMESA_FIFO_PATH);
+   unlink(g_osmesa_fifo);
 
-   if (bind(osmesa->socket,
-            &saun, sizeof(saun.sun_family) + sizeof(saun.sun_path)) < 0)
+   if (bind(osmesa->socket, &saun, sizeof(saun.sun_family) + sizeof(saun.sun_path)) < 0)
    {
       perror("[osmesa] bind()");
       close(osmesa->socket);
@@ -95,10 +95,8 @@ static void osmesa_fifo_open(gfx_ctx_osmesa_data_t *osmesa)
       return;
    }
 
-   RARCH_ERR("[osmesa] Frame size is %ix%ix%i\n",
-         osmesa->width, osmesa->height, osmesa->pixsize);
-   RARCH_ERR("[osmesa] Please connect to unix:%s\n",
-         OSMESA_FIFO_PATH);
+   RARCH_ERR("[osmesa] Frame size is %ix%ix%i\n", osmesa->width, osmesa->height, osmesa->pixsize);
+   RARCH_ERR("[osmesa] Please connect to unix:%s\n", g_osmesa_fifo);
 }
 
 static void osmesa_fifo_accept(gfx_ctx_osmesa_data_t *osmesa)
@@ -148,7 +146,7 @@ static void *osmesa_ctx_init(void *video_driver)
 {
 #ifdef HAVE_OSMESA_CREATE_CONTEXT_ATTRIBS
    const int attribs[] = {
-      OSMESA_FORMAT, OSMESA_DEFAULT_FORMAT,
+      OSMESA_FORMAT, g_osmesa_format,
       OSMESA_DEPTH_BITS, 0,
       OSMESA_STENCIL_BITS, 0,
       OSMESA_ACCUM_BITS, 0,
@@ -170,7 +168,7 @@ static void *osmesa_ctx_init(void *video_driver)
 
 #ifdef HAVE_OSMESA_CREATE_CONTEXT_EXT
    if (!osmesa->ctx)
-      osmesa->ctx = OSMesaCreateContextExt(OSMESA_DEFAULT_FORMAT, 0, 0, 0, NULL);
+      osmesa->ctx = OSMesaCreateContextExt(g_osmesa_format, 0, 0, 0, NULL);
 #endif
 
    if (!osmesa->ctx)
@@ -178,13 +176,13 @@ static void *osmesa_ctx_init(void *video_driver)
 #if defined(HAVE_OSMESA_CREATE_CONTEXT_ATTRIBS) || defined(HAVE_OSMESA_CREATE_CONTEXT_EXT)
       RARCH_WARN("[osmesa]: Falling back to standard context creation.\n");
 #endif
-      osmesa->ctx = OSMesaCreateContext(OSMESA_DEFAULT_FORMAT, NULL);
+      osmesa->ctx = OSMesaCreateContext(g_osmesa_format, NULL);
    }
 
    if (!osmesa->ctx)
       goto error;
 
-   osmesa->pixsize = OSMESA_BPP;
+   osmesa->pixsize = g_osmesa_bpp;
 
    return osmesa;
 
@@ -215,7 +213,7 @@ static void osmesa_ctx_destroy(void *data)
 
 static enum gfx_ctx_api osmesa_ctx_get_api(void *data)
 {
-   return GFX_CTX_OPENGL_API;
+   return osmesa_api;
 }
 
 static bool osmesa_ctx_bind_api(void *data,
@@ -225,15 +223,18 @@ static bool osmesa_ctx_bind_api(void *data,
    if (api != GFX_CTX_OPENGL_API)
       return false;
 
-   /* Use version 2.1 by default */
-   g_osmesa_major    = 2;
-   g_osmesa_minor    = 1;
-   g_osmesa_profile  = OSMESA_COMPAT_PROFILE;
+   osmesa_api       = api;
+   g_osmesa_profile = OSMESA_COMPAT_PROFILE;
 
    if (major)
    {
       g_osmesa_major = major;
       g_osmesa_minor = minor;
+   }
+   else
+   {
+      g_osmesa_major = 2;
+      g_osmesa_minor = 1;
    }
 
    return true;
@@ -276,7 +277,27 @@ static bool osmesa_ctx_set_video_mode(void *data,
    osmesa->screen = screen;
 
    if (!osmesa->socket)
+   {
+#if 0
+      unlink(g_osmesa_fifo);
+      if (mkfifo(g_osmesa_fifo, 0666) == 0)
+      {
+         RARCH_WARN("[osmesa]: Please connect the sink to the fifo...\n");
+         RARCH_WARN("[osmesa]: Picture size is %ux%u\n", width, height);
+         osmesa->socket = open(g_osmesa_fifo, O_WRONLY);
+
+         if (osmesa->socket)
+            RARCH_WARN("[osmesa]: Initialized fifo at %s\n", g_osmesa_fifo);
+      }
+
+      if (!osmesa->socket || osmesa->socket < 0)
+      {
+         unlink(g_osmesa_fifo);
+         RARCH_WARN("[osmesa]: Failed to initialize fifo: %s\n", strerror(errno));
+      }
+#endif
       osmesa_fifo_open(osmesa);
+   }
 
    return true;
 }
@@ -305,9 +326,18 @@ static void osmesa_ctx_check_window(void *data, bool *quit,
    *quit               = false;
 }
 
-static bool osmesa_ctx_has_focus(void *data) { return true; }
+static bool osmesa_ctx_has_focus(void *data)
+{
+   (void)data;
+   return true;
+}
 
-static bool osmesa_ctx_suppress_screensaver(void *data, bool enable) { return false; }
+static bool osmesa_ctx_suppress_screensaver(void *data, bool enable)
+{
+   (void)data;
+   (void)enable;
+   return false;
+}
 
 static void osmesa_ctx_swap_buffers(void *data)
 {
@@ -333,6 +363,12 @@ static gfx_ctx_proc_t osmesa_ctx_get_proc_address(const char *name)
    return (gfx_ctx_proc_t)OSMesaGetProcAddress(name);
 }
 
+static void osmesa_ctx_show_mouse(void *data, bool state)
+{
+   (void)data;
+   (void)state;
+}
+
 static uint32_t osmesa_ctx_get_flags(void *data)
 {
    uint32_t flags = 0;
@@ -342,8 +378,10 @@ static uint32_t osmesa_ctx_get_flags(void *data)
    return flags;
 }
 
-static void osmesa_ctx_show_mouse(void *data, bool state) { }
-static void osmesa_ctx_set_flags(void *data, uint32_t flags) { }
+static void osmesa_ctx_set_flags(void *data, uint32_t flags)
+{
+   (void)data;
+}
 
 const gfx_ctx_driver_t gfx_ctx_osmesa =
 {

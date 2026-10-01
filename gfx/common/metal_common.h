@@ -28,12 +28,6 @@
 #include "../../config.h"
 #endif
 
-#ifdef HAVE_COCOATOUCH
-#define PLATFORM_METAL_RESOURCE_STORAGE_MODE MTLResourceStorageModeShared
-#else
-#define PLATFORM_METAL_RESOURCE_STORAGE_MODE MTLResourceStorageModeManaged
-#endif
-
 RETRO_BEGIN_DECLS
 
 extern MTLPixelFormat glslang_format_to_metal(glslang_format fmt);

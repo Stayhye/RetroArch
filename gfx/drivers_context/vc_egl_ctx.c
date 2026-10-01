@@ -41,6 +41,10 @@
 #include "../common/egl_common.h"
 #endif
 
+#if defined(HAVE_OPENGL) || defined(HAVE_OPENGLES)
+#include "../common/gl_common.h"
+#endif
+
 #ifdef HAVE_EGL
 #include <EGL/eglext_brcm.h>
 #endif
@@ -70,12 +74,11 @@ typedef struct
    EGLContext eglimage_ctx;
    EGLSurface pbuff_surf;
    VGImage vgimage[MAX_EGLIMAGE_TEXTURES];
-   PFNEGLCREATEIMAGEKHRPROC peglCreateImageKHR;
-   PFNEGLDESTROYIMAGEKHRPROC peglDestroyImageKHR;
 } vc_ctx_data_t;
 
-/* TODO/FIXME - static globals */
 static enum gfx_ctx_api vc_api = GFX_CTX_NONE;
+static PFNEGLCREATEIMAGEKHRPROC peglCreateImageKHR;
+static PFNEGLDESTROYIMAGEKHRPROC peglDestroyImageKHR;
 
 static INLINE bool gfx_ctx_vc_egl_query_extension(vc_ctx_data_t *vc, const char *ext)
 {
@@ -143,124 +146,7 @@ static void dispmanx_vsync_callback(DISPMANX_UPDATE_HANDLE_T u, void *data)
    slock_unlock(vc->vsync_condition_mutex);
 }
 
-static bool gfx_ctx_vc_bind_api(void *data,
-      enum gfx_ctx_api api, unsigned major, unsigned minor)
-{
-   vc_api = api;
-
-   switch (api)
-   {
-#ifdef HAVE_EGL
-      case GFX_CTX_OPENGL_API:
-         return egl_bind_api(EGL_OPENGL_API);
-      case GFX_CTX_OPENGL_ES_API:
-         return egl_bind_api(EGL_OPENGL_ES_API);
-      case GFX_CTX_OPENVG_API:
-         return egl_bind_api(EGL_OPENVG_API);
-#endif
-      default:
-         break;
-   }
-
-   return false;
-}
-
-static void gfx_ctx_vc_destroy(void *data)
-{
-   vc_ctx_data_t *vc = (vc_ctx_data_t*)data;
-   unsigned i;
-
-   if (!vc)
-   {
-       g_egl_inited = false;
-       return;
-   }
-
-   if (vc->egl.dpy)
-   {
-      for (i = 0; i < MAX_EGLIMAGE_TEXTURES; i++)
-      {
-         if (vc->eglBuffer[i] && vc->peglDestroyImageKHR)
-         {
-            egl_bind_api(EGL_OPENVG_API);
-            eglMakeCurrent(vc->egl.dpy,
-                  vc->pbuff_surf, vc->pbuff_surf, vc->eglimage_ctx);
-            vc->peglDestroyImageKHR(vc->egl.dpy, vc->eglBuffer[i]);
-         }
-
-         if (vc->vgimage[i])
-         {
-            egl_bind_api(EGL_OPENVG_API);
-            eglMakeCurrent(vc->egl.dpy,
-                  vc->pbuff_surf, vc->pbuff_surf, vc->eglimage_ctx);
-            vgDestroyImage(vc->vgimage[i]);
-         }
-      }
-
-      if (vc->egl.ctx)
-      {
-         gfx_ctx_vc_bind_api(data, vc_api, 0, 0);
-         eglMakeCurrent(vc->egl.dpy,
-               EGL_NO_SURFACE, EGL_NO_SURFACE, EGL_NO_CONTEXT);
-         eglDestroyContext(vc->egl.dpy, vc->egl.ctx);
-      }
-
-      if (vc->egl.hw_ctx)
-         eglDestroyContext(vc->egl.dpy, vc->egl.hw_ctx);
-
-      if (vc->eglimage_ctx)
-      {
-         egl_bind_api(EGL_OPENVG_API);
-         eglMakeCurrent(vc->egl.dpy,
-               EGL_NO_SURFACE, EGL_NO_SURFACE, EGL_NO_CONTEXT);
-         eglDestroyContext(vc->egl.dpy, vc->eglimage_ctx);
-      }
-
-      if (vc->egl.surf)
-      {
-         gfx_ctx_vc_bind_api(data, vc_api, 0, 0);
-         eglDestroySurface(vc->egl.dpy, vc->egl.surf);
-      }
-
-      if (vc->pbuff_surf)
-      {
-         egl_bind_api(EGL_OPENVG_API);
-         eglDestroySurface(vc->egl.dpy, vc->pbuff_surf);
-      }
-
-      egl_bind_api(EGL_OPENVG_API);
-      eglMakeCurrent(vc->egl.dpy,
-            EGL_NO_SURFACE, EGL_NO_SURFACE, EGL_NO_CONTEXT);
-      gfx_ctx_vc_bind_api(data, vc_api, 0, 0);
-      eglMakeCurrent(vc->egl.dpy,
-            EGL_NO_SURFACE, EGL_NO_SURFACE, EGL_NO_CONTEXT);
-      egl_terminate(vc->egl.dpy);
-   }
-
-   vc->egl.ctx      = NULL;
-   vc->egl.hw_ctx   = NULL;
-   vc->eglimage_ctx = NULL;
-   vc->egl.surf     = NULL;
-   vc->pbuff_surf   = NULL;
-   vc->egl.dpy      = NULL;
-   vc->egl.config   = 0;
-   g_egl_inited     = false;
-
-   for (i = 0; i < MAX_EGLIMAGE_TEXTURES; i++)
-   {
-      vc->eglBuffer[i] = NULL;
-      vc->vgimage[i]   = 0;
-   }
-
-   /* Stop generating vsync callbacks if we are doing so.
-    * Don't destroy the context while cbs are being generated! */
-   if (vc->vsync_callback_set)
-      vc_dispmanx_vsync_callback(vc->dispman_display, NULL, NULL);
-
-   /* Destroy mutexes and conditions. */
-   slock_free(vc->vsync_condition_mutex);
-   scond_free(vc->vsync_condition);
-}
+static void gfx_ctx_vc_destroy(void *data);
 
 static void *gfx_ctx_vc_init(void *video_driver)
 {
@@ -474,6 +360,125 @@ static enum gfx_ctx_api gfx_ctx_vc_get_api(void *data)
    return vc_api;
 }
 
+static bool gfx_ctx_vc_bind_api(void *data,
+      enum gfx_ctx_api api, unsigned major, unsigned minor)
+{
+   vc_api = api;
+
+   switch (api)
+   {
+#ifdef HAVE_EGL
+      case GFX_CTX_OPENGL_API:
+         return egl_bind_api(EGL_OPENGL_API);
+      case GFX_CTX_OPENGL_ES_API:
+         return egl_bind_api(EGL_OPENGL_ES_API);
+      case GFX_CTX_OPENVG_API:
+         return egl_bind_api(EGL_OPENVG_API);
+#endif
+      default:
+         break;
+   }
+
+   return false;
+}
+
+static void gfx_ctx_vc_destroy(void *data)
+{
+   vc_ctx_data_t *vc = (vc_ctx_data_t*)data;
+   unsigned i;
+
+   if (!vc)
+   {
+       g_egl_inited = false;
+       return;
+   }
+
+   if (vc->egl.dpy)
+   {
+      for (i = 0; i < MAX_EGLIMAGE_TEXTURES; i++)
+      {
+         if (vc->eglBuffer[i] && peglDestroyImageKHR)
+         {
+            egl_bind_api(EGL_OPENVG_API);
+            eglMakeCurrent(vc->egl.dpy,
+                  vc->pbuff_surf, vc->pbuff_surf, vc->eglimage_ctx);
+            peglDestroyImageKHR(vc->egl.dpy, vc->eglBuffer[i]);
+         }
+
+         if (vc->vgimage[i])
+         {
+            egl_bind_api(EGL_OPENVG_API);
+            eglMakeCurrent(vc->egl.dpy,
+                  vc->pbuff_surf, vc->pbuff_surf, vc->eglimage_ctx);
+            vgDestroyImage(vc->vgimage[i]);
+         }
+      }
+
+      if (vc->egl.ctx)
+      {
+         gfx_ctx_vc_bind_api(data, vc_api, 0, 0);
+         eglMakeCurrent(vc->egl.dpy,
+               EGL_NO_SURFACE, EGL_NO_SURFACE, EGL_NO_CONTEXT);
+         eglDestroyContext(vc->egl.dpy, vc->egl.ctx);
+      }
+
+      if (vc->egl.hw_ctx)
+         eglDestroyContext(vc->egl.dpy, vc->egl.hw_ctx);
+
+      if (vc->eglimage_ctx)
+      {
+         egl_bind_api(EGL_OPENVG_API);
+         eglMakeCurrent(vc->egl.dpy,
+               EGL_NO_SURFACE, EGL_NO_SURFACE, EGL_NO_CONTEXT);
+         eglDestroyContext(vc->egl.dpy, vc->eglimage_ctx);
+      }
+
+      if (vc->egl.surf)
+      {
+         gfx_ctx_vc_bind_api(data, vc_api, 0, 0);
+         eglDestroySurface(vc->egl.dpy, vc->egl.surf);
+      }
+
+      if (vc->pbuff_surf)
+      {
+         egl_bind_api(EGL_OPENVG_API);
+         eglDestroySurface(vc->egl.dpy, vc->pbuff_surf);
+      }
+
+      egl_bind_api(EGL_OPENVG_API);
+      eglMakeCurrent(vc->egl.dpy,
+            EGL_NO_SURFACE, EGL_NO_SURFACE, EGL_NO_CONTEXT);
+      gfx_ctx_vc_bind_api(data, vc_api, 0, 0);
+      eglMakeCurrent(vc->egl.dpy,
+            EGL_NO_SURFACE, EGL_NO_SURFACE, EGL_NO_CONTEXT);
+      egl_terminate(vc->egl.dpy);
+   }
+
+   vc->egl.ctx      = NULL;
+   vc->egl.hw_ctx   = NULL;
+   vc->eglimage_ctx = NULL;
+   vc->egl.surf     = NULL;
+   vc->pbuff_surf   = NULL;
+   vc->egl.dpy      = NULL;
+   vc->egl.config   = 0;
+   g_egl_inited     = false;
+
+   for (i = 0; i < MAX_EGLIMAGE_TEXTURES; i++)
+   {
+      vc->eglBuffer[i] = NULL;
+      vc->vgimage[i]   = 0;
+   }
+
+   /* Stop generating vsync callbacks if we are doing so.
+    * Don't destroy the context while cbs are being generated! */
+   if (vc->vsync_callback_set)
+      vc_dispmanx_vsync_callback(vc->dispman_display, NULL, NULL);
+
+   /* Destroy mutexes and conditions. */
+   slock_free(vc->vsync_condition_mutex);
+   scond_free(vc->vsync_condition);
+}
+
 static void gfx_ctx_vc_input_driver(void *data,
       const char *name,
       input_driver_t **input, void **input_data)
@@ -482,12 +487,23 @@ static void gfx_ctx_vc_input_driver(void *data,
    *input_data = NULL;
 }
 
-static bool gfx_ctx_vc_has_focus(void *data) { return g_egl_inited; }
-static bool gfx_ctx_vc_suppress_screensaver(void *data, bool enable) { return false; }
+static bool gfx_ctx_vc_has_focus(void *data)
+{
+   (void)data;
+   return g_egl_inited;
+}
+
+static bool gfx_ctx_vc_suppress_screensaver(void *data, bool enable)
+{
+   (void)data;
+   (void)enable;
+   return false;
+}
 
 static float gfx_ctx_vc_translate_aspect(void *data,
       unsigned width, unsigned height)
 {
+   (void)data;
    /* Check for SD televisions: they should always be 4:3. */
    if ((width == 640 || width == 720) && (height == 480 || height == 576))
       return 4.0f / 3.0f;
@@ -510,11 +526,11 @@ static bool gfx_ctx_vc_image_buffer_init(void *data,
    if (vc_api == GFX_CTX_OPENVG_API)
       return false;
 
-   vc->peglCreateImageKHR  = (PFNEGLCREATEIMAGEKHRPROC)egl_get_proc_address("eglCreateImageKHR");
-   vc->peglDestroyImageKHR = (PFNEGLDESTROYIMAGEKHRPROC)egl_get_proc_address("eglDestroyImageKHR");
+   peglCreateImageKHR  = (PFNEGLCREATEIMAGEKHRPROC)egl_get_proc_address("eglCreateImageKHR");
+   peglDestroyImageKHR = (PFNEGLDESTROYIMAGEKHRPROC)egl_get_proc_address("eglDestroyImageKHR");
 
-   if (  !vc->peglCreateImageKHR  ||
-         !vc->peglDestroyImageKHR ||
+   if (  !peglCreateImageKHR  ||
+         !peglDestroyImageKHR ||
          !gfx_ctx_vc_egl_query_extension(vc, "KHR_image")
       )
       return false;
@@ -571,9 +587,8 @@ fail:
    return false;
 }
 
-static bool gfx_ctx_vc_image_buffer_write(void *data, const void *frame,
-      unsigned width, unsigned height,
-      unsigned pitch, bool rgb32, unsigned index, void **image_handle)
+static bool gfx_ctx_vc_image_buffer_write(void *data, const void *frame, unsigned width,
+      unsigned height, unsigned pitch, bool rgb32, unsigned index, void **image_handle)
 {
    bool ret = false;
    vc_ctx_data_t *vc = (vc_ctx_data_t*)data;
@@ -587,12 +602,12 @@ static bool gfx_ctx_vc_image_buffer_write(void *data, const void *frame,
 
    if (!vc->eglBuffer[index] || !vc->vgimage[index])
    {
-      vc->vgimage[index]   = vgCreateImage(
+      vc->vgimage[index] = vgCreateImage(
             rgb32 ? VG_sXRGB_8888 : VG_sRGB_565,
             vc->res,
             vc->res,
             VG_IMAGE_QUALITY_NONANTIALIASED);
-      vc->eglBuffer[index] = vc->peglCreateImageKHR(
+      vc->eglBuffer[index] = peglCreateImageKHR(
             vc->egl.dpy,
             vc->eglimage_ctx,
             EGL_VG_PARENT_IMAGE_KHR,
@@ -666,6 +681,15 @@ static void gfx_ctx_vc_bind_hw_render(void *data, bool enable)
 #endif
 }
 
+static gfx_ctx_proc_t gfx_ctx_vc_get_proc_address(const char *symbol)
+{
+#ifdef HAVE_EGL
+   return egl_get_proc_address(symbol);
+#else
+   return NULL;
+#endif
+}
+
 static uint32_t gfx_ctx_vc_get_flags(void *data)
 {
    uint32_t flags = 0;
@@ -674,7 +698,10 @@ static uint32_t gfx_ctx_vc_get_flags(void *data)
    return flags;
 }
 
-static void gfx_ctx_vc_set_flags(void *data, uint32_t flags) { }
+static void gfx_ctx_vc_set_flags(void *data, uint32_t flags)
+{
+   (void)data;
+}
 
 const gfx_ctx_driver_t gfx_ctx_videocore = {
    gfx_ctx_vc_init,
@@ -698,15 +725,11 @@ const gfx_ctx_driver_t gfx_ctx_videocore = {
    false, /* has_windowed */
    gfx_ctx_vc_swap_buffers,
    gfx_ctx_vc_input_driver,
-#ifdef HAVE_EGL
-   egl_get_proc_address,
-#else
-   NULL,
-#endif
+   gfx_ctx_vc_get_proc_address,
    gfx_ctx_vc_image_buffer_init,
    gfx_ctx_vc_image_buffer_write,
    NULL,
-   "egl_videocore",
+   "videocore",
    gfx_ctx_vc_get_flags,
    gfx_ctx_vc_set_flags,
    gfx_ctx_vc_bind_hw_render,

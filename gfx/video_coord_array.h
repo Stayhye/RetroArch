@@ -59,8 +59,8 @@ typedef struct video_coords
    const float *color;
    const float *tex_coord;
    const float *lut_tex_coord;
-   const unsigned *index;
    unsigned vertices;
+   const unsigned *index;
    unsigned indexes;
 } video_coords_t;
 
@@ -70,21 +70,21 @@ typedef struct video_mut_coords
    float *color;
    float *tex_coord;
    float *lut_tex_coord;
-   unsigned *index;
    unsigned vertices;
+   unsigned *index;
    unsigned indexes;
 } video_mut_coords_t;
 
 typedef struct video_coord_array
 {
-   video_mut_coords_t coords; /* ptr alignment */
+   video_mut_coords_t coords;
    unsigned allocated;
 } video_coord_array_t;
 
 typedef struct video_font_raster_block
 {
-   video_coord_array_t carr; /* ptr alignment */
    bool fullscreen;
+   video_coord_array_t carr;
 } video_font_raster_block_t;
 
 bool video_coord_array_append(video_coord_array_t *ca,

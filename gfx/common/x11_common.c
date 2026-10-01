@@ -57,39 +57,35 @@
 #define MOVERESIZE_X_SHIFT                   8
 #define MOVERESIZE_Y_SHIFT                   9
 
-#define V_DBLSCAN                            0x20
+#define V_DBLSCAN 0x20
 
-/* TODO/FIXME - globals */
-bool g_x11_entered                          = false;
-Display *g_x11_dpy                          = NULL;
-unsigned g_x11_screen                       = 0;
-Window   g_x11_win                          = None;
-Colormap g_x11_cmap;
-
-/* TODO/FIXME - static globals */
 static XF86VidModeModeInfo desktop_mode;
 static bool xdg_screensaver_available       = true;
+bool g_x11_entered                          = false;
 static bool g_x11_has_focus                 = false;
 static bool g_x11_true_full                 = false;
-static XConfigureEvent g_x11_xce            = {0};
+Display *g_x11_dpy                          = NULL;
+
+unsigned g_x11_screen                       = 0;
+
+Colormap g_x11_cmap;
+Window   g_x11_win = None;
+
 static Atom XA_NET_WM_STATE;
 static Atom XA_NET_WM_STATE_FULLSCREEN;
 static Atom XA_NET_MOVERESIZE_WINDOW;
+
 static Atom g_x11_quit_atom;
 static XIM g_x11_xim;
 static XIC g_x11_xic;
 
-static enum retro_key x11_keysym_lut[RETROK_LAST];
-static unsigned *x11_keysym_rlut            = NULL;
-static unsigned x11_keysym_rlut_size        = 0;
-
 static void x11_hide_mouse(Display *dpy, Window win)
 {
+   static char bm_no_data[] = {0, 0, 0, 0, 0, 0, 0, 0};
    Cursor no_ptr;
    Pixmap bm_no;
    XColor black, dummy;
-   static char bm_no_data[] = {0, 0, 0, 0, 0, 0, 0, 0};
-   Colormap colormap        = DefaultColormap(dpy, DefaultScreen(dpy));
+   Colormap colormap = DefaultColormap(dpy, DefaultScreen(dpy));
 
    if (!XAllocNamedColor(dpy, colormap, "black", &black, &dummy))
       return;
@@ -203,26 +199,10 @@ static void xdg_screensaver_inhibit(Window wnd)
 {
    int  ret;
    char cmd[64];
-   char title[128];
 
    cmd[0] = '\0';
-   title[0] = '\0';
 
    RARCH_LOG("[X11]: Suspending screensaver (X11, xdg-screensaver).\n");
-
-   if (g_x11_dpy && g_x11_win)
-   {
-      /* Make sure the window has a title, even if it's a bogus one, otherwise
-       * xdg-screensaver will fail and report to stderr, framing RA for its bug.
-       * A single space character is used so that the title bar stays visibly
-       * the same, as if there's no title at all. */
-      video_driver_get_window_title(title, sizeof(title));
-      if (strlen(title) == 0)
-         snprintf(title, sizeof(title), " ");
-      XChangeProperty(g_x11_dpy, g_x11_win, XA_WM_NAME, XA_STRING,
-            8, PropModeReplace, (const unsigned char*) title,
-            strlen(title));
-   }
 
    snprintf(cmd, sizeof(cmd), "xdg-screensaver suspend 0x%x", (int)wnd);
 
@@ -281,7 +261,7 @@ float x11_get_refresh_rate(void *data)
 
 static bool get_video_mode(
       Display *dpy, unsigned width, unsigned height,
-      XF86VidModeModeInfo *mode, XF86VidModeModeInfo *x11_desktop_mode)
+      XF86VidModeModeInfo *mode, XF86VidModeModeInfo *desktop_mode)
 {
    int i, num_modes            = 0;
    bool ret                    = false;
@@ -289,7 +269,7 @@ static bool get_video_mode(
    float minimum_fps_diff      = 0.0f;
    XF86VidModeModeInfo **modes = NULL;
    settings_t *settings        = config_get_ptr();
-   unsigned black_frame_insertion  = settings->uints.video_black_frame_insertion;
+   bool black_frame_insertion  = settings->bools.video_black_frame_insertion;
    float video_refresh_rate    = settings->floats.video_refresh_rate;
 
    XF86VidModeGetAllModeLines(dpy, DefaultScreen(dpy), &num_modes, &modes);
@@ -300,11 +280,11 @@ static bool get_video_mode(
       return false;
    }
 
-   *x11_desktop_mode = *modes[0];
+   *desktop_mode = *modes[0];
 
    /* If we use black frame insertion, we fake a 60 Hz monitor
     * for 120 Hz one, etc, so try to match that. */
-   refresh_mod = 1.0f / (black_frame_insertion + 1.0f);
+   refresh_mod = black_frame_insertion ? 0.5f : 1.0f;
 
    for (i = 0; i < num_modes; i++)
    {
@@ -356,39 +336,9 @@ void x11_exit_fullscreen(Display *dpy)
    XF86VidModeSetViewPort(dpy, DefaultScreen(dpy), 0, 0);
 }
 
-static void x11_init_keyboard_lut(void)
-{
-   const struct rarch_key_map *map       = rarch_key_map_x11;
-   const struct rarch_key_map *map_start = rarch_key_map_x11;
-
-   memset(x11_keysym_lut, 0, sizeof(x11_keysym_lut));
-   x11_keysym_rlut_size = 0;
-
-   for (; map->rk != RETROK_UNKNOWN; map++)
-   {
-      x11_keysym_lut[map->rk] = (enum retro_key)map->sym;
-      if (map->sym > x11_keysym_rlut_size)
-         x11_keysym_rlut_size = map->sym;
-   }
-
-   if (x11_keysym_rlut_size < 65536)
-   {
-      if (x11_keysym_rlut)
-         free(x11_keysym_rlut);
-
-      x11_keysym_rlut = (unsigned*)calloc(++x11_keysym_rlut_size, sizeof(unsigned));
-
-      for (map = map_start; map->rk != RETROK_UNKNOWN; map++)
-         x11_keysym_rlut[map->sym] = (enum retro_key)map->rk;
-   }
-   else
-      x11_keysym_rlut_size = 0;
-}
-
 bool x11_create_input_context(Display *dpy, Window win, XIM *xim, XIC *xic)
 {
    x11_destroy_input_context(xim, xic);
-   x11_init_keyboard_lut();
 
    g_x11_has_focus = true;
    *xim            = XOpenIM(dpy, NULL, NULL, NULL);
@@ -425,14 +375,6 @@ void x11_destroy_input_context(XIM *xim, XIC *xic)
       XCloseIM(*xim);
       *xim = NULL;
    }
-
-   memset(x11_keysym_lut, 0, sizeof(x11_keysym_lut));
-   if (x11_keysym_rlut)
-   {
-      free(x11_keysym_rlut);
-      x11_keysym_rlut = NULL;
-   }
-   x11_keysym_rlut_size = 0;
 }
 
 bool x11_get_metrics(void *data,
@@ -473,26 +415,6 @@ bool x11_get_metrics(void *data,
    }
 
    return true;
-}
-
-static enum retro_key x11_translate_keysym_to_rk(unsigned sym)
-{
-   size_t i;
-
-   /* Fast path */
-   if (x11_keysym_rlut && sym < x11_keysym_rlut_size)
-      return (enum retro_key)x11_keysym_rlut[sym];
-
-   /* Slow path */
-   for (i = 0; i < ARRAY_SIZE(x11_keysym_lut); i++)
-   {
-      if (x11_keysym_lut[i] != sym)
-         continue;
-
-      return (enum retro_key)i;
-   }
-
-   return RETROK_UNKNOWN;
 }
 
 static void x11_handle_key_event(unsigned keycode, XEvent *event, XIC ic, bool filter)
@@ -548,7 +470,7 @@ static void x11_handle_key_event(unsigned keycode, XEvent *event, XIC ic, bool f
 
    /* Get the real keycode,
       that correctly ignores international layouts as windows code does. */
-   key     = x11_translate_keysym_to_rk(keycode);
+   key     = input_keymaps_translate_keysym_to_rk(keycode);
 
    if (state & ShiftMask)
       mod |= RETROKMOD_SHIFT;
@@ -607,11 +529,6 @@ bool x11_alive(void *data)
          case UnmapNotify:
             if (event.xunmap.window == g_x11_win)
                g_x11_has_focus = false;
-            break;
-
-         case ConfigureNotify:
-            if (event.xconfigure.window == g_x11_win)
-               g_x11_xce = event.xconfigure;
             break;
 
          case ButtonPress:
@@ -713,19 +630,11 @@ void x11_get_video_size(void *data, unsigned *width, unsigned *height)
    }
    else
    {
-      if (g_x11_xce.width != 0 && g_x11_xce.height != 0)
-      {
-         *width  = g_x11_xce.width;
-         *height = g_x11_xce.height;
-      }
-      else
-      {
-      	 XWindowAttributes target;
-         XGetWindowAttributes(g_x11_dpy, g_x11_win, &target);
+      XWindowAttributes target;
+      XGetWindowAttributes(g_x11_dpy, g_x11_win, &target);
 
-         *width  = target.width;
-         *height = target.height;
-      }
+      *width  = target.width;
+      *height = target.height;
    }
 }
 
@@ -760,8 +669,6 @@ bool x11_connect(void)
 #ifdef HAVE_DBUS
    dbus_ensure_connection();
 #endif
-
-   memset(&g_x11_xce, 0, sizeof(XConfigureEvent));
 
    return true;
 }

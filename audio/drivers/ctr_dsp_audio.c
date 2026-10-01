@@ -17,16 +17,17 @@
 #include <string.h>
 #include <malloc.h>
 
-#include "../audio_driver.h"
+#include "../../retroarch.h"
 #include "../../ctr/ctr_debug.h"
 
 typedef struct
 {
-   ndspWaveBuf dsp_buf; /* TODO/FIXME - find out alignment */
-   int channel;
-   uint32_t pos;
    bool nonblock;
    bool playing;
+   int channel;
+   ndspWaveBuf dsp_buf;
+
+   uint32_t pos;
 } ctr_dsp_audio_t;
 
 #define CTR_DSP_AUDIO_COUNT       (1u << 11u)
@@ -107,15 +108,6 @@ static ssize_t ctr_dsp_audio_write(void *data, const void *buf, size_t size)
       {
          do{
             svcSleepThread(100000);
-
-            /* Run aptMainLoop to update APT state if DSP state
-             * changed, this prevents a hang on sleep. */
-            if(!aptMainLoop())
-            {
-               command_event(CMD_EVENT_QUIT, NULL);
-               return true;
-            }
-
             sample_pos = ndspChnGetSamplePos(ctr->channel);
          }while (((sample_pos - (ctr->pos + (size >>2))) & CTR_DSP_AUDIO_COUNT_MASK) > (CTR_DSP_AUDIO_COUNT >> 1)
                  || (((ctr->pos - (CTR_DSP_AUDIO_COUNT >> 4) - sample_pos) & CTR_DSP_AUDIO_COUNT_MASK) > (CTR_DSP_AUDIO_COUNT >> 1)));

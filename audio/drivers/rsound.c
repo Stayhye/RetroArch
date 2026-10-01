@@ -21,26 +21,27 @@
 #include <queues/fifo_queue.h>
 #include <rthreads/rthreads.h>
 
-#include "../audio_driver.h"
+#include "../../retroarch.h"
 #include "rsound.h"
 
 typedef struct rsd
 {
    rsound_t *rd;
-
-   fifo_buffer_t *buffer;
-   slock_t *cond_lock;
-   scond_t *cond;
-
    bool nonblock;
    bool is_paused;
    volatile bool has_error;
+
+   fifo_buffer_t *buffer;
+
+   slock_t *cond_lock;
+   scond_t *cond;
 } rsd_t;
 
 static ssize_t rsound_audio_cb(void *data, size_t bytes, void *userdata)
 {
-   rsd_t *rsd        = (rsd_t*)userdata;
-   size_t avail      = FIFO_READ_AVAIL(rsd->buffer);
+   rsd_t *rsd = (rsd_t*)userdata;
+
+   size_t avail = fifo_read_avail(rsd->buffer);
    size_t write_size = bytes > avail ? avail : bytes;
    fifo_read(rsd->buffer, data, write_size);
    scond_signal(rsd->cond);
@@ -114,7 +115,7 @@ static ssize_t rs_write(void *data, const void *buf, size_t size)
 
       rsd_callback_lock(rsd->rd);
 
-      avail     = FIFO_WRITE_AVAIL(rsd->buffer);
+      avail = fifo_write_avail(rsd->buffer);
       write_amt = avail > size ? size : avail;
 
       fifo_write(rsd->buffer, buf, write_amt);
@@ -129,7 +130,7 @@ static ssize_t rs_write(void *data, const void *buf, size_t size)
          size_t avail;
          rsd_callback_lock(rsd->rd);
 
-         avail = FIFO_WRITE_AVAIL(rsd->buffer);
+         avail = fifo_write_avail(rsd->buffer);
 
          if (avail == 0)
          {
@@ -208,7 +209,7 @@ static size_t rs_write_avail(void *data)
    if (rsd->has_error)
       return 0;
    rsd_callback_lock(rsd->rd);
-   val = FIFO_WRITE_AVAIL(rsd->buffer);
+   val = fifo_write_avail(rsd->buffer);
    rsd_callback_unlock(rsd->rd);
    return val;
 }

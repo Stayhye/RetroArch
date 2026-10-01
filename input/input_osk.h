@@ -47,19 +47,19 @@ enum osk_type
    OSK_TYPE_LAST
 };
 
-void input_event_osk_append(
-      input_keyboard_line_t *keyboard_line,
-      enum osk_type *osk_idx,
-      unsigned *osk_last_codepoint,
-      unsigned *osk_last_codepoint_len,
-      int ptr,
-      bool show_symbol_pages,
-      const char *word);
+enum osk_type input_event_get_osk_idx(void);
 
-void osk_update_last_codepoint(
-      unsigned *last_codepoint,
-      unsigned *last_codepoint_len,
-      const char *word);
+void input_event_set_osk_idx(enum osk_type idx);
+
+int input_event_get_osk_ptr(void);
+
+void input_event_set_osk_ptr(int a);
+
+void input_event_osk_append(int a, bool is_rgui);
+
+void input_event_osk_iterate(void);
+
+char **input_event_get_osk_grid(void);
 
 RETRO_END_DECLS
 

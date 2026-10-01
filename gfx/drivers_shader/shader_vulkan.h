@@ -23,13 +23,28 @@
 #include <boolean.h>
 #include <retro_common_api.h>
 
-#include "glslang_util.h"
-
-#include "../include/vulkan/vulkan.h"
+#include "../common/vulkan_common.h"
 
 RETRO_BEGIN_DECLS
 
 typedef struct vulkan_filter_chain vulkan_filter_chain_t;
+
+enum vulkan_filter_chain_filter
+{
+   VULKAN_FILTER_CHAIN_LINEAR  = 0,
+   VULKAN_FILTER_CHAIN_NEAREST = 1,
+   VULKAN_FILTER_CHAIN_COUNT
+};
+
+enum vulkan_filter_chain_address
+{
+   VULKAN_FILTER_CHAIN_ADDRESS_REPEAT               = 0,
+   VULKAN_FILTER_CHAIN_ADDRESS_MIRRORED_REPEAT      = 1,
+   VULKAN_FILTER_CHAIN_ADDRESS_CLAMP_TO_EDGE        = 2,
+   VULKAN_FILTER_CHAIN_ADDRESS_CLAMP_TO_BORDER      = 3,
+   VULKAN_FILTER_CHAIN_ADDRESS_MIRROR_CLAMP_TO_EDGE = 4,
+   VULKAN_FILTER_CHAIN_ADDRESS_COUNT
+};
 
 struct vulkan_filter_chain_texture
 {
@@ -41,25 +56,33 @@ struct vulkan_filter_chain_texture
    VkFormat format;
 };
 
+enum vulkan_filter_chain_scale
+{
+   VULKAN_FILTER_CHAIN_SCALE_ORIGINAL,
+   VULKAN_FILTER_CHAIN_SCALE_SOURCE,
+   VULKAN_FILTER_CHAIN_SCALE_VIEWPORT,
+   VULKAN_FILTER_CHAIN_SCALE_ABSOLUTE
+};
+
 struct vulkan_filter_chain_pass_info
 {
-   /* Maximum number of mip-levels to use. */
-   unsigned max_levels;
-
+   /* For the last pass, make sure VIEWPORT scale
+    * with scale factors of 1 are used. */
+   enum vulkan_filter_chain_scale scale_type_x;
+   enum vulkan_filter_chain_scale scale_type_y;
    float scale_x;
    float scale_y;
 
-   /* Ignored for the last pass, swapchain info 
-    * will be used instead. */
+   /* Ignored for the last pass, swapchain info will be used instead. */
    VkFormat rt_format;
-   /* For the last pass, make sure VIEWPORT scale
-    * with scale factors of 1 are used. */
-   enum glslang_filter_chain_scale scale_type_x;
-   enum glslang_filter_chain_scale scale_type_y;
+
    /* The filter to use for source in this pass. */
-   enum glslang_filter_chain_filter source_filter;
-   enum glslang_filter_chain_filter mip_filter;
-   enum glslang_filter_chain_address address;
+   enum vulkan_filter_chain_filter source_filter;
+   enum vulkan_filter_chain_filter mip_filter;
+   enum vulkan_filter_chain_address address;
+
+   /* Maximum number of mip-levels to use. */
+   unsigned max_levels;
 };
 
 struct vulkan_filter_chain_swapchain_info
@@ -88,6 +111,25 @@ struct vulkan_filter_chain_create_info
    struct vulkan_filter_chain_swapchain_info swapchain;
 };
 
+static INLINE enum vulkan_filter_chain_address vk_wrap_to_address(enum gfx_wrap_type type)
+{
+   switch (type)
+   {
+      case RARCH_WRAP_BORDER:
+         return VULKAN_FILTER_CHAIN_ADDRESS_CLAMP_TO_BORDER;
+      case RARCH_WRAP_REPEAT:
+         return VULKAN_FILTER_CHAIN_ADDRESS_REPEAT;
+      case RARCH_WRAP_MIRRORED_REPEAT:
+         return VULKAN_FILTER_CHAIN_ADDRESS_MIRRORED_REPEAT;
+      case RARCH_WRAP_EDGE:
+      default:
+         break;
+   }
+
+   return VULKAN_FILTER_CHAIN_ADDRESS_CLAMP_TO_EDGE;
+}
+
+
 vulkan_filter_chain_t *vulkan_filter_chain_new(
       const struct vulkan_filter_chain_create_info *info);
 void vulkan_filter_chain_free(vulkan_filter_chain_t *chain);
@@ -101,10 +143,6 @@ void vulkan_filter_chain_set_shader(vulkan_filter_chain_t *chain,
 void vulkan_filter_chain_set_pass_info(vulkan_filter_chain_t *chain,
       unsigned pass,
       const struct vulkan_filter_chain_pass_info *info);
-
-VkFormat vulkan_filter_chain_get_pass_rt_format(
-      vulkan_filter_chain_t *chain,
-      unsigned pass);      
 
 bool vulkan_filter_chain_update_swapchain_info(vulkan_filter_chain_t *chain,
       const struct vulkan_filter_chain_swapchain_info *info);
@@ -140,11 +178,11 @@ void vulkan_filter_chain_end_frame(vulkan_filter_chain_t *chain,
 
 vulkan_filter_chain_t *vulkan_filter_chain_create_default(
       const struct vulkan_filter_chain_create_info *info,
-      enum glslang_filter_chain_filter filter);
+      enum vulkan_filter_chain_filter filter);
 
 vulkan_filter_chain_t *vulkan_filter_chain_create_from_preset(
       const struct vulkan_filter_chain_create_info *info,
-      const char *path, enum glslang_filter_chain_filter filter);
+      const char *path, enum vulkan_filter_chain_filter filter);
 
 struct video_shader *vulkan_filter_chain_get_preset(
       vulkan_filter_chain_t *chain);

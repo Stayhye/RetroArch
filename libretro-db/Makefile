@@ -12,10 +12,8 @@ CFLAGS               = -g -O2 -Wall -DNDEBUG
 endif
 
 LIBRETRO_COMMON_C = \
-			 $(LIBRETRO_COMM_DIR)/string/stdstring.c \
 			 $(LIBRETRO_COMM_DIR)/streams/file_stream.c \
 			 $(LIBRETRO_COMM_DIR)/compat/compat_strcasestr.c \
-			 $(LIBRETRO_COMM_DIR)/time/rtime.c \
 			 $(LIBRETRO_COMM_DIR)/file/file_path.c \
 			 $(LIBRETRO_COMM_DIR)/file/file_path_io.c \
 			 $(LIBRETRO_COMM_DIR)/vfs/vfs_implementation.c \
@@ -30,8 +28,9 @@ C_CONVERTER_C = \
 			 $(LIBRETRODB_DIR)/bintree.c \
 			 $(LIBRETRODB_DIR)/query.c \
 			 $(LIBRETRODB_DIR)/c_converter.c \
-			 $(LIBRETRO_COMM_DIR)/hash/lrc_hash.c \
+			 $(LIBRETRO_COMM_DIR)/hash/rhash.c \
 			 $(LIBRETRO_COMM_DIR)/compat/compat_fnmatch.c \
+			 $(LIBRETRO_COMM_DIR)/string/stdstring.c \
 			 $(LIBRETRO_COMMON_C)
 
 C_CONVERTER_OBJS := $(C_CONVERTER_C:.c=.o)
@@ -44,6 +43,7 @@ RARCHDB_TOOL_C = \
 			 $(LIBRETRODB_DIR)/query.c \
 			 $(LIBRETRODB_DIR)/libretrodb.c \
 			 $(LIBRETRO_COMM_DIR)/compat/compat_fnmatch.c \
+			 $(LIBRETRO_COMM_DIR)/string/stdstring.c \
 			 $(LIBRETRO_COMMON_C)
 
 RARCHDB_TOOL_OBJS := $(RARCHDB_TOOL_C:.c=.o)

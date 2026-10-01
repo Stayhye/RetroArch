@@ -22,7 +22,7 @@
 #include <retro_common_api.h>
 #include <libretro.h>
 
-#include "retroarch_types.h"
+#include "core_type.h"
 
 RETRO_BEGIN_DECLS
 
@@ -55,7 +55,6 @@ const struct retro_controller_description *
 
 struct retro_core_t
 {
-   uint64_t serialization_quirks_v;
    void (*retro_init)(void);
    void (*retro_deinit)(void);
    unsigned (*retro_api_version)(void);
@@ -90,9 +89,18 @@ struct retro_core_t
    bool input_polled;
    bool has_set_subsystems;
    bool has_set_input_descriptors;
+   uint64_t serialization_quirks_v;
 };
 
 bool libretro_get_shared_context(void);
+
+/* Arbitrary twenty subsystems limite */
+#define SUBSYSTEM_MAX_SUBSYSTEMS 20
+/* Arbitrary 10 roms for each subsystem limit */
+#define SUBSYSTEM_MAX_SUBSYSTEM_ROMS 10
+
+extern struct retro_subsystem_info subsystem_data[SUBSYSTEM_MAX_SUBSYSTEMS];
+extern unsigned subsystem_current_count;
 
 RETRO_END_DECLS
 

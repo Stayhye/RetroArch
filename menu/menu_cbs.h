@@ -33,6 +33,15 @@
 
 RETRO_BEGIN_DECLS
 
+typedef struct key_desc
+{
+   /* libretro key id */
+   unsigned key;
+
+   /* description */
+   char desc[32];
+} key_desc_t;
+
 enum
 {
    ACTION_OK_DL_DEFAULT = 0,
@@ -50,13 +59,6 @@ enum
    ACTION_OK_DL_DROPDOWN_BOX_LIST_MANUAL_CONTENT_SCAN_SYSTEM_NAME,
    ACTION_OK_DL_DROPDOWN_BOX_LIST_MANUAL_CONTENT_SCAN_CORE_NAME,
    ACTION_OK_DL_DROPDOWN_BOX_LIST_DISK_INDEX,
-   ACTION_OK_DL_DROPDOWN_BOX_LIST_INPUT_DEVICE_TYPE,
-   ACTION_OK_DL_DROPDOWN_BOX_LIST_INPUT_DEVICE_INDEX,
-   ACTION_OK_DL_DROPDOWN_BOX_LIST_INPUT_DESCRIPTION,
-   ACTION_OK_DL_DROPDOWN_BOX_LIST_INPUT_DESCRIPTION_KBD,
-#ifdef HAVE_NETWORKING
-   ACTION_OK_DL_DROPDOWN_BOX_LIST_NETPLAY_MITM_SERVER,
-#endif
    ACTION_OK_DL_OPEN_ARCHIVE,
    ACTION_OK_DL_OPEN_ARCHIVE_DETECT_CORE,
    ACTION_OK_DL_MUSIC,
@@ -69,18 +71,10 @@ enum
    ACTION_OK_DL_RDB_ENTRY_SUBMENU,
    ACTION_OK_DL_CDROM_INFO_LIST,
    ACTION_OK_DL_AUDIO_DSP_PLUGIN,
-   ACTION_OK_DL_VIDEO_FILTER,
-   ACTION_OK_DL_OVERLAY_PRESET,
-#if defined(HAVE_VIDEO_LAYOUT)
-   ACTION_OK_DL_VIDEO_LAYOUT,
-#endif
-   ACTION_OK_DL_VIDEO_FONT,
    ACTION_OK_DL_SHADER_PASS,
    ACTION_OK_DL_FAVORITES_LIST,
    ACTION_OK_DL_IMAGES_LIST,
    ACTION_OK_DL_VIDEO_LIST,
-   ACTION_OK_DL_EXPLORE_LIST,
-   ACTION_OK_DL_CONTENTLESS_CORES_LIST,
    ACTION_OK_DL_MUSIC_LIST,
    ACTION_OK_DL_SHADER_PARAMETERS,
    ACTION_OK_DL_SHADER_PRESET,
@@ -91,7 +85,6 @@ enum
    ACTION_OK_DL_FILE_BROWSER_SELECT_FILE,
    ACTION_OK_DL_FILE_BROWSER_SELECT_DIR,
    ACTION_OK_DL_INPUT_SETTINGS_LIST,
-   ACTION_OK_DL_INPUT_TURBO_FIRE_SETTINGS_LIST,
    ACTION_OK_DL_INPUT_HAPTIC_FEEDBACK_SETTINGS_LIST,
    ACTION_OK_DL_REMAPPINGS_PORT_LIST,
    ACTION_OK_DL_INPUT_MENU_SETTINGS_LIST,
@@ -102,7 +95,6 @@ enum
    ACTION_OK_DL_VIDEO_SYNCHRONIZATION_SETTINGS_LIST,
    ACTION_OK_DL_VIDEO_OUTPUT_SETTINGS_LIST,
    ACTION_OK_DL_VIDEO_SCALING_SETTINGS_LIST,
-   ACTION_OK_DL_VIDEO_HDR_SETTINGS_LIST,
    ACTION_OK_DL_CRT_SWITCHRES_SETTINGS_LIST,
    ACTION_OK_DL_AUDIO_SETTINGS_LIST,
    ACTION_OK_DL_AUDIO_OUTPUT_SETTINGS_LIST,
@@ -119,10 +111,6 @@ enum
    ACTION_OK_DL_CHEAT_DETAILS_SETTINGS_LIST,
    ACTION_OK_DL_CHEAT_SEARCH_SETTINGS_LIST,
    ACTION_OK_DL_CORE_SETTINGS_LIST,
-   ACTION_OK_DL_CORE_INFORMATION_LIST,
-#ifdef HAVE_MIST
-   ACTION_OK_DL_CORE_INFORMATION_STEAM_LIST,
-#endif
    ACTION_OK_DL_INPUT_HOTKEY_BINDS_LIST,
    ACTION_OK_DL_RECORDING_SETTINGS_LIST,
    ACTION_OK_DL_PLAYLIST_SETTINGS_LIST,
@@ -132,7 +120,6 @@ enum
    ACTION_OK_DL_ACCOUNTS_CHEEVOS_LIST,
    ACTION_OK_DL_ACCOUNTS_YOUTUBE_LIST,
    ACTION_OK_DL_ACCOUNTS_TWITCH_LIST,
-   ACTION_OK_DL_ACCOUNTS_FACEBOOK_LIST,
    ACTION_OK_DL_USER_BINDS_LIST,
    ACTION_OK_DL_CONTENT_LIST,
    ACTION_OK_DL_REMAP_FILE,
@@ -156,18 +143,12 @@ enum
    ACTION_OK_DL_DATABASE_MANAGER_LIST,
    ACTION_OK_DL_CURSOR_MANAGER_LIST,
    ACTION_OK_DL_CORE_UPDATER_LIST,
-   ACTION_OK_DL_CORE_MANAGER_LIST,
-#ifdef HAVE_MIST
-   ACTION_OK_DL_STEAM_SETTINGS_LIST,
-   ACTION_OK_DL_CORE_MANAGER_STEAM_LIST,
-#endif
    ACTION_OK_DL_THUMBNAILS_UPDATER_LIST,
    ACTION_OK_DL_PL_THUMBNAILS_UPDATER_LIST,
    ACTION_OK_DL_BROWSE_URL_LIST,
    ACTION_OK_DL_CORE_CONTENT_LIST,
    ACTION_OK_DL_CORE_CONTENT_DIRS_LIST,
    ACTION_OK_DL_CORE_CONTENT_DIRS_SUBDIR_LIST,
-   ACTION_OK_DL_CORE_SYSTEM_FILES_LIST,
    ACTION_OK_DL_DEFERRED_LOAD_DISC_LIST,
    ACTION_OK_DL_DEFERRED_DUMP_DISC_LIST,
    ACTION_OK_DL_DEFERRED_CORE_LIST,
@@ -179,7 +160,6 @@ enum
    ACTION_OK_DL_ONSCREEN_VIDEO_LAYOUT_SETTINGS_LIST,
 #endif
    ACTION_OK_DL_ONSCREEN_NOTIFICATIONS_SETTINGS_LIST,
-   ACTION_OK_DL_ONSCREEN_NOTIFICATIONS_VIEWS_SETTINGS_LIST,
    ACTION_OK_DL_MENU_VIEWS_SETTINGS_LIST,
    ACTION_OK_DL_SETTINGS_VIEWS_SETTINGS_LIST,
    ACTION_OK_DL_QUICK_MENU_VIEWS_SETTINGS_LIST,
@@ -189,21 +169,14 @@ enum
    ACTION_OK_DL_ACCESSIBILITY_SETTINGS_LIST,
    ACTION_OK_DL_USER_INTERFACE_SETTINGS_LIST,
    ACTION_OK_DL_POWER_MANAGEMENT_SETTINGS_LIST,
-   ACTION_OK_DL_CPU_PERFPOWER_SETTINGS_LIST,
-   ACTION_OK_DL_CPU_POLICY_SETTINGS_LIST,
    ACTION_OK_DL_MENU_SOUNDS_LIST,
    ACTION_OK_DL_MENU_FILE_BROWSER_SETTINGS_LIST,
    ACTION_OK_DL_RETRO_ACHIEVEMENTS_SETTINGS_LIST,
-   ACTION_OK_DL_ACHIEVEMENTS_HARDCORE_PAUSE_LIST,
    ACTION_OK_DL_UPDATER_SETTINGS_LIST,
-   ACTION_OK_DL_BLUETOOTH_SETTINGS_LIST,
    ACTION_OK_DL_WIFI_SETTINGS_LIST,
-   ACTION_OK_DL_WIFI_NETWORKS_LIST,
    ACTION_OK_DL_NETWORK_SETTINGS_LIST,
    ACTION_OK_DL_SUBSYSTEM_SETTINGS_LIST,
    ACTION_OK_DL_NETWORK_HOSTING_SETTINGS_LIST,
-   ACTION_OK_DL_NETPLAY_KICK_LIST,
-   ACTION_OK_DL_NETPLAY_LOBBY_FILTERS_LIST,
    ACTION_OK_DL_NETPLAY_LAN_SCAN_SETTINGS_LIST,
    ACTION_OK_DL_LAKKA_SERVICES_LIST,
    ACTION_OK_DL_USER_SETTINGS_LIST,
@@ -212,21 +185,12 @@ enum
    ACTION_OK_DL_MIDI_SETTINGS_LIST,
    ACTION_OK_DL_LOAD_DISC_LIST,
    ACTION_OK_DL_DUMP_DISC_LIST,
-#ifdef HAVE_LAKKA
-   ACTION_OK_DL_EJECT_DISC,
-#endif
    ACTION_OK_DL_BROWSE_URL_START,
    ACTION_OK_DL_CONTENT_SETTINGS,
    ACTION_OK_DL_CDROM_INFO_DETAIL_LIST,
    ACTION_OK_DL_RGUI_MENU_THEME_PRESET,
    ACTION_OK_DL_MANUAL_CONTENT_SCAN_LIST,
-   ACTION_OK_DL_MANUAL_CONTENT_SCAN_DAT_FILE,
-   ACTION_OK_DL_CORE_RESTORE_BACKUP_LIST,
-   ACTION_OK_DL_CORE_DELETE_BACKUP_LIST,
-   ACTION_OK_DL_SAVESTATE_LIST,
-   ACTION_OK_DL_CORE_OPTION_OVERRIDE_LIST,
-   ACTION_OK_DL_CORE_OPTIONS_LIST,
-   ACTION_OK_DL_REMAP_FILE_MANAGER_LIST
+   ACTION_OK_DL_MANUAL_CONTENT_SCAN_DAT_FILE
 };
 
 /* Function callbacks */
@@ -235,6 +199,8 @@ int action_cb_push_dropdown_item_resolution(const char *path,
 
 int action_cancel_pop_default(const char *path,
       const char *label, unsigned type, size_t idx);
+
+int action_refresh_default(file_list_t *list, file_list_t *menu_list);
 
 int shader_action_parameter_right(unsigned type, const char *label, bool wraparound);
 int shader_action_preset_parameter_right(unsigned type, const char *label, bool wraparound);
@@ -261,12 +227,14 @@ int action_ok_directory_push(const char *path,
 int core_setting_right(unsigned type, const char *label,
       bool wraparound);
 
-int action_right_cheat(unsigned type, const char *label,
+int action_right_input_desc(unsigned type, const char *label,
       bool wraparound);
 
-void input_keyboard_mapping_bits(unsigned mode, unsigned key);
+int action_right_input_desc_kbd(unsigned type, const char *label,
+      bool wraparound);
 
-unsigned libretro_device_get_size(unsigned *devices, size_t devices_size, unsigned port);
+int action_right_cheat(unsigned type, const char *label,
+      bool wraparound);
 
 /* End of function callbacks */
 
@@ -278,6 +246,9 @@ int menu_cbs_init_bind_right(menu_file_list_cbs_t *cbs,
       const char *path, const char *label, unsigned type, size_t idx,
       const char *menu_label);
 
+int menu_cbs_init_bind_refresh(menu_file_list_cbs_t *cbs,
+      const char *path, const char *label, unsigned type, size_t idx);
+
 int menu_cbs_init_bind_get_string_representation(menu_file_list_cbs_t *cbs,
       const char *path, const char *label, unsigned type, size_t idx);
 
@@ -287,10 +258,19 @@ int menu_cbs_init_bind_label(menu_file_list_cbs_t *cbs,
 int menu_cbs_init_bind_sublabel(menu_file_list_cbs_t *cbs,
       const char *path, const char *label, unsigned type, size_t idx);
 
+int menu_cbs_init_bind_up(menu_file_list_cbs_t *cbs,
+      const char *path, const char *label, unsigned type, size_t idx);
+
+int menu_cbs_init_bind_down(menu_file_list_cbs_t *cbs,
+      const char *path, const char *label, unsigned type, size_t idx);
+
 int menu_cbs_init_bind_info(menu_file_list_cbs_t *cbs,
       const char *path, const char *label, unsigned type, size_t idx);
 
 int menu_cbs_init_bind_start(menu_file_list_cbs_t *cbs,
+      const char *path, const char *label, unsigned type, size_t idx);
+
+int menu_cbs_init_bind_content_list_switch(menu_file_list_cbs_t *cbs,
       const char *path, const char *label, unsigned type, size_t idx);
 
 int menu_cbs_init_bind_cancel(menu_file_list_cbs_t *cbs,
@@ -325,6 +305,35 @@ int bind_right_generic(unsigned type, const char *label,
 
 int action_ok_core_option_dropdown_list(const char *path,
       const char *label, unsigned type, size_t idx, size_t entry_idx);
+
+/* This sets up all the callback functions for a menu entry.
+ *
+ * OK     : When we press the 'OK' button on an entry.
+ * Cancel : When we press the 'Cancel' button on an entry.
+ * Scan   : When we press the 'Scan' button on an entry.
+ * Start  : When we press the 'Start' button on an entry.
+ * Select : When we press the 'Select' button on an entry.
+ * Info   : When we press the 'Info' button on an entry.
+ * Content Switch   : ??? (TODO/FIXME - Kivutar should document this)
+ * Up     : when we press 'Up' on the D-pad while this entry is selected.
+ * Down   : when we press 'Down' on the D-pad while this entry is selected.
+ * Left   : when we press 'Left' on the D-pad while this entry is selected.
+ * Right  : when we press 'Right' on the D-pad while this entry is selected.
+ * Deferred push : When pressing an entry results in spawning a new list, it waits until the next
+ * frame to push this onto the stack. This function callback will then be invoked.
+ * Refresh : What happens when the screen has to be refreshed. Does an entry have internal state
+ * that needs to be rebuild?
+ * Get value: Each entry has associated 'text', which we call the value. This function callback
+ * lets us render that text.
+ * Get title: Each entry can have a custom 'title'.
+ * Label: Each entry has a label name. This function callback lets us render that label text.
+ * Sublabel: each entry has a sublabel, which consists of one or more lines of additional information.
+ * This function callback lets us render that text.
+ */
+void menu_cbs_init(void *data,
+      menu_file_list_cbs_t *cbs,
+      const char *path, const char *label,
+      unsigned type, size_t idx);
 
 int menu_cbs_exit(void);
 

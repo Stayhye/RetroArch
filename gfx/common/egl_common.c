@@ -33,7 +33,6 @@
 #include "../../verbosity.h"
 #include "../../frontend/frontend_driver.h"
 
-/* TODO/FIXME - globals */
 bool g_egl_inited    = false;
 
 unsigned g_egl_major = 0;
@@ -279,8 +278,8 @@ void egl_destroy(egl_ctx_data_t *egl)
 #if !defined(RARCH_MOBILE)
       if (egl->ctx != EGL_NO_CONTEXT)
       {
-         gl_flush();
-         gl_finish();
+         glFlush();
+         glFinish();
       }
 #endif
 #endif
@@ -349,9 +348,10 @@ void egl_set_swap_interval(egl_ctx_data_t *egl, int interval)
    if (!_egl_get_current_context())
       return;
 
+   RARCH_LOG("[EGL]: eglSwapInterval(%u)\n", interval);
    if (!_egl_swap_interval(egl->dpy, interval))
    {
-      RARCH_ERR("[EGL]: eglSwapInterval(%i) failed.\n", interval);
+      RARCH_ERR("[EGL]: eglSwapInterval() failed.\n");
       egl_report_error();
    }
 }

@@ -262,12 +262,6 @@
 			isa = XCBuildConfiguration;
 			buildSettings = {
 				ALWAYS_SEARCH_USER_PATHS = NO;
-				ARCHS = (
-					i386,
-					x86_64,
-					ppc64,
-					ppc,
-				);
 				CLANG_CXX_LANGUAGE_STANDARD = "compiler-default";
 				CLANG_CXX_LIBRARY = "compiler-default";
 				CLANG_ENABLE_OBJC_ARC = NO;
@@ -293,14 +287,14 @@
 				GCC_WARN_UNUSED_VARIABLE = YES;
 				INFOPLIST_FILE = "$(SRCROOT)/OSX/Info.plist";
 				MACOSX_DEPLOYMENT_TARGET = 10.4;
-				ONLY_ACTIVE_ARCH = NO;
+				ONLY_ACTIVE_ARCH = YES;
 				OTHER_CFLAGS = (
 					"-DHAVE_RUNAHEAD",
 					"-DHAVE_TRANSLATE",
 					"-DHAVE_ACCESSIBILITY",
-					"-DHAVE_COMMAND",
-					"-DHAVE_NETWORK_CMD",
 					"-DHAVE_GRIFFIN",
+					"-DHAVE_MINIUPNPC",
+					"-DHAVE_BUILTINMINIUPNPC",
 					"-DHAVE_UPDATE_ASSETS",
 					"-DHAVE_UPDATE_CORES",
 					"-DHAVE_ONLINE_UPDATER",
@@ -310,18 +304,10 @@
 					"-DHAVE_IOHIDMANAGER",
 					"-DHAVE_RGUI",
 					"-DHAVE_CONFIGFILE",
-					"-DHAVE_PATCH",
-					"-DHAVE_DSP_FILTER",
-					"-DHAVE_VIDEO_FILTER",
-					"-DHAVE_REWIND",
-					"-DHAVE_SCREENSHOTS",
-					"-DHAVE_CHEATS",
-					"-DHAVE_CORE_INFO_CACHE",
 					"-DHAVE_MENU",
 					"-DHAVE_GFX_WIDGETS",
 					"-DOSX",
 					"-DHAVE_OPENGL",
-					"-DHAVE_OPENGL1",
 					"-DHAVE_CC_RESAMPLER",
 					"-DHAVE_GLSL",
 					"-DINLINE=inline",
@@ -344,7 +330,6 @@
 					"-DHAVE_THREADS",
 					"-DHAVE_DYLIB",
 					"-DHAVE_7ZIP",
-					"-D_7ZIP_ST",
 					"-DHAVE_MATERIALUI",
 					"-DHAVE_HID",
 					"-DHAVE_XMB",
@@ -391,9 +376,9 @@
 					"-DHAVE_RUNAHEAD",
 					"-DHAVE_TRANSLATE",
 					"-DHAVE_ACCESSIBILITY",
-					"-DHAVE_COMMAND",
-					"-DHAVE_NETWORK_CMD",
 					"-DHAVE_GRIFFIN",
+					"-DHAVE_MINIUPNPC",
+					"-DHAVE_BUILTINMINIUPNPC",
 					"-DHAVE_UPDATE_ASSETS",
 					"-DHAVE_UPDATE_CORES",
 					"-DHAVE_ONLINE_UPDATER",
@@ -403,18 +388,10 @@
 					"-DHAVE_IOHIDMANAGER",
 					"-DHAVE_RGUI",
 					"-DHAVE_CONFIGFILE",
-					"-DHAVE_PATCH",
-					"-DHAVE_DSP_FILTER",
-					"-DHAVE_VIDEO_FILTER",
-					"-DHAVE_REWIND",
-					"-DHAVE_SCREENSHOTS",
-					"-DHAVE_CHEATS",
-					"-DHAVE_CORE_INFO_CACHE",
 					"-DHAVE_MENU",
 					"-DHAVE_GFX_WIDGETS",
 					"-DOSX",
 					"-DHAVE_OPENGL",
-					"-DHAVE_OPENGL1",
 					"-DHAVE_CC_RESAMPLER",
 					"-DHAVE_GLSL",
 					"-DINLINE=inline",
@@ -437,7 +414,6 @@
 					"-DHAVE_THREADS",
 					"-DHAVE_DYLIB",
 					"-DHAVE_7ZIP",
-					"-D_7ZIP_ST",
 					"-DHAVE_MATERIALUI",
 					"-DHAVE_HID",
 					"-DHAVE_XMB",

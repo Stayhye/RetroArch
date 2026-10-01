@@ -42,7 +42,7 @@
 #include "../common/mmdevice_common.h"
 #endif
 
-#include "../audio_driver.h"
+#include "../../retroarch.h"
 #include "../../verbosity.h"
 
 typedef struct xaudio2 xaudio2_t;
@@ -60,9 +60,9 @@ typedef struct xaudio2 xaudio2_t;
 typedef struct
 {
    xaudio2_t *xa;
-   size_t bufsize;
    bool nonblock;
    bool is_paused;
+   size_t bufsize;
 } xa_t;
 
 /* Forward declarations */
@@ -180,10 +180,6 @@ static void xaudio2_free(xaudio2_t *handle)
 #else
    free(handle);
 #endif
-
-#if !defined(_XBOX) && !defined(__WINRT__)
-   CoUninitialize();
-#endif
 }
 
 static xaudio2_t *xaudio2_new(unsigned samplerate, unsigned channels,
@@ -192,28 +188,16 @@ static xaudio2_t *xaudio2_new(unsigned samplerate, unsigned channels,
    int32_t idx_found        = -1;
    WAVEFORMATEX wfx         = {0};
    struct string_list *list = NULL;
-   xaudio2_t *handle        = NULL;
-
-#if !defined(_XBOX) && !defined(__WINRT__)
-   if (FAILED(CoInitialize(NULL)))
-      goto error;
-#endif
-
 #if defined(__cplusplus) && !defined(CINTERFACE)
-   handle = new xaudio2;
+   xaudio2_t *handle        = new xaudio2;
 #else
-   handle = (xaudio2_t*)calloc(1, sizeof(*handle));
+   xaudio2_t *handle        = (xaudio2_t*)calloc(1, sizeof(*handle));
 #endif
 
    if (!handle)
-   {
-#if !defined(_XBOX) && !defined(__WINRT__)
-      CoUninitialize();
-#endif
       goto error;
-   }
 
-   list = (struct string_list*)xa_list_new(NULL);
+   list                     = (struct string_list*)xa_list_new(NULL);
 
 #if !defined(__cplusplus) || defined(CINTERFACE)
    handle->lpVtbl = &voice_vtable;
@@ -312,34 +296,34 @@ static void *xa_init(const char *device, unsigned rate, unsigned latency,
       unsigned *new_rate)
 {
    size_t bufsize;
-   xa_t *xa    = (xa_t*)calloc(1, sizeof(*xa));
-
+   xa_t *xa              = (xa_t*)calloc(1, sizeof(*xa));
    if (!xa)
       return NULL;
 
    if (latency < 8)
-      latency  = 8; /* Do not allow shenanigans. */
+      latency = 8; /* Do not allow shenanigans. */
 
-   bufsize     = latency * rate / 1000;
+   bufsize = latency * rate / 1000;
+
+   RARCH_LOG("[XAudio2]: Requesting %u ms latency, using %d ms latency.\n",
+         latency, (int)bufsize * 1000 / rate);
+
    xa->bufsize = bufsize * 2 * sizeof(float);
 
    xa->xa = xaudio2_new(rate, 2, xa->bufsize, device);
    if (!xa->xa)
    {
-      RARCH_ERR("[XAudio2] Failed to init driver.\n");
+      RARCH_ERR("Failed to init XAudio2.\n");
       free(xa);
       return NULL;
    }
-
-   RARCH_LOG("[XAudio2]: Requesting %u ms latency, using %d ms latency.\n",
-         latency, (int)bufsize * 1000 / rate);
 
    return xa;
 }
 
 static ssize_t xa_write(void *data, const void *buf, size_t size)
 {
-   unsigned bytes        = size;
+   unsigned bytes;
    xa_t *xa              = (xa_t*)data;
    xaudio2_t *handle     = xa->xa;
    const uint8_t *buffer = (const uint8_t*)buf;
@@ -351,8 +335,10 @@ static ssize_t xa_write(void *data, const void *buf, size_t size)
       if (avail == 0)
          return 0;
       if (avail < size)
-         bytes = size = avail;
+         size = avail;
    }
+
+   bytes = size;
 
    while (bytes)
    {
@@ -371,8 +357,7 @@ static ssize_t xa_write(void *data, const void *buf, size_t size)
          XAUDIO2_BUFFER xa2buffer;
 
          while (handle->buffers == MAX_BUFFERS - 1)
-            if (!(WaitForSingleObject(handle->hEvent, 50) == WAIT_OBJECT_0))
-               return -1;
+            WaitForSingleObject(handle->hEvent, INFINITE);
 
          xa2buffer.Flags      = 0;
          xa2buffer.AudioBytes = handle->bufsize;
@@ -425,12 +410,16 @@ static void xa_set_nonblock_state(void *data, bool state)
 
 static bool xa_start(void *data, bool is_shutdown)
 {
-   xa_t *xa      = (xa_t*)data;
+   xa_t *xa = (xa_t*)data;
    xa->is_paused = false;
    return true;
 }
 
-static bool xa_use_float(void *data) { return true; }
+static bool xa_use_float(void *data)
+{
+   (void)data;
+   return true;
+}
 
 static void xa_free(void *data)
 {

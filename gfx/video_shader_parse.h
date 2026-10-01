@@ -22,22 +22,23 @@
 #include <retro_miscellaneous.h>
 #include <file/config_file.h>
 #include <file/file_path.h>
-#include <lists/string_list.h>
-
-#include "../configuration.h"
 
 RETRO_BEGIN_DECLS
 
 #ifndef GFX_MAX_SHADERS
-#define GFX_MAX_SHADERS 64
+#define GFX_MAX_SHADERS 26
 #endif
 
 #ifndef GFX_MAX_TEXTURES
-#define GFX_MAX_TEXTURES 64
+#define GFX_MAX_TEXTURES 8
+#endif
+
+#ifndef GFX_MAX_VARIABLES
+#define GFX_MAX_VARIABLES 64
 #endif
 
 #ifndef GFX_MAX_PARAMETERS
-#define GFX_MAX_PARAMETERS 1024
+#define GFX_MAX_PARAMETERS 128
 #endif
 
 #ifndef GFX_MAX_FRAME_HISTORY
@@ -82,115 +83,151 @@ enum gfx_wrap_type
 
 struct gfx_fbo_scale
 {
-   unsigned abs_x;
-   unsigned abs_y;
-   float scale_x;
-   float scale_y;
    enum gfx_scale_type type_x;
    enum gfx_scale_type type_y;
+   float scale_x;
+   float scale_y;
    bool fp_fbo;
    bool srgb_fbo;
    bool valid;
+   unsigned abs_x;
+   unsigned abs_y;
 };
 
 struct video_shader_parameter
 {
-   int pass;
+   char id[64];
+   char desc[64];
    float current;
    float minimum;
    float initial;
    float maximum;
    float step;
-   char id[64];
-   char desc[64];
-};
-
-struct rarch_dir_shader_list
-{
-   struct string_list *shader_list;
-   char *directory;
-   size_t selection;
-   bool shader_loaded;
-   bool remember_last_preset_dir;
+   int pass;
 };
 
 struct video_shader_pass
 {
-   struct gfx_fbo_scale fbo; /* unsigned alignment */
-   unsigned filter;
-   unsigned frame_count_mod;
-   enum gfx_wrap_type wrap;
    struct
    {
+      char path[PATH_MAX_LENGTH];
       struct
       {
          char *vertex; /* Dynamically allocated. Must be free'd. */
          char *fragment; /* Dynamically allocated. Must be free'd. */
       } string;
-      char path[PATH_MAX_LENGTH];
    } source;
+
    char alias[64];
+   struct gfx_fbo_scale fbo;
+   enum gfx_wrap_type wrap;
    bool mipmap;
+   unsigned filter;
+   unsigned frame_count_mod;
    bool feedback;
 };
 
 struct video_shader_lut
 {
-   unsigned filter;
-   enum gfx_wrap_type wrap;
    char id[64];
    char path[PATH_MAX_LENGTH];
+   enum gfx_wrap_type wrap;
    bool mipmap;
+   unsigned filter;
 };
 
 /* This is pretty big, shouldn't be put on the stack.
  * Avoid lots of allocation for convenience. */
 struct video_shader
 {
-   struct video_shader_parameter parameters[GFX_MAX_PARAMETERS]; /* int alignment */
-   /* If < 0, no feedback pass is used. Otherwise,
-    * the FBO after pass #N is passed a texture to next frame. */
-   int feedback_pass;
-   int history_size;
-
-   struct video_shader_pass pass[GFX_MAX_SHADERS]; /* unsigned alignment */
-   struct video_shader_lut lut[GFX_MAX_TEXTURES];  /* unsigned alignment */
-   unsigned passes;
-   unsigned luts;
-   unsigned num_parameters;
-   unsigned variables;
-
    char prefix[64];
-
-   /* Path to the root preset */
    char path[PATH_MAX_LENGTH];
-
-   /* Path to the original preset loaded, if this is a preset with the #reference
-    * directive then this will be different than the path*/
-   char loaded_preset_path[PATH_MAX_LENGTH];
 
    bool modern; /* Only used for XML shaders. */
    /* indicative of whether shader was modified - 
     * for instance from the menus */
    bool modified;
+
+   unsigned passes;
+   unsigned luts;
+   unsigned num_parameters;
+   unsigned variables;
+   /* If < 0, no feedback pass is used. Otherwise,
+    * the FBO after pass #N is passed a texture to next frame. */
+   int feedback_pass;
+   int history_size;
+
+   struct video_shader_pass pass[GFX_MAX_SHADERS];
+   struct video_shader_lut lut[GFX_MAX_TEXTURES];
+   struct video_shader_parameter parameters[GFX_MAX_PARAMETERS];
 };
 
+/**
+ * video_shader_write_preset:
+ * @path              : File to write to
+ * @shader            : Shader preset to write
+ * @reference         : Whether a reference preset should be written
+ *
+ * Writes a preset to disk. Can be written as a reference preset.
+ * See: video_shader_read_preset
+ **/
+bool video_shader_write_preset(const char *path,
+      const char *shader_dir,
+      const struct video_shader *shader, bool reference);
+
+/**
+ * video_shader_read_reference_path:
+ * @path              : File to read
+ *
+ * Returns: the reference path of a preset if it exists,
+ * otherwise returns NULL.
+ *
+ * The returned string needs to be freed.
+ */
+char *video_shader_read_reference_path(const char *path);
+
+/**
+ * video_shader_read_preset:
+ * @path              : File to read
+ *
+ * Reads a preset from disk.
+ * If the preset is a reference preset, the referenced preset
+ * is loaded instead.
+ *
+ * Returns: the read preset as a config object.
+ *
+ * The returned config object needs to be freed.
+ **/
+config_file_t *video_shader_read_preset(const char *path);
+
+/**
+ * video_shader_read_conf_preset:
+ * @conf              : Preset file to read from.
+ * @shader            : Shader passes handle.
+ * Loads preset file and all associated state (passes,
+ * textures, imports, etc).
+ *
+ * Returns: true (1) if successful, otherwise false (0).
+ **/
+bool video_shader_read_conf_preset(config_file_t *conf,
+      struct video_shader *shader);
+
+/**
+ * video_shader_write_conf_preset:
+ * @conf              : Preset file to write to.
+ * @shader            : Shader passes handle.
+ * @preset_path       : Optional path to where the preset will be written.
+ *
+ * Writes preset and all associated state (passes,
+ * textures, imports, etc) into @conf.
+ * If @preset_path is not NULL, shader paths are saved
+ * relative to it.
+ **/
+void video_shader_write_conf_preset(config_file_t *conf,
+      const struct video_shader *shader, const char *preset_path);
 
 /**
  * video_shader_resolve_parameters:
- * @conf              : Preset file to read from.
- * @shader            : Shader passes handle.
- *
- * Resolves all shader parameters belonging to shaders
- * from the #pragma parameter lines in the shader for each pass.
- * 
- * Returns: true (1) if successful, otherwise false (0).
- **/
-bool video_shader_resolve_parameters(struct video_shader *shader);
-
-
-/**
- * video_shader_load_current_parameter_values:
  * @conf              : Preset file to read from.
  * @shader            : Shader passes handle.
  *
@@ -198,36 +235,23 @@ bool video_shader_resolve_parameters(struct video_shader *shader);
  *
  * Returns: true (1) if successful, otherwise false (0).
  **/
-bool video_shader_load_current_parameter_values(config_file_t *conf, struct video_shader *shader);
-
+bool video_shader_resolve_current_parameters(config_file_t *conf,
+      struct video_shader *shader);
 
 /**
- * video_shader_load_preset_into_shader:
- * @path              : Path to preset file, could be a Simple Preset (including a #reference) or Full Preset
- * @shader            : Shader
+ * video_shader_resolve_parameters:
+ * @conf              : Preset file to read from.
+ * @shader            : Shader passes handle.
  *
- * Loads preset file to a shader including passes, textures and parameters
+ * Resolves all shader parameters belonging to shaders.
  *
  * Returns: true (1) if successful, otherwise false (0).
  **/
-bool video_shader_load_preset_into_shader(const char *path, struct video_shader *shader);
+bool video_shader_resolve_parameters(config_file_t *conf,
+      struct video_shader *shader);
 
-
-/**
- * video_shader_write_preset:
- * @path              : File to write to
- * @shader            : Shader to write
- * @reference         : Whether a simple preset should be written with the #reference to another preset in it
- *
- * Writes a preset to disk. Can be written as a simple preset (With the #reference directive in it) or a full preset.
- **/
-bool video_shader_write_preset(const char *path,
-                                 const char *shader_dir,
-                                 const struct video_shader *shader, 
-                                 bool reference);
-
-
-enum rarch_shader_type video_shader_get_type_from_ext(const char *ext, bool *is_preset);
+enum rarch_shader_type video_shader_get_type_from_ext(const char *ext,
+      bool *is_preset);
 
 /**
  * video_shader_parse_type:
@@ -246,63 +270,7 @@ bool video_shader_any_supported(void);
 
 bool video_shader_check_for_changes(void);
 
-const char *video_shader_type_to_str(enum rarch_shader_type type);
-
-void dir_free_shader(
-      struct rarch_dir_shader_list *dir_list,
-      bool shader_remember_last_dir);
-
-void dir_init_shader(
-      void *menu_driver_data_,
-      settings_t *settings,
-      struct rarch_dir_shader_list *dir_list);
-
-/**
- * dir_check_shader:
- * @pressed_next         : Was next shader key pressed?
- * @pressed_prev         : Was previous shader key pressed?
- *
- * Checks if any one of the shader keys has been pressed for this frame:
- * a) Next shader index.
- * b) Previous shader index.
- *
- * Will also immediately apply the shader.
- **/
-void dir_check_shader(
-      void *menu_driver_data_,
-      settings_t *settings,
-      struct rarch_dir_shader_list *dir_list,
-      bool pressed_next,
-      bool pressed_prev);
-
-/**
- * load_shader_preset:
- *
- * Tries to load a supported core-, game-, folder-specific or global
- * shader preset from its respective location:
- *
- * global:          $CONFIG_DIR/global.$PRESET_EXT
- * core-specific:   $CONFIG_DIR/$CORE_NAME/$CORE_NAME.$PRESET_EXT
- * folder-specific: $CONFIG_DIR/$CORE_NAME/$FOLDER_NAME.$PRESET_EXT
- * game-specific:   $CONFIG_DIR/$CORE_NAME/$GAME_NAME.$PRESET_EXT
- *
- * $CONFIG_DIR is expected to be Menu Config directory, or failing that, the
- * directory where retroarch.cfg is stored.
- *
- * For compatibility purposes with versions 1.8.7 and older, the presets
- * subdirectory on the Video Shader path is used as a fallback directory.
- *
- * Note: Uses video_shader_is_supported() which only works after
- *       context driver initialization.
- *
- * Returns: false if there was an error or no action was performed.
- */
-bool load_shader_preset(settings_t *settings, const char *core_name, char *s, size_t len);
-
-bool apply_shader(
-      settings_t *settings,
-      enum rarch_shader_type type,
-      const char *preset_path, bool message);
+const char *video_shader_to_str(enum rarch_shader_type type);
 
 const char *video_shader_get_preset_extension(enum rarch_shader_type type);
 

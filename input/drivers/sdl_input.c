@@ -26,48 +26,21 @@
 
 #include "../input_keymaps.h"
 
-#include "../../configuration.h"
 #include "../../retroarch.h"
 #include "../../verbosity.h"
 #include "../../tasks/tasks_internal.h"
-
-#ifdef HAVE_SDL2
-#include "../../gfx/common/sdl2_common.h"
-#endif
-
-#ifdef WEBOS
-#include <SDL_webOS.h>
-#include <dlfcn.h>
-#endif
 
 /* TODO/FIXME -
  * fix game focus toggle */
 
 typedef struct sdl_input
 {
-   int mouse_x;
-   int mouse_y;
-   int mouse_abs_x;
-   int mouse_abs_y;
-   int mouse_l;
-   int mouse_r;
-   int mouse_m;
-   int mouse_b4;
-   int mouse_b5;
-   int mouse_wu;
-   int mouse_wd;
-   int mouse_wl;
-   int mouse_wr;
+   const input_device_driver_t *joypad;
+
+   int mouse_x, mouse_y;
+   int mouse_abs_x, mouse_abs_y;
+   int mouse_l, mouse_r, mouse_m, mouse_b4, mouse_b5, mouse_wu, mouse_wd, mouse_wl, mouse_wr;
 } sdl_input_t;
-
-#ifdef WEBOS
-enum sdl_webos_special_key {
-   sdl_webos_spkey_back,
-   sdl_webos_spkey_size,
-};
-
-static uint8_t sdl_webos_special_keymap[sdl_webos_spkey_size] = {0};
-#endif
 
 static void *sdl_input_init(const char *joypad_driver)
 {
@@ -77,6 +50,9 @@ static void *sdl_input_init(const char *joypad_driver)
 
    input_keymaps_init_keyboard_lut(rarch_key_map_sdl);
 
+   sdl->joypad = input_joypad_init_driver(joypad_driver, sdl);
+
+   RARCH_LOG("[SDL]: Input driver initialized.\n");
    return sdl;
 }
 
@@ -91,44 +67,163 @@ static bool sdl_key_pressed(int key)
    unsigned sym          = rarch_keysym_lut[(enum retro_key)key];
 #endif
 
-#ifdef WEBOS
-   if (   (key == RETROK_BACKSPACE )
-       && sdl_webos_special_keymap[sdl_webos_spkey_back])
-   {
-      /* Reset to unpressed state */
-      sdl_webos_special_keymap[sdl_webos_spkey_back] = 0;
-      return true;
-   }
-   if (key == RETROK_F1 && keymap[SDL_WEBOS_SCANCODE_EXIT])
-      return true;
-   if (key == RETROK_x && keymap[SDL_WEBOS_SCANCODE_RED])
-      return true;
-   if (key == RETROK_z && keymap[SDL_WEBOS_SCANCODE_GREEN])
-      return true;
-   if (key == RETROK_s && keymap[SDL_WEBOS_SCANCODE_YELLOW])
-      return true;
-   if (key == RETROK_a && keymap[SDL_WEBOS_SCANCODE_BLUE])
-      return true;
-#endif
-
    if (sym >= (unsigned)num_keys)
       return false;
 
    return keymap[sym];
 }
 
-static int16_t sdl_input_state(
-      void *data,
-      const input_device_driver_t *joypad,
-      const input_device_driver_t *sec_joypad,
-      rarch_joypad_info_t *joypad_info,
-      const retro_keybind_set *binds,
-      bool keyboard_mapping_blocked,
-      unsigned port,
-      unsigned device,
-      unsigned idx,
-      unsigned id)
+static int16_t sdl_analog_pressed(sdl_input_t *sdl, const struct retro_keybind *binds,
+      unsigned idx, unsigned id)
 {
+   int16_t pressed_minus = 0, pressed_plus = 0;
+   unsigned id_minus = 0;
+   unsigned id_plus  = 0;
+
+   input_conv_analog_id_to_bind_id(idx, id, id_minus, id_plus);
+
+   if ((binds[id_minus].key < RETROK_LAST) && sdl_key_pressed(binds[id_minus].key))
+      pressed_minus = -0x7fff;
+   if ((binds[id_plus].key  < RETROK_LAST) && sdl_key_pressed(binds[id_plus].key))
+      pressed_plus  = 0x7fff;
+
+   return pressed_plus + pressed_minus;
+}
+
+static int16_t sdl_joypad_device_state(sdl_input_t *sdl,
+      rarch_joypad_info_t *joypad_info,
+      const struct retro_keybind *binds,
+      unsigned port, unsigned id, enum input_device_type *device)
+{
+   /* Auto-binds are per joypad, not per user. */
+   const uint64_t joykey  = (binds[id].joykey != NO_BTN)
+      ? binds[id].joykey : joypad_info->auto_binds[id].joykey;
+   const uint32_t joyaxis = (binds[id].joyaxis != AXIS_NONE)
+      ? binds[id].joyaxis : joypad_info->auto_binds[id].joyaxis;
+
+   if ((binds[id].key < RETROK_LAST) && sdl_key_pressed(binds[id].key))
+   {
+      *device = INPUT_DEVICE_TYPE_KEYBOARD;
+      return 1;
+   }
+
+   if ((uint16_t)joykey != NO_BTN && sdl->joypad->button(
+            joypad_info->joy_idx, (uint16_t)joykey))
+   {
+      *device = INPUT_DEVICE_TYPE_JOYPAD;
+      return 1;
+   }
+
+   if (((float)abs(sdl->joypad->axis(joypad_info->joy_idx, joyaxis)) / 0x8000) > joypad_info->axis_threshold)
+   {
+      *device = INPUT_DEVICE_TYPE_JOYPAD;
+      return 1;
+   }
+
+   return 0;
+}
+
+static int16_t sdl_mouse_device_state(sdl_input_t *sdl, unsigned id)
+{
+   switch (id)
+   {
+      case RETRO_DEVICE_ID_MOUSE_LEFT:
+         return sdl->mouse_l;
+      case RETRO_DEVICE_ID_MOUSE_RIGHT:
+         return sdl->mouse_r;
+      case RETRO_DEVICE_ID_MOUSE_WHEELUP:
+         return sdl->mouse_wu;
+      case RETRO_DEVICE_ID_MOUSE_WHEELDOWN:
+         return sdl->mouse_wd;
+      case RETRO_DEVICE_ID_MOUSE_X:
+         return sdl->mouse_x;
+      case RETRO_DEVICE_ID_MOUSE_Y:
+         return sdl->mouse_y;
+      case RETRO_DEVICE_ID_MOUSE_MIDDLE:
+         return sdl->mouse_m;
+      case RETRO_DEVICE_ID_MOUSE_BUTTON_4:
+         return sdl->mouse_b4;
+      case RETRO_DEVICE_ID_MOUSE_BUTTON_5:
+         return sdl->mouse_b5;
+   }
+
+   return 0;
+}
+
+static int16_t sdl_pointer_device_state(sdl_input_t *sdl,
+      unsigned idx, unsigned id, bool screen)
+{
+   struct video_viewport vp;
+   bool inside                 = false;
+   int16_t res_x               = 0;
+   int16_t res_y               = 0;
+   int16_t res_screen_x        = 0;
+   int16_t res_screen_y        = 0;
+
+   vp.x                        = 0;
+   vp.y                        = 0;
+   vp.width                    = 0;
+   vp.height                   = 0;
+   vp.full_width               = 0;
+   vp.full_height              = 0;
+
+   if (!(video_driver_translate_coord_viewport_wrap(&vp, sdl->mouse_abs_x, sdl->mouse_abs_y,
+         &res_x, &res_y, &res_screen_x, &res_screen_y)))
+      return 0;
+
+   if (screen)
+   {
+      res_x = res_screen_x;
+      res_y = res_screen_y;
+   }
+
+   inside = (res_x >= -0x7fff) && (res_y >= -0x7fff);
+
+   if (!inside)
+      return 0;
+
+   switch (id)
+   {
+      case RETRO_DEVICE_ID_POINTER_X:
+         return res_x;
+      case RETRO_DEVICE_ID_POINTER_Y:
+         return res_y;
+      case RETRO_DEVICE_ID_POINTER_PRESSED:
+         return sdl->mouse_l;
+   }
+
+   return 0;
+}
+
+static int16_t sdl_lightgun_device_state(sdl_input_t *sdl, unsigned id)
+{
+   switch (id)
+   {
+      case RETRO_DEVICE_ID_LIGHTGUN_X:
+         return sdl->mouse_x;
+      case RETRO_DEVICE_ID_LIGHTGUN_Y:
+         return sdl->mouse_y;
+      case RETRO_DEVICE_ID_LIGHTGUN_TRIGGER:
+         return sdl->mouse_l;
+      case RETRO_DEVICE_ID_LIGHTGUN_CURSOR:
+         return sdl->mouse_m;
+      case RETRO_DEVICE_ID_LIGHTGUN_TURBO:
+         return sdl->mouse_r;
+      case RETRO_DEVICE_ID_LIGHTGUN_START:
+         return sdl->mouse_m && sdl->mouse_r;
+      case RETRO_DEVICE_ID_LIGHTGUN_PAUSE:
+         return sdl->mouse_m && sdl->mouse_l;
+   }
+
+   return 0;
+}
+
+static int16_t sdl_input_state(void *data,
+      rarch_joypad_info_t *joypad_info,
+      const struct retro_keybind **binds,
+      unsigned port, unsigned device, unsigned idx, unsigned id)
+{
+   enum input_device_type type = INPUT_DEVICE_TYPE_NONE;
    sdl_input_t            *sdl = (sdl_input_t*)data;
 
    switch (device)
@@ -141,173 +236,46 @@ static int16_t sdl_input_state(
 
             for (i = 0; i < RARCH_FIRST_CUSTOM_BIND; i++)
             {
-               if (binds[port][i].valid)
-                  if (sdl_key_pressed(binds[port][i].key))
-                     ret |= (1 << i);
+               if (sdl_joypad_device_state(
+                        sdl, joypad_info, binds[port], port, i, &type))
+               {
+                  ret |= (1 << i);
+                  continue;
+               }
             }
 
             return ret;
          }
-
-         if (id < RARCH_BIND_LIST_END)
+         else
          {
-            if (binds[port][id].valid)
-               if (sdl_key_pressed(binds[port][id].key))
-                  return 1;
+            if (id < RARCH_BIND_LIST_END)
+               if (sdl_joypad_device_state(sdl,
+                     joypad_info, binds[port], port, id, &type))
+                  return true;
          }
          break;
       case RETRO_DEVICE_ANALOG:
          if (binds[port])
          {
-            int id_minus_key      = 0;
-            int id_plus_key       = 0;
-            unsigned id_minus     = 0;
-            unsigned id_plus      = 0;
-            int16_t ret           = 0;
-            bool id_plus_valid    = false;
-            bool id_minus_valid   = false;
-
-            input_conv_analog_id_to_bind_id(idx, id, id_minus, id_plus);
-
-            id_minus_valid        = binds[port][id_minus].valid;
-            id_plus_valid         = binds[port][id_plus].valid;
-            id_minus_key          = binds[port][id_minus].key;
-            id_plus_key           = binds[port][id_plus].key;
-
-            if (id_plus_valid && id_plus_key < RETROK_LAST)
-            {
-               if (sdl_key_pressed(id_plus_key))
-                  ret = 0x7fff;
-            }
-            if (id_minus_valid && id_minus_key < RETROK_LAST)
-            {
-               if (sdl_key_pressed(id_minus_key))
-                  ret += -0x7fff;
-            }
-
+            int16_t ret = sdl_analog_pressed(sdl, binds[port], idx, id);
+            if (!ret)
+               ret = input_joypad_analog(sdl->joypad,
+                        joypad_info, port, idx, id, binds[port]);
             return ret;
          }
          break;
       case RETRO_DEVICE_MOUSE:
-      case RARCH_DEVICE_MOUSE_SCREEN:
-         if (config_get_ptr()->uints.input_mouse_index[ port ] == 0)
-         {
-            switch (id)
-            {
-               case RETRO_DEVICE_ID_MOUSE_LEFT:
-                  return sdl->mouse_l;
-               case RETRO_DEVICE_ID_MOUSE_RIGHT:
-                  return sdl->mouse_r;
-#ifdef WEBOS
-               case RETRO_DEVICE_ID_MOUSE_WHEELUP:
-                  /* Note: webOS wheel is reversed */
-                  if (sdl->mouse_wd != 0)
-                  {
-                      sdl->mouse_wd = 0;
-                      return 1;
-                  }
-                  return 0;
-               case RETRO_DEVICE_ID_MOUSE_WHEELDOWN:
-                  if (sdl->mouse_wu != 0)
-                  {
-                      sdl->mouse_wu = 0;
-                      return 1;
-                  }
-                  return 0;
-               case RETRO_DEVICE_ID_MOUSE_X:
-                  return sdl->mouse_abs_x;
-               case RETRO_DEVICE_ID_MOUSE_Y:
-                  return sdl->mouse_abs_y;
-#else
-               case RETRO_DEVICE_ID_MOUSE_WHEELUP:
-                  return sdl->mouse_wu;
-               case RETRO_DEVICE_ID_MOUSE_WHEELDOWN:
-                  return sdl->mouse_wd;
-               case RETRO_DEVICE_ID_MOUSE_X:
-                  return sdl->mouse_x;
-               case RETRO_DEVICE_ID_MOUSE_Y:
-                  return sdl->mouse_y;
-#endif
-               case RETRO_DEVICE_ID_MOUSE_MIDDLE:
-                  return sdl->mouse_m;
-               case RETRO_DEVICE_ID_MOUSE_BUTTON_4:
-                  return sdl->mouse_b4;
-               case RETRO_DEVICE_ID_MOUSE_BUTTON_5:
-                  return sdl->mouse_b5;
-            }
-         }
-         break;
+         return sdl_mouse_device_state(sdl, id);
       case RETRO_DEVICE_POINTER:
       case RARCH_DEVICE_POINTER_SCREEN:
          if (idx == 0)
-         {
-            struct video_viewport vp;
-            bool screen                 = device == 
-               RARCH_DEVICE_POINTER_SCREEN;
-            const int edge_detect       = 32700;
-            bool inside                 = false;
-            int16_t res_x               = 0;
-            int16_t res_y               = 0;
-            int16_t res_screen_x        = 0;
-            int16_t res_screen_y        = 0;
-
-            vp.x                        = 0;
-            vp.y                        = 0;
-            vp.width                    = 0;
-            vp.height                   = 0;
-            vp.full_width               = 0;
-            vp.full_height              = 0;
-
-            if (video_driver_translate_coord_viewport_wrap(
-                        &vp, sdl->mouse_abs_x, sdl->mouse_abs_y,
-                        &res_x, &res_y, &res_screen_x, &res_screen_y))
-            {
-               if (screen)
-               {
-                  res_x = res_screen_x;
-                  res_y = res_screen_y;
-               }
-
-               inside =    (res_x >= -edge_detect) 
-                  && (res_y >= -edge_detect)
-                  && (res_x <= edge_detect)
-                  && (res_y <= edge_detect);
-
-               switch (id)
-               {
-                  case RETRO_DEVICE_ID_POINTER_X:
-                     return res_x;
-                  case RETRO_DEVICE_ID_POINTER_Y:
-                     return res_y;
-                  case RETRO_DEVICE_ID_POINTER_PRESSED:
-                     return sdl->mouse_l;
-                  case RETRO_DEVICE_ID_LIGHTGUN_IS_OFFSCREEN:
-                     return !inside;
-               }
-            }
-         }
+            return sdl_pointer_device_state(sdl, idx, id,
+                  device == RARCH_DEVICE_POINTER_SCREEN);
          break;
       case RETRO_DEVICE_KEYBOARD:
          return (id < RETROK_LAST) && sdl_key_pressed(id);
       case RETRO_DEVICE_LIGHTGUN:
-         switch (id)
-         {
-            case RETRO_DEVICE_ID_LIGHTGUN_X:
-               return sdl->mouse_x;
-            case RETRO_DEVICE_ID_LIGHTGUN_Y:
-               return sdl->mouse_y;
-            case RETRO_DEVICE_ID_LIGHTGUN_TRIGGER:
-               return sdl->mouse_l;
-            case RETRO_DEVICE_ID_LIGHTGUN_CURSOR:
-               return sdl->mouse_m;
-            case RETRO_DEVICE_ID_LIGHTGUN_TURBO:
-               return sdl->mouse_r;
-            case RETRO_DEVICE_ID_LIGHTGUN_START:
-               return sdl->mouse_m && sdl->mouse_r;
-            case RETRO_DEVICE_ID_LIGHTGUN_PAUSE:
-               return sdl->mouse_m && sdl->mouse_l;
-         }
-         break;
+         return sdl_lightgun_device_state(sdl, id);
    }
 
    return 0;
@@ -330,25 +298,44 @@ static void sdl_input_free(void *data)
    while (SDL_PollEvent(&event));
 #endif
 
+   if (sdl->joypad)
+      sdl->joypad->destroy();
+
    free(data);
 }
 
-#ifdef HAVE_SDL2
-static void sdl2_grab_mouse(void *data, bool state)
+static void sdl_grab_mouse(void *data, bool state)
 {
-   sdl2_video_t *video_ptr = NULL;
+#ifdef HAVE_SDL2
+   struct temp{
+      SDL_Window *w;
+   };
 
    if (string_is_not_equal(video_driver_get_ident(), "sdl2"))
       return;
 
-   video_ptr = (sdl2_video_t*)video_driver_get_ptr();
-
-   if (!video_ptr)
-      return;
-
-   SDL_SetWindowGrab(video_ptr->window, state ? SDL_TRUE : SDL_FALSE);
-}
+   /* First member of sdl2_video_t is the window */
+   SDL_SetWindowGrab(((struct temp*)video_driver_get_ptr(false))->w,
+         state ? SDL_TRUE : SDL_FALSE);
 #endif
+}
+
+static bool sdl_set_rumble(void *data, unsigned port,
+      enum retro_rumble_effect effect, uint16_t strength)
+{
+   sdl_input_t *sdl = (sdl_input_t*)data;
+   if (!sdl)
+      return false;
+   return input_joypad_set_rumble(sdl->joypad, port, effect, strength);
+}
+
+static const input_device_driver_t *sdl_get_joypad_driver(void *data)
+{
+   sdl_input_t *sdl = (sdl_input_t*)data;
+   if (!sdl)
+      return NULL;
+   return sdl->joypad;
+}
 
 static void sdl_poll_mouse(sdl_input_t *sdl)
 {
@@ -369,58 +356,25 @@ static void sdl_poll_mouse(sdl_input_t *sdl)
 
 static void sdl_input_poll(void *data)
 {
-   SDL_Event event;
    sdl_input_t *sdl = (sdl_input_t*)data;
+   SDL_Event event;
 
    SDL_PumpEvents();
 
+   if (sdl->joypad)
+      sdl->joypad->poll();
    sdl_poll_mouse(sdl);
 
 #ifdef HAVE_SDL2
-   while (SDL_PeepEvents(&event, 1,
-            SDL_GETEVENT, SDL_KEYDOWN, SDL_MOUSEWHEEL) > 0)
+   while (SDL_PeepEvents(&event, 1, SDL_GETEVENT, SDL_KEYDOWN, SDL_MOUSEWHEEL) > 0)
 #else
-   while (SDL_PeepEvents(&event, 1,
-            SDL_GETEVENT, SDL_KEYEVENTMASK) > 0)
+   while (SDL_PeepEvents(&event, 1, SDL_GETEVENT, SDL_KEYEVENTMASK) > 0)
 #endif
    {
       if (event.type == SDL_KEYDOWN || event.type == SDL_KEYUP)
       {
-         uint16_t mod  = 0;
-         unsigned code = input_keymaps_translate_keysym_to_rk(
-               event.key.keysym.sym);
-#ifdef WEBOS
-         switch ((int) event.key.keysym.scancode)
-         {
-            case SDL_WEBOS_SCANCODE_BACK:
-               /* Because webOS is sending DOWN/UP at the same time, 
-                  we save this flag for later */
-               sdl_webos_special_keymap[sdl_webos_spkey_back] |= event.type == SDL_KEYDOWN;
-               code = RETROK_BACKSPACE;
-               break;
-            case SDL_WEBOS_SCANCODE_RED:
-               code = RETROK_x;
-               break;
-            case SDL_WEBOS_SCANCODE_GREEN:
-               code = RETROK_z;
-               break;
-            case SDL_WEBOS_SCANCODE_YELLOW:
-               code = RETROK_s;
-               break;
-            case SDL_WEBOS_SCANCODE_BLUE:
-               code = RETROK_a;
-               break;
-            case SDL_WEBOS_SCANCODE_EXIT:
-               code = RETROK_F1;
-               break;
-            default:
-               break;
-         }
-
-         /* Disable cursor when using the buttons */
-         if (code && code != RETROK_RETURN)
-            SDL_webOSCursorVisibility(0);
-#endif
+         uint16_t mod = 0;
+         unsigned code = input_keymaps_translate_keysym_to_rk(event.key.keysym.sym);
 
          if (event.key.keysym.mod & KMOD_SHIFT)
             mod |= RETROKMOD_SHIFT;
@@ -477,30 +431,13 @@ input_driver_t input_sdl = {
    sdl_get_capabilities,
 #ifdef HAVE_SDL2
    "sdl2",
-   sdl2_grab_mouse,
 #else
    "sdl",
-   NULL,                   /* grab_mouse */
 #endif
-   NULL
+   sdl_grab_mouse,
+   NULL,
+   sdl_set_rumble,
+   sdl_get_joypad_driver,
+   NULL,
+   false
 };
-
-#ifdef WEBOS
-SDL_bool SDL_webOSCursorVisibility(SDL_bool visible)
-{
-   static SDL_bool (*fn)(SDL_bool visible) = NULL;
-   static bool dlsym_called = false;
-   if (!dlsym_called)
-   {
-      fn           = dlsym(RTLD_NEXT, "SDL_webOSCursorVisibility");
-      dlsym_called = true;
-   }
-   if (!fn)
-   {
-      SDL_ShowCursor(SDL_DISABLE);
-      SDL_ShowCursor(SDL_ENABLE);
-      return SDL_TRUE;
-   }
-   return fn(visible);
-}
-#endif

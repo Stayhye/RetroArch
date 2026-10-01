@@ -65,24 +65,20 @@ struct font_atlas
 
 struct font_params
 {
-   /* Drop shadow offset.
-    * If both are 0, no drop shadow will be rendered. */
-   int drop_x, drop_y;
-
-   /* ABGR. Use the macros. */
-   uint32_t color;
-
    float x;
    float y;
    float scale;
    /* Drop shadow color multiplier. */
    float drop_mod;
+   /* Drop shadow offset.
+    * If both are 0, no drop shadow will be rendered. */
+   int drop_x, drop_y;
    /* Drop shadow alpha */
    float drop_alpha;
-
-   enum text_alignment text_align;
-
+   /* ABGR. Use the macros. */
+   uint32_t color;
    bool full_screen;
+   enum text_alignment text_align;
 };
 
 struct font_line_metrics
@@ -174,8 +170,8 @@ int font_driver_get_line_ascender(void *font_data, float scale);
 int font_driver_get_line_descender(void *font_data, float scale);
 int font_driver_get_line_centre_offset(void *font_data, float scale);
 
-extern font_renderer_t gl2_raster_font;
-extern font_renderer_t gl3_raster_font;
+extern font_renderer_t gl_raster_font;
+extern font_renderer_t gl_core_raster_font;
 extern font_renderer_t gl1_raster_font;
 extern font_renderer_t d3d_xdk1_font;
 extern font_renderer_t d3d_win32_font;
@@ -193,7 +189,6 @@ extern font_renderer_t gdi_font;
 extern font_renderer_t vga_font;
 extern font_renderer_t sixel_font;
 extern font_renderer_t switch_font;
-extern font_renderer_t rsx_font;
 
 extern font_renderer_driver_t stb_font_renderer;
 extern font_renderer_driver_t stb_unicode_font_renderer;

@@ -55,22 +55,24 @@ enum
 
 struct http_socket_state_t
 {
-   void *ssl_ctx;
    int fd;
    bool ssl;
+   void *ssl_ctx;
 };
 
 struct http_t
 {
-   char *data;
-   struct http_socket_state_t sock_state; /* ptr alignment */
-   size_t pos;
-   size_t len;
-   size_t buflen;
    int status;
+
    char part;
    char bodytype;
    bool error;
+
+   size_t pos;
+   size_t len;
+   size_t buflen;
+   char *data;
+   struct http_socket_state_t sock_state;
 };
 
 struct http_connection_t
@@ -82,287 +84,47 @@ struct http_connection_t
    char *methodcopy;
    char *contenttypecopy;
    char *postdatacopy;
-   char *useragentcopy;
-   char *headerscopy;
-   struct http_socket_state_t sock_state; /* ptr alignment */
+   char* useragentcopy;
    int port;
+   struct http_socket_state_t sock_state;
 };
+
+static char urlencode_lut[256];
+static bool urlencode_lut_inited = false;
+
+void urlencode_lut_init(void)
+{
+   unsigned i;
+
+   urlencode_lut_inited = true;
+
+   for (i = 0; i < 256; i++)
+   {
+      urlencode_lut[i] = isalnum(i) || i == '*' || i == '-' || i == '.' || i == '_' || i == '/' ? i : 0;
+   }
+}
 
 /* URL Encode a string
    caller is responsible for deleting the destination buffer */
 void net_http_urlencode(char **dest, const char *source)
 {
-   static const char urlencode_lut[256] = 
-   {
-      0,       /* 0   */
-      0,       /* 1   */
-      0,       /* 2   */
-      0,       /* 3   */
-      0,       /* 4   */
-      0,       /* 5   */
-      0,       /* 6   */
-      0,       /* 7   */
-      0,       /* 8   */
-      0,       /* 9   */
-      0,       /* 10  */
-      0,       /* 11  */
-      0,       /* 12  */
-      0,       /* 13  */
-      0,       /* 14  */
-      0,       /* 15  */
-      0,       /* 16  */
-      0,       /* 17  */
-      0,       /* 18  */
-      0,       /* 19  */
-      0,       /* 20  */
-      0,       /* 21  */
-      0,       /* 22  */
-      0,       /* 23  */
-      0,       /* 24  */
-      0,       /* 25  */
-      0,       /* 26  */
-      0,       /* 27  */
-      0,       /* 28  */
-      0,       /* 29  */
-      0,       /* 30  */
-      0,       /* 31  */
-      0,       /* 32  */
-      0,       /* 33  */
-      0,       /* 34  */
-      0,       /* 35  */
-      0,       /* 36  */
-      0,       /* 37  */
-      0,       /* 38  */
-      0,       /* 39  */
-      0,       /* 40  */
-      0,       /* 41  */
-      '*',     /* 42  */
-      0,       /* 43  */
-      0,       /* 44  */
-      '-',     /* 45  */
-      '.',     /* 46  */
-      '/',     /* 47  */
-      '0',     /* 48  */
-      '1',     /* 49  */
-      '2',     /* 50  */
-      '3',     /* 51  */
-      '4',     /* 52  */
-      '5',     /* 53  */
-      '6',     /* 54  */
-      '7',     /* 55  */
-      '8',     /* 56  */
-      '9',     /* 57  */
-      0,       /* 58  */
-      0,       /* 59  */
-      0,       /* 60  */
-      0,       /* 61  */
-      0,       /* 62  */
-      0,       /* 63  */
-      0,       /* 64  */
-      'A',     /* 65  */
-      'B',     /* 66  */
-      'C',     /* 67  */
-      'D',     /* 68  */
-      'E',     /* 69  */
-      'F',     /* 70  */
-      'G',     /* 71  */
-      'H',     /* 72  */
-      'I',     /* 73  */
-      'J',     /* 74  */
-      'K',     /* 75  */
-      'L',     /* 76  */
-      'M',     /* 77  */
-      'N',     /* 78  */
-      'O',     /* 79  */
-      'P',     /* 80  */
-      'Q',     /* 81  */
-      'R',     /* 82  */
-      'S',     /* 83  */
-      'T',     /* 84  */
-      'U',     /* 85  */
-      'V',     /* 86  */
-      'W',     /* 87  */
-      'X',     /* 88  */
-      'Y',     /* 89  */
-      'Z',     /* 90  */
-      0,       /* 91  */
-      0,       /* 92  */
-      0,       /* 93  */
-      0,       /* 94  */
-      '_',     /* 95  */
-      0,       /* 96  */
-      'a',     /* 97  */
-      'b',     /* 98  */
-      'c',     /* 99  */
-      'd',     /* 100 */
-      'e',     /* 101 */
-      'f',     /* 102 */
-      'g',     /* 103 */
-      'h',     /* 104 */
-      'i',     /* 105 */
-      'j',     /* 106 */
-      'k',     /* 107 */
-      'l',     /* 108 */
-      'm',     /* 109 */
-      'n',     /* 110 */
-      'o',     /* 111 */
-      'p',     /* 112 */
-      'q',     /* 113 */
-      'r',     /* 114 */
-      's',     /* 115 */
-      't',     /* 116 */
-      'u',     /* 117 */
-      'v',     /* 118 */
-      'w',     /* 119 */
-      'x',     /* 120 */
-      'y',     /* 121 */
-      'z',     /* 122 */
-      0,       /* 123 */
-      0,       /* 124 */
-      0,       /* 125 */
-      0,       /* 126 */
-      0,       /* 127 */
-      0,       /* 128 */
-      0,       /* 129 */
-      0,       /* 130 */
-      0,       /* 131 */
-      0,       /* 132 */
-      0,       /* 133 */
-      0,       /* 134 */
-      0,       /* 135 */
-      0,       /* 136 */
-      0,       /* 137 */
-      0,       /* 138 */
-      0,       /* 139 */
-      0,       /* 140 */
-      0,       /* 141 */
-      0,       /* 142 */
-      0,       /* 143 */
-      0,       /* 144 */
-      0,       /* 145 */
-      0,       /* 146 */
-      0,       /* 147 */
-      0,       /* 148 */
-      0,       /* 149 */
-      0,       /* 150 */
-      0,       /* 151 */
-      0,       /* 152 */
-      0,       /* 153 */
-      0,       /* 154 */
-      0,       /* 155 */
-      0,       /* 156 */
-      0,       /* 157 */
-      0,       /* 158 */
-      0,       /* 159 */
-      0,       /* 160 */
-      0,       /* 161 */
-      0,       /* 162 */
-      0,       /* 163 */
-      0,       /* 164 */
-      0,       /* 165 */
-      0,       /* 166 */
-      0,       /* 167 */
-      0,       /* 168 */
-      0,       /* 169 */
-      0,       /* 170 */
-      0,       /* 171 */
-      0,       /* 172 */
-      0,       /* 173 */
-      0,       /* 174 */
-      0,       /* 175 */
-      0,       /* 176 */
-      0,       /* 177 */
-      0,       /* 178 */
-      0,       /* 179 */
-      0,       /* 180 */
-      0,       /* 181 */
-      0,       /* 182 */
-      0,       /* 183 */
-      0,       /* 184 */
-      0,       /* 185 */
-      0,       /* 186 */
-      0,       /* 187 */
-      0,       /* 188 */
-      0,       /* 189 */
-      0,       /* 190 */
-      0,       /* 191 */
-      0,       /* 192 */
-      0,       /* 193 */
-      0,       /* 194 */
-      0,       /* 195 */
-      0,       /* 196 */
-      0,       /* 197 */
-      0,       /* 198 */
-      0,       /* 199 */
-      0,       /* 200 */
-      0,       /* 201 */
-      0,       /* 202 */
-      0,       /* 203 */
-      0,       /* 204 */
-      0,       /* 205 */
-      0,       /* 206 */
-      0,       /* 207 */
-      0,       /* 208 */
-      0,       /* 209 */
-      0,       /* 210 */
-      0,       /* 211 */
-      0,       /* 212 */
-      0,       /* 213 */
-      0,       /* 214 */
-      0,       /* 215 */
-      0,       /* 216 */
-      0,       /* 217 */
-      0,       /* 218 */
-      0,       /* 219 */
-      0,       /* 220 */
-      0,       /* 221 */
-      0,       /* 222 */
-      0,       /* 223 */
-      0,       /* 224 */
-      0,       /* 225 */
-      0,       /* 226 */
-      0,       /* 227 */
-      0,       /* 228 */
-      0,       /* 229 */
-      0,       /* 230 */
-      0,       /* 231 */
-      0,       /* 232 */
-      0,       /* 233 */
-      0,       /* 234 */
-      0,       /* 235 */
-      0,       /* 236 */
-      0,       /* 237 */
-      0,       /* 238 */
-      0,       /* 239 */
-      0,       /* 240 */
-      0,       /* 241 */
-      0,       /* 242 */
-      0,       /* 243 */
-      0,       /* 244 */
-      0,       /* 245 */
-      0,       /* 246 */
-      0,       /* 247 */
-      0,       /* 248 */
-      0,       /* 249 */
-      0,       /* 250 */
-      0,       /* 251 */
-      0,       /* 252 */
-      0,       /* 253 */
-      0,       /* 254 */
-      0        /* 255 */
-   };
-
+   char *enc    = NULL;
    /* Assume every character will be encoded, so we need 3 times the space. */
-   size_t len                       = strlen(source) * 3 + 1;
-   size_t count                     = len;
-   char *enc                        = (char*)calloc(1, len);
-   *dest                            = enc;
+   size_t len   = strlen(source) * 3 + 1;
+   size_t count = len;
+
+   if (!urlencode_lut_inited)
+      urlencode_lut_init();
+
+   enc   = (char*)calloc(1, len);
+
+   *dest = enc;
 
    for (; *source; source++)
    {
       int written = 0;
 
-      /* any non-ASCII character will just be encoded without question */
+      /* any non-ascii character will just be encoded without question */
       if ((unsigned)*source < sizeof(urlencode_lut) && urlencode_lut[(unsigned)*source])
          written = snprintf(enc, count, "%c", urlencode_lut[(unsigned)*source]);
       else
@@ -490,7 +252,7 @@ static void net_http_send_str(
 struct http_connection_t *net_http_connection_new(const char *url,
       const char *method, const char *data)
 {
-   struct http_connection_t *conn = (struct http_connection_t*)malloc(
+   struct http_connection_t *conn = (struct http_connection_t*)calloc(1,
          sizeof(*conn));
 
    if (!conn)
@@ -501,20 +263,6 @@ struct http_connection_t *net_http_connection_new(const char *url,
       free(conn);
       return NULL;
    }
-
-   conn->domain            = NULL;
-   conn->location          = NULL;
-   conn->urlcopy           = NULL;
-   conn->scan              = NULL;
-   conn->methodcopy        = NULL;
-   conn->contenttypecopy   = NULL;
-   conn->postdatacopy      = NULL;
-   conn->useragentcopy     = NULL;
-   conn->headerscopy       = NULL;
-   conn->port              = 0;
-   conn->sock_state.fd     = 0;
-   conn->sock_state.ssl    = false;
-   conn->sock_state.ssl_ctx= NULL;
 
    if (method)
       conn->methodcopy     = strdup(method);
@@ -572,7 +320,10 @@ bool net_http_connection_done(struct http_connection_t *conn)
 {
    int has_port = 0;
 
-   if (!conn || !conn->domain || !*conn->domain)
+   if (!conn)
+      return false;
+
+   if (!conn->domain || !*conn->domain)
       return false;
 
    if (*conn->scan == ':')
@@ -599,7 +350,7 @@ bool net_http_connection_done(struct http_connection_t *conn)
    {
       /* domain followed by location - split off the location */
       /*   site.com/path.html   or   site.com:80/path.html   */
-      *conn->scan    = '\0';
+      *conn->scan = '\0';
       conn->location = conn->scan + 1;
       return true;
    }
@@ -617,28 +368,30 @@ bool net_http_connection_done(struct http_connection_t *conn)
       if (!has_port)
       {
          /* if there wasn't a port, we have to expand the urlcopy so we can separate the two parts */
-         size_t domain_len   = strlen(conn->domain);
+         size_t domain_len = strlen(conn->domain);
          size_t location_len = strlen(conn->scan);
-         char* urlcopy       = (char*)malloc(domain_len + location_len + 2);
+         char* urlcopy = (char*)malloc(domain_len + location_len + 2);
          memcpy(urlcopy, conn->domain, domain_len);
          urlcopy[domain_len] = '\0';
          memcpy(urlcopy + domain_len + 1, conn->scan, location_len + 1);
 
          free(conn->urlcopy);
-         conn->domain        = conn->urlcopy = urlcopy;
-         conn->location      = conn->scan    = urlcopy + domain_len + 1;
+         conn->domain = conn->urlcopy = urlcopy;
+         conn->location = conn->scan = urlcopy + domain_len + 1;
       }
       else
       {
          /* there was a port, so overwriting the : will terminate the domain and we can just point at the ? */
-         conn->location      = conn->scan;
+         conn->location = conn->scan;
       }
 
       return true;
    }
-
-   /* invalid character after domain/port */
-   return false;
+   else
+   {
+      /* invalid character after domain/port */
+      return false;
+   }
 }
 
 void net_http_connection_free(struct http_connection_t *conn)
@@ -661,21 +414,16 @@ void net_http_connection_free(struct http_connection_t *conn)
    if (conn->useragentcopy)
       free(conn->useragentcopy);
 
-   if (conn->headerscopy)
-      free(conn->headerscopy);
-
    conn->urlcopy         = NULL;
    conn->methodcopy      = NULL;
    conn->contenttypecopy = NULL;
    conn->postdatacopy    = NULL;
    conn->useragentcopy   = NULL;
-   conn->headerscopy     = NULL;
 
    free(conn);
 }
 
-void net_http_connection_set_user_agent(
-      struct http_connection_t *conn, const char *user_agent)
+void net_http_connection_set_user_agent(struct http_connection_t* conn, const char* user_agent)
 {
    if (conn->useragentcopy)
       free(conn->useragentcopy);
@@ -683,23 +431,9 @@ void net_http_connection_set_user_agent(
    conn->useragentcopy = user_agent ? strdup(user_agent) : NULL;
 }
 
-void net_http_connection_set_headers(
-      struct http_connection_t *conn, const char *headers)
-{
-   if (conn->headerscopy)
-      free(conn->headerscopy);
-
-   conn->headerscopy = headers ? strdup(headers) : NULL;
-}
-
 const char *net_http_connection_url(struct http_connection_t *conn)
 {
    return conn->urlcopy;
-}
-
-const char* net_http_connection_method(struct http_connection_t* conn)
-{
-   return conn->methodcopy;
 }
 
 struct http_t *net_http_new(struct http_connection_t *conn)
@@ -735,7 +469,7 @@ struct http_t *net_http_new(struct http_connection_t *conn)
    net_http_send_str(&conn->sock_state, &error, "Host: ");
    net_http_send_str(&conn->sock_state, &error, conn->domain);
 
-   if (conn->port)
+   if (!conn->port)
    {
       char portstr[16];
 
@@ -747,11 +481,8 @@ struct http_t *net_http_new(struct http_connection_t *conn)
 
    net_http_send_str(&conn->sock_state, &error, "\r\n");
 
-   /* Pre-formatted headers */
-   if (conn->headerscopy)
-      net_http_send_str(&conn->sock_state, &error, conn->headerscopy);
    /* This is not being set anywhere yet */
-   else if (conn->contenttypecopy)
+   if (conn->contenttypecopy)
    {
       net_http_send_str(&conn->sock_state, &error, "Content-Type: ");
       net_http_send_str(&conn->sock_state, &error, conn->contenttypecopy);
@@ -766,12 +497,9 @@ struct http_t *net_http_new(struct http_connection_t *conn)
       if (!conn->postdatacopy)
          goto error;
 
-      if (!conn->headerscopy)
-      {
-         if (!conn->contenttypecopy)
-            net_http_send_str(&conn->sock_state, &error,
-                  "Content-Type: application/x-www-form-urlencoded\r\n");
-      }
+      if (!conn->contenttypecopy)
+         net_http_send_str(&conn->sock_state, &error,
+               "Content-Type: application/x-www-form-urlencoded\r\n");
 
       net_http_send_str(&conn->sock_state, &error, "Content-Length: ");
 
@@ -919,16 +647,14 @@ bool net_http_update(struct http_t *state, size_t* progress, size_t* total)
          }
          else
          {
-            if (string_starts_with_case_insensitive(state->data, "Content-Length:"))
+            if (!strncmp(state->data, "Content-Length: ",
+                     STRLEN_CONST("Content-Length: ")))
             {
-               char* ptr = state->data + STRLEN_CONST("Content-Length:");
-               while (ISSPACE(*ptr))
-                  ++ptr;
-
                state->bodytype = T_LEN;
-               state->len = strtol(ptr, NULL, 10);
+               state->len = strtol(state->data +
+                     STRLEN_CONST("Content-Length: "), NULL, 10);
             }
-            if (string_is_equal_case_insensitive(state->data, "Transfer-Encoding: chunked"))
+            if (string_is_equal(state->data, "Transfer-Encoding: chunked"))
                state->bodytype = T_CHUNK;
 
             /* TODO: save headers somewhere */

@@ -1,7 +1,7 @@
 ﻿/*  RetroArch - A frontend for libretro.
  *  Copyright (C) 2011-2017 - Daniel De Matteis
  *  Copyright (C) 2018 - Alfredo Monclus
- *  Copyright (C) 2019-2020 - Víctor González Fraile
+ *  Copyright (C) 2019 - Víctor González Fraile
  *
  *  RetroArch is free software: you can redistribute it and/or modify it under the terms
  *  of the GNU General Public License as published by the Free Software Found-
@@ -44,7 +44,7 @@
 #pragma warning(disable:4566)
 #endif
 
-int msg_hash_get_help_es_enum(enum msg_hash_enums msg, char *s, size_t len)
+int menu_hash_get_help_es_enum(enum msg_hash_enums msg, char *s, size_t len)
 {
     settings_t *settings = config_get_ptr();
 
@@ -690,7 +690,6 @@ int msg_hash_get_help_es_enum(enum msg_hash_enums msg, char *s, size_t len)
             snprintf(s, len,
                      "Opacidad de la superposición.");
             break;
-#ifdef HAVE_VIDEO_LAYOUT
         case MENU_ENUM_LABEL_VIDEO_LAYOUT_ENABLE:
             snprintf(s, len,
                      "Activa o desactiva el diseño de vídeo actual.");
@@ -704,7 +703,6 @@ int msg_hash_get_help_es_enum(enum msg_hash_enums msg, char *s, size_t len)
                      "Los diseños pueden contener múltiples vistas.\n"
                      "Selecciona una.");
             break;
-#endif
         case MENU_ENUM_LABEL_INPUT_BIND_TIMEOUT:
             snprintf(s, len,
                      "Tiempo de espera para asignar una función\n"
@@ -722,14 +720,6 @@ int msg_hash_get_help_es_enum(enum msg_hash_enums msg, char *s, size_t len)
         case MENU_ENUM_LABEL_OVERLAY_SCALE:
             snprintf(s, len,
                      "Escala de la superposición.");
-            break;
-        case MENU_ENUM_LABEL_OVERLAY_CENTER_X:
-            snprintf(s, len,
-                     "Compensación horizontal de la superposición.");
-            break;
-        case MENU_ENUM_LABEL_OVERLAY_CENTER_Y:
-            snprintf(s, len,
-                     "Compensación vertical de la superposición.");
             break;
         case MENU_ENUM_LABEL_AUDIO_OUTPUT_RATE:
             snprintf(s, len,
@@ -1947,11 +1937,9 @@ int msg_hash_get_help_es_enum(enum msg_hash_enums msg, char *s, size_t len)
       case MENU_ENUM_LABEL_VIDEO_CTX_SCALING:
          snprintf(s, len,
 #ifdef HAVE_ODROIDGO2
-               "Escalado RGA y filtrado bicúbico.\n"
-               "Podría inutilizar los widgets."
+               "RGA scaling and bicubic filtering. May break widgets."
 #else
-               "Escalado según contexto del hardware\n"
-               "(si existe)."
+               "Hardware context scaling (if available)."
 #endif
          );
          break;

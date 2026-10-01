@@ -88,6 +88,13 @@ static void gfx_display_gl1_blend_end(void *data)
    glDisable(GL_BLEND);
 }
 
+static void gfx_display_gl1_viewport(gfx_display_ctx_draw_t *draw,
+      void *data)
+{
+   if (draw)
+      glViewport(draw->x, draw->y, draw->width, draw->height);
+}
+
 static void gfx_display_gl1_draw(gfx_display_ctx_draw_t *draw,
       void *data,
       unsigned video_width,
@@ -100,15 +107,13 @@ static void gfx_display_gl1_draw(gfx_display_ctx_draw_t *draw,
       return;
 
    if (!draw->coords->vertex)
-      draw->coords->vertex         = &gl1_menu_vertexes[0];
+      draw->coords->vertex = gfx_display_gl1_get_default_vertices();
    if (!draw->coords->tex_coord)
-      draw->coords->tex_coord      = &gl1_menu_tex_coords[0];
+      draw->coords->tex_coord = gfx_display_gl1_get_default_tex_coords();
    if (!draw->coords->lut_tex_coord)
-      draw->coords->lut_tex_coord  = &gl1_menu_tex_coords[0];
-   if (!draw->texture)
-      return;
+      draw->coords->lut_tex_coord = gfx_display_gl1_get_default_tex_coords();
 
-   glViewport(draw->x, draw->y, draw->width, draw->height);
+   gfx_display_gl1_viewport(draw, gl1);
 
    glEnable(GL_TEXTURE_2D);
 
@@ -116,7 +121,7 @@ static void gfx_display_gl1_draw(gfx_display_ctx_draw_t *draw,
 
    mvp.data   = gl1;
    mvp.matrix = draw->matrix_data ? (math_matrix_4x4*)draw->matrix_data
-      : (math_matrix_4x4*)&gl1->mvp_no_rot;
+      : (math_matrix_4x4*)gfx_display_gl1_get_default_mvp(gl1);
 
    glMatrixMode(GL_PROJECTION);
    glPushMatrix();
@@ -141,6 +146,7 @@ static void gfx_display_gl1_draw(gfx_display_ctx_draw_t *draw,
       for (i = 0; i < draw->coords->vertices; i++)
       {
          memcpy(&vertices3[i*3], &draw->coords->vertex[i*2], sizeof(float) * 2);
+         vertices3[i*3]   -= 0.5f;
          vertices3[i*3+2]  = 0.0f;
       }
       glVertexPointer(3, GL_FLOAT, 0, vertices3);   
@@ -165,6 +171,23 @@ static void gfx_display_gl1_draw(gfx_display_ctx_draw_t *draw,
    glPopMatrix();
 
    gl1->coords.color = gl1->white_color_ptr;
+}
+
+static void gfx_display_gl1_restore_clear_color(void)
+{
+   glClearColor(0.0f, 0.0f, 0.0f, 0.0f);
+}
+
+static void gfx_display_gl1_clear_color(
+      gfx_display_ctx_clearcolor_t *clearcolor,
+      void *data)
+{
+   if (!clearcolor)
+      return;
+
+   glClearColor(clearcolor->r,
+         clearcolor->g, clearcolor->b, clearcolor->a);
+   glClear(GL_COLOR_BUFFER_BIT);
 }
 
 static bool gfx_display_gl1_font_init_first(
@@ -202,9 +225,12 @@ static void gfx_display_gl1_scissor_end(
 
 gfx_display_ctx_driver_t gfx_display_ctx_gl1 = {
    gfx_display_gl1_draw,
-   NULL, /* draw_pipeline */
+   NULL,
+   gfx_display_gl1_viewport,
    gfx_display_gl1_blend_begin,
    gfx_display_gl1_blend_end,
+   gfx_display_gl1_restore_clear_color,
+   gfx_display_gl1_clear_color,
    gfx_display_gl1_get_default_mvp,
    gfx_display_gl1_get_default_vertices,
    gfx_display_gl1_get_default_tex_coords,

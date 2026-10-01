@@ -418,7 +418,7 @@ static sunxi_disp_t *sunxi_disp_init(const char *device)
       (ctx->xres * ctx->bits_per_pixel / 8);
    ctx->gfx_layer_size     = ctx->xres * ctx->yres * fb_var.bits_per_pixel / 8;
    ctx->refresh_rate       = 1000000.0f / fb_var.pixclock * 1000000.0f /
-      (fb_var.yres + fb_var.upper_margin + fb_var.lower_margin + fb_var.vsync_len) /
+      (fb_var.yres + fb_var.upper_margin + fb_var.lower_margin + fb_var.vsync_len)
       (fb_var.xres + fb_var.left_margin  + fb_var.right_margin + fb_var.hsync_len);
 
    if (ctx->framebuffer_size < ctx->gfx_layer_size)
@@ -776,15 +776,16 @@ static bool sunxi_gfx_frame(void *data, const void *frame, unsigned width,
       video_frame_info_t *video_info)
 {
    struct sunxi_video *_dispvars = (struct sunxi_video*)data;
-#ifdef HAVE_MENU
    bool menu_is_alive            = video_info->menu_is_alive;
-#endif
 
    if (_dispvars->src_width != width || _dispvars->src_height != height)
    {
       /* Sanity check on new dimensions */
       if (width == 0 || height == 0)
          return true;
+
+      RARCH_LOG("video_sunxi: internal resolution changed by core: %ux%u -> %ux%u\n",
+            _dispvars->src_width, _dispvars->src_height, width, height);
 
       sunxi_setup_scale(_dispvars, width, height, pitch);
    }
@@ -951,11 +952,7 @@ static const video_poke_interface_t sunxi_poke_interface = {
    NULL,                         /* grab_mouse_toggle */
    NULL,                         /* get_current_shader */
    NULL,                         /* get_current_software_framebuffer */
-   NULL,                         /* get_hw_render_interface */
-   NULL,                         /* set_hdr_max_nits */
-   NULL,                         /* set_hdr_paper_white_nits */
-   NULL,                         /* set_hdr_contrast */
-   NULL                          /* set_hdr_expand_gamut */
+   NULL                          /* get_hw_render_interface */
 };
 
 static void sunxi_gfx_get_poke_interface(void *data,

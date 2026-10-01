@@ -10,6 +10,8 @@ typedef struct param param_t;
 
 typedef struct scope
 {
+   int        level;
+
    param_t   *param;
 
    element_t *elements;
@@ -17,8 +19,6 @@ typedef struct scope
 
    view_t    *groups;
    int        groups_count;
-
-   int        level;
 
    char       eval[SCOPE_BUFFER_SIZE];
 } scope_t;

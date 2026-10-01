@@ -24,7 +24,6 @@
 #include <string/stdstring.h>
 #include <lists/string_list.h>
 #include <net/net_http.h>
-#include <array/rbuf.h>
 #include <retro_miscellaneous.h>
 
 #include "file_path_special.h"
@@ -35,8 +34,9 @@
 /* Holds all entries in a core updater list */
 struct core_updater_list
 {
+   size_t size;
+   size_t capacity;
    core_updater_list_entry_t *entries;
-   enum core_updater_list_type type;
 };
 
 /* Cached ('global') core updater list */
@@ -99,18 +99,34 @@ static void core_updater_list_free_entry(core_updater_list_entry_t *entry)
 /* Creates a new, empty core updater list.
  * Returns a handle to a new core_updater_list_t object
  * on success, otherwise returns NULL. */
-core_updater_list_t *core_updater_list_init(void)
+core_updater_list_t *core_updater_list_init(size_t max_size)
 {
+   core_updater_list_t *core_list     = NULL;
+   core_updater_list_entry_t *entries = NULL;
+
+   /* Sanity check */
+   if (max_size < 1)
+      return NULL;
+
    /* Create core updater list */
-   core_updater_list_t *core_list = (core_updater_list_t*)
-         malloc(sizeof(*core_list));
+   core_list = (core_updater_list_t*)calloc(1, sizeof(*core_list));
 
    if (!core_list)
       return NULL;
 
-   /* Initialise members */
-   core_list->entries = NULL;
-   core_list->type    = CORE_UPDATER_LIST_TYPE_UNKNOWN;
+   /* Create entries array */
+   entries = (core_updater_list_entry_t*)calloc(max_size, sizeof(*entries));
+
+   if (!entries)
+   {
+      free(core_list);
+      return NULL;
+   }
+
+   /* Initial configuration */
+   core_list->size     = 0;
+   core_list->capacity = max_size;
+   core_list->entries  = entries;
 
    return core_list;
 }
@@ -119,29 +135,41 @@ core_updater_list_t *core_updater_list_init(void)
  * updater list */
 void core_updater_list_reset(core_updater_list_t *core_list)
 {
+   size_t i;
+
    if (!core_list)
       return;
 
-   if (core_list->entries)
+   for (i = 0; i < core_list->size; i++)
    {
-      size_t i;
+      core_updater_list_entry_t *entry = &core_list->entries[i];
 
-      for (i = 0; i < RBUF_LEN(core_list->entries); i++)
-         core_updater_list_free_entry(&core_list->entries[i]);
-
-      RBUF_FREE(core_list->entries);
+      if (entry)
+         core_updater_list_free_entry(entry);
    }
 
-   core_list->type = CORE_UPDATER_LIST_TYPE_UNKNOWN;
+   core_list->size = 0;
 }
 
 /* Frees specified core updater list */
 void core_updater_list_free(core_updater_list_t *core_list)
 {
+   size_t i;
+
    if (!core_list)
       return;
 
-   core_updater_list_reset(core_list);
+   for (i = 0; i < core_list->size; i++)
+   {
+      core_updater_list_entry_t *entry = &core_list->entries[i];
+
+      if (entry)
+         core_updater_list_free_entry(entry);
+   }
+
+   free(core_list->entries);
+   core_list->entries = NULL;
+
    free(core_list);
 }
 
@@ -152,7 +180,7 @@ void core_updater_list_free(core_updater_list_t *core_list)
 /* Creates a new, empty cached core updater list
  * (i.e. 'global' list).
  * Returns false in the event of an error. */
-bool core_updater_list_init_cached(void)
+bool core_updater_list_init_cached(size_t max_size)
 {
    /* Free any existing cached core updater list */
    if (core_list_cached)
@@ -161,7 +189,7 @@ bool core_updater_list_init_cached(void)
       core_list_cached = NULL;
    }
 
-   core_list_cached = core_updater_list_init();
+   core_list_cached = core_updater_list_init(max_size);
 
    if (!core_list_cached)
       return false;
@@ -195,18 +223,17 @@ size_t core_updater_list_size(core_updater_list_t *core_list)
    if (!core_list)
       return 0;
 
-   return RBUF_LEN(core_list->entries);
+   return core_list->size;
 }
 
-/* Returns 'type' (core delivery method) of
- * specified core updater list */
-enum core_updater_list_type core_updater_list_get_type(
-      core_updater_list_t *core_list)
+/* Returns maximum allowed number of entries in core
+ * updater list */
+size_t core_updater_list_capacity(core_updater_list_t *core_list)
 {
    if (!core_list)
-      return CORE_UPDATER_LIST_TYPE_UNKNOWN;
+      return 0;
 
-   return core_list->type;
+   return core_list->capacity;
 }
 
 /* Fetches core updater list entry corresponding
@@ -220,10 +247,11 @@ bool core_updater_list_get_index(
    if (!core_list || !entry)
       return false;
 
-   if (idx >= RBUF_LEN(core_list->entries))
+   if (idx >= core_list->size)
       return false;
 
-   *entry = &core_list->entries[idx];
+   if (entry)
+      *entry = &core_list->entries[idx];
 
    return true;
 }
@@ -236,19 +264,16 @@ bool core_updater_list_get_filename(
       const char *remote_filename,
       const core_updater_list_entry_t **entry)
 {
-   size_t num_entries;
    size_t i;
 
-   if (!core_list || !entry || string_is_empty(remote_filename))
+   if (!core_list || string_is_empty(remote_filename))
       return false;
 
-   num_entries = RBUF_LEN(core_list->entries);
-
-   if (num_entries < 1)
+   if (core_list->size < 1)
       return false;
 
    /* Search for specified filename */
-   for (i = 0; i < num_entries; i++)
+   for (i = 0; i < core_list->size; i++)
    {
       core_updater_list_entry_t *current_entry = &core_list->entries[i];
 
@@ -257,7 +282,9 @@ bool core_updater_list_get_filename(
 
       if (string_is_equal(remote_filename, current_entry->remote_filename))
       {
-         *entry = current_entry;
+         if (entry)
+            *entry = current_entry;
+
          return true;
       }
    }
@@ -273,8 +300,6 @@ bool core_updater_list_get_core(
       const char *local_core_path,
       const core_updater_list_entry_t **entry)
 {
-   bool resolve_symlinks;
-   size_t num_entries;
    size_t i;
    char real_core_path[PATH_MAX_LENGTH];
 
@@ -283,27 +308,18 @@ bool core_updater_list_get_core(
    if (!core_list || !entry || string_is_empty(local_core_path))
       return false;
 
-   num_entries = RBUF_LEN(core_list->entries);
-
-   if (num_entries < 1)
+   if (core_list->size < 1)
       return false;
 
    /* Resolve absolute pathname of local_core_path */
    strlcpy(real_core_path, local_core_path, sizeof(real_core_path));
-   /* Can't resolve symlinks when dealing with cores
-    * installed via play feature delivery, because the
-    * source files have non-standard file names (which
-    * will not be recognised by regular core handling
-    * routines) */
-   resolve_symlinks = (core_list->type != CORE_UPDATER_LIST_TYPE_PFD);
-   path_resolve_realpath(real_core_path, sizeof(real_core_path),
-         resolve_symlinks);
+   path_resolve_realpath(real_core_path, sizeof(real_core_path), true);
 
    if (string_is_empty(real_core_path))
       return false;
 
    /* Search for specified core */
-   for (i = 0; i < num_entries; i++)
+   for (i = 0; i < core_list->size; i++)
    {
       core_updater_list_entry_t *current_entry = &core_list->entries[i];
 
@@ -318,7 +334,9 @@ bool core_updater_list_get_core(
       if (string_is_equal(real_core_path, current_entry->local_core_path))
       {
 #endif
-         *entry = current_entry;
+         if (entry)
+            *entry = current_entry;
+
          return true;
       }
    }
@@ -335,33 +353,36 @@ bool core_updater_list_get_core(
 static bool core_updater_list_set_date(
       core_updater_list_entry_t *entry, const char *date_str)
 {
-   struct string_list date_list = {0};
+   struct string_list *date_list = NULL;
 
    if (!entry || string_is_empty(date_str))
       goto error;
 
    /* Split date string into component values */
-   string_list_initialize(&date_list);
-   if (!string_split_noalloc(&date_list, date_str, "-"))
-         goto error;
+   date_list = string_split(date_str, "-");
+
+   if (!date_list)
+      goto error;
 
    /* Date string must have 3 values:
     * [year] [month] [day] */
-   if (date_list.size < 3)
+   if (date_list->size < 3)
       goto error;
 
    /* Convert date string values */
-   entry->date.year  = string_to_unsigned(date_list.elems[0].data);
-   entry->date.month = string_to_unsigned(date_list.elems[1].data);
-   entry->date.day   = string_to_unsigned(date_list.elems[2].data);
+   entry->date.year  = string_to_unsigned(date_list->elems[0].data);
+   entry->date.month = string_to_unsigned(date_list->elems[1].data);
+   entry->date.day   = string_to_unsigned(date_list->elems[2].data);
 
    /* Clean up */
-   string_list_deinitialize(&date_list);
+   string_list_free(date_list);
 
    return true;
 
 error:
-   string_list_deinitialize(&date_list);
+
+   if (date_list)
+      string_list_free(date_list);
 
    return false;
 }
@@ -394,34 +415,24 @@ static bool core_updater_list_set_paths(
       const char *path_dir_libretro,
       const char *path_libretro_info,
       const char *network_buildbot_url,
-      const char *filename_str,
-      enum core_updater_list_type list_type)
+      const char *filename_str)
 {
    char *last_underscore                  = NULL;
    char *tmp_url                          = NULL;
-   bool is_archive                        = true;
-   /* Can't resolve symlinks when dealing with cores
-    * installed via play feature delivery, because the
-    * source files have non-standard file names (which
-    * will not be recognised by regular core handling
-    * routines) */
-   bool resolve_symlinks                  = (list_type != CORE_UPDATER_LIST_TYPE_PFD);
    char remote_core_path[PATH_MAX_LENGTH];
    char local_core_path[PATH_MAX_LENGTH];
    char local_info_path[PATH_MAX_LENGTH];
+   bool is_archive;
 
    remote_core_path[0] = '\0';
    local_core_path[0]  = '\0';
    local_info_path[0]  = '\0';
 
-   if (!entry ||
-       string_is_empty(filename_str) ||
-       string_is_empty(path_dir_libretro) ||
-       string_is_empty(path_libretro_info))
+   if (!entry || string_is_empty(filename_str))
       return false;
 
-   /* Only buildbot cores require the buildbot URL */
-   if ((list_type == CORE_UPDATER_LIST_TYPE_BUILDBOT) &&
+   if (string_is_empty(path_dir_libretro) ||
+       string_is_empty(path_libretro_info) ||
        string_is_empty(network_buildbot_url))
       return false;
 
@@ -437,24 +448,20 @@ static bool core_updater_list_set_paths(
 
    entry->remote_filename = strdup(filename_str);
 
-   /* remote_core_path
-    * > Leave blank if this is not a buildbot core */
-   if (list_type == CORE_UPDATER_LIST_TYPE_BUILDBOT)
-   {
-      fill_pathname_join(
-            remote_core_path,
-            network_buildbot_url,
-            filename_str,
-            sizeof(remote_core_path));
+   /* remote_core_path */
+   fill_pathname_join(
+         remote_core_path,
+         network_buildbot_url,
+         filename_str,
+         sizeof(remote_core_path));
 
-      /* > Apply proper URL encoding (messy...) */
-      tmp_url = strdup(remote_core_path);
-      remote_core_path[0] = '\0';
-      net_http_urlencode_full(
-            remote_core_path, tmp_url, sizeof(remote_core_path));
-      if (tmp_url)
-         free(tmp_url);
-   }
+   /* > Apply proper URL encoding (messy...) */
+   tmp_url = strdup(remote_core_path);
+   remote_core_path[0] = '\0';
+   net_http_urlencode_full(
+         remote_core_path, tmp_url, sizeof(remote_core_path));
+   if (tmp_url)
+      free(tmp_url);
 
    if (entry->remote_core_path)
    {
@@ -474,8 +481,7 @@ static bool core_updater_list_set_paths(
    if (is_archive)
       path_remove_extension(local_core_path);
 
-   path_resolve_realpath(local_core_path, sizeof(local_core_path),
-         resolve_symlinks);
+   path_resolve_realpath(local_core_path, sizeof(local_core_path), true);
 
    if (entry->local_core_path)
    {
@@ -503,13 +509,15 @@ static bool core_updater_list_set_paths(
    last_underscore = (char*)strrchr(local_info_path, '_');
 
    if (!string_is_empty(last_underscore))
-      if (!string_is_equal(last_underscore, "_libretro"))
+   {
+      if (string_is_not_equal_fast(last_underscore, "_libretro", 9))
          *last_underscore = '\0';
+   }
 
    /* > Add proper file extension */
    strlcat(
          local_info_path,
-         FILE_PATH_CORE_INFO_EXTENSION,
+         file_path_str(FILE_PATH_CORE_INFO_EXTENSION),
          sizeof(local_info_path));
 
    if (entry->local_info_path)
@@ -621,25 +629,22 @@ static bool core_updater_list_push_entry(
       core_updater_list_t *core_list, core_updater_list_entry_t *entry)
 {
    core_updater_list_entry_t *list_entry = NULL;
-   size_t num_entries;
 
    if (!core_list || !entry)
       return false;
 
-   /* Get current number of list entries */
-   num_entries = RBUF_LEN(core_list->entries);
-
-   /* Attempt to allocate memory for new entry */
-   if (!RBUF_TRYFIT(core_list->entries, num_entries + 1))
+   /* Ensure there is enough space for the new entry */
+   if (core_list->capacity <= core_list->size)
       return false;
 
-   /* Allocation successful - increment array size */
-   RBUF_RESIZE(core_list->entries, num_entries + 1);
+   /* Get handle of new entry inside list */
+   list_entry = &core_list->entries[core_list->size];
 
-   /* Get handle of new entry at end of list, and
-    * zero-initialise members */
-   list_entry = &core_list->entries[num_entries];
-   memset(list_entry, 0, sizeof(*list_entry));
+   if (!list_entry)
+      return false;
+
+   /* Ensure list entry is empty */
+   core_updater_list_free_entry(list_entry);
 
    /* Assign paths */
    list_entry->remote_filename  = entry->remote_filename;
@@ -659,6 +664,9 @@ static bool core_updater_list_push_entry(
    /* Copy date */
    memcpy(&list_entry->date, &entry->date, sizeof(core_updater_list_date_t));
 
+   /* Increment list size */
+   core_list->size++;
+
    return true;
 }
 
@@ -672,11 +680,10 @@ static void core_updater_list_add_entry(
       const char *network_buildbot_url,
       struct string_list *network_core_entry_list)
 {
-   const char *date_str                          = NULL;
-   const char *crc_str                           = NULL;
-   const char *filename_str                      = NULL;
-   const core_updater_list_entry_t *search_entry = NULL;
-   core_updater_list_entry_t entry               = {0};
+   const char *date_str             = NULL;
+   const char *crc_str              = NULL;
+   const char *filename_str         = NULL;
+   core_updater_list_entry_t entry  = {0};
 
    if (!core_list || !network_core_entry_list)
       goto error;
@@ -699,8 +706,7 @@ static void core_updater_list_add_entry(
    /* Check whether core file is already included
     * in the list (this is *not* an error condition,
     * it just means we can skip the current listing) */
-   if (core_updater_list_get_filename(core_list,
-         filename_str, &search_entry))
+   if (core_updater_list_get_filename(core_list, filename_str, NULL))
       goto error;
 
    /* Parse individual listing strings */
@@ -715,8 +721,7 @@ static void core_updater_list_add_entry(
             path_dir_libretro,
             path_libretro_info,
             network_buildbot_url,
-            filename_str,
-            CORE_UPDATER_LIST_TYPE_BUILDBOT))
+            filename_str))
       goto error;
 
    if (!core_updater_list_set_core_info(
@@ -739,8 +744,7 @@ error:
     *   (could be the case that the network buffer
     *    wasn't large enough to cache the entire
     *    string, so the last line was truncated)
-    * - We had insufficient memory to allocate a new
-    *   entry in the core updater list
+    * - The core updater list struct is at capacity
     * In either case, the current entry is discarded
     * and we move on to the next one
     * (network transfers are fishy business, so we
@@ -766,21 +770,18 @@ static int core_updater_list_qsort_func(
 /* Sorts core updater list into alphabetical order */
 static void core_updater_list_qsort(core_updater_list_t *core_list)
 {
-   size_t num_entries;
-
    if (!core_list)
       return;
 
-   num_entries = RBUF_LEN(core_list->entries);
-
-   if (num_entries < 2)
+   if (core_list->size < 2)
       return;
 
    qsort(
-         core_list->entries, num_entries,
+         core_list->entries,
+         core_list->size,
          sizeof(core_updater_list_entry_t),
          (int (*)(const void *, const void *))
-               core_updater_list_qsort_func);
+         core_updater_list_qsort_func);
 }
 
 /* Reads the contents of a buildbot core list
@@ -794,9 +795,10 @@ bool core_updater_list_parse_network_data(
       const char *network_buildbot_url,
       const char *data, size_t len)
 {
+   struct string_list *network_core_list       = NULL;
+   struct string_list *network_core_entry_list = NULL;
+   char *data_buf                              = NULL;
    size_t i;
-   char *data_buf                       = NULL;
-   struct string_list network_core_list = {0};
 
    /* Sanity check */
    if (!core_list || string_is_empty(data) || (len < 1))
@@ -817,11 +819,12 @@ bool core_updater_list_parse_network_data(
    data_buf[len] = '\0';
 
    /* Split network listing request into lines */
-   string_list_initialize(&network_core_list);
-   if (!string_split_noalloc(&network_core_list, data_buf, "\n"))
+   network_core_list = string_split(data_buf, "\n");
+
+   if (!network_core_list)
       goto error;
 
-   if (network_core_list.size < 1)
+   if (network_core_list->size < 1)
       goto error;
 
    /* Temporary data buffer is no longer required */
@@ -829,17 +832,15 @@ bool core_updater_list_parse_network_data(
    data_buf = NULL;
 
    /* Loop over lines */
-   for (i = 0; i < network_core_list.size; i++)
+   for (i = 0; i < network_core_list->size; i++)
    {
-      struct string_list network_core_entry_list  = {0};
-      const char *line = network_core_list.elems[i].data;
+      const char *line = network_core_list->elems[i].data;
 
       if (string_is_empty(line))
          continue;
 
-      string_list_initialize(&network_core_entry_list);
       /* Split line into listings info components */
-      string_split_noalloc(&network_core_entry_list, line, " ");
+      network_core_entry_list = string_split(line, " ");
 
       /* Parse listings info and add to core updater
        * list */
@@ -848,143 +849,35 @@ bool core_updater_list_parse_network_data(
             path_dir_libretro,
             path_libretro_info,
             network_buildbot_url,
-            &network_core_entry_list);
+            network_core_entry_list);
 
       /* Clean up */
-      string_list_deinitialize(&network_core_entry_list);
+      string_list_free(network_core_entry_list);
+      network_core_entry_list = NULL;
    }
 
    /* Sanity check */
-   if (RBUF_LEN(core_list->entries) < 1)
+   if (core_list->size < 1)
       goto error;
 
    /* Clean up */
-   string_list_deinitialize(&network_core_list);
+   string_list_free(network_core_list);
 
    /* Sort completed list */
    core_updater_list_qsort(core_list);
 
-   /* Set list type */
-   core_list->type = CORE_UPDATER_LIST_TYPE_BUILDBOT;
-
    return true;
 
 error:
-   string_list_deinitialize(&network_core_list);
+
+   if (network_core_list)
+      string_list_free(network_core_list);
+
+   if (network_core_entry_list)
+      string_list_free(network_core_entry_list);
 
    if (data_buf)
       free(data_buf);
 
    return false;
-}
-
-/* Parses a single play feature delivery core
- * listing and adds it to the specified core
- * updater list */
-static void core_updater_list_add_pfd_entry(
-      core_updater_list_t *core_list,
-      const char *path_dir_libretro,
-      const char *path_libretro_info,
-      const char *filename_str)
-{
-   const core_updater_list_entry_t *search_entry = NULL;
-   core_updater_list_entry_t entry               = {0};
-
-   if (!core_list || string_is_empty(filename_str))
-      goto error;
-
-   /* Check whether core file is already included
-    * in the list (this is *not* an error condition,
-    * it just means we can skip the current listing) */
-   if (core_updater_list_get_filename(core_list,
-         filename_str, &search_entry))
-      goto error;
-
-   /* Note: Play feature delivery cores have no
-    * timestamp or CRC info - leave these fields
-    * zero initialised */
-
-   /* Populate entry fields */
-   if (!core_updater_list_set_paths(
-            &entry,
-            path_dir_libretro,
-            path_libretro_info,
-            NULL,
-            filename_str,
-            CORE_UPDATER_LIST_TYPE_PFD))
-      goto error;
-
-   if (!core_updater_list_set_core_info(
-         &entry,
-         entry.local_info_path,
-         filename_str))
-      goto error;
-
-   /* Add entry to list */
-   if (!core_updater_list_push_entry(core_list, &entry))
-      goto error;
-
-   return;
-
-error:
-   /* This is not a *fatal* error - it just
-    * means one of the following:
-    * - The core listing entry obtained from the
-    *   play feature delivery interface is broken
-    *   somehow
-    * - We had insufficient memory to allocate a new
-    *   entry in the core updater list
-    * In either case, the current entry is discarded
-    * and we move on to the next one */
-   core_updater_list_free_entry(&entry);
-}
-
-/* Reads the list of cores currently available
- * via play feature delivery (PFD) into the
- * specified core_updater_list_t object.
- * Returns false in the event of an error. */
-bool core_updater_list_parse_pfd_data(
-      core_updater_list_t *core_list,
-      const char *path_dir_libretro,
-      const char *path_libretro_info,
-      const struct string_list *pfd_cores)
-{
-   size_t i;
-
-   /* Sanity check */
-   if (!core_list || !pfd_cores || (pfd_cores->size < 1))
-      return false;
-
-   /* We're populating a list 'from scratch' - remove
-    * any existing entries */
-   core_updater_list_reset(core_list);
-
-   /* Loop over play feature delivery core list */
-   for (i = 0; i < pfd_cores->size; i++)
-   {
-      const char *filename_str = pfd_cores->elems[i].data;
-
-      if (string_is_empty(filename_str))
-         continue;
-
-      /* Parse core file name and add to core
-       * updater list */
-      core_updater_list_add_pfd_entry(
-            core_list,
-            path_dir_libretro,
-            path_libretro_info,
-            filename_str);
-   }
-
-   /* Sanity check */
-   if (RBUF_LEN(core_list->entries) < 1)
-      return false;
-
-   /* Sort completed list */
-   core_updater_list_qsort(core_list);
-
-   /* Set list type */
-   core_list->type = CORE_UPDATER_LIST_TYPE_PFD;
-
-   return true;
 }

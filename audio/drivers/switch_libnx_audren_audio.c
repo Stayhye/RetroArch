@@ -23,7 +23,7 @@
 
 #include <switch.h>
 
-#include "../audio_driver.h"
+#include "../../retroarch.h"
 #include "../../verbosity.h"
 
 #define BUFFER_COUNT 5
@@ -241,7 +241,7 @@ static ssize_t libnx_audren_audio_write(void *data,
 
    if (aud->nonblock)
    {
-      while (written < size)
+      while(written < size)
       {
          written += libnx_audren_audio_append(
                aud, buf + written, size - written);
@@ -251,7 +251,7 @@ static ssize_t libnx_audren_audio_write(void *data,
    }
    else
    {
-      while (written < size)
+      while(written < size)
       {
          written += libnx_audren_audio_append(
                aud, buf + written, size - written);

@@ -30,10 +30,6 @@
 
 #include "disk_control_interface.h"
 
-#ifdef HAVE_CHEEVOS
-#include "cheevos/cheevos.h"
-#endif
-
 /*****************/
 /* Configuration */
 /*****************/
@@ -46,8 +42,7 @@ static void disk_control_reset_callback(
    if (!disk_control)
       return;
 
-   memset(&disk_control->cb, 0,
-         sizeof(struct retro_disk_control_ext_callback));
+   memset(&disk_control->cb, 0, sizeof(struct retro_disk_control_ext_callback));
 }
 
 /* Set v0 disk interface callback functions */
@@ -302,24 +297,27 @@ bool disk_control_set_eject_state(
    /* Set eject state */
    if (disk_control->cb.set_eject_state(eject))
       snprintf(
-            msg, sizeof(msg), "%s",
+            msg, sizeof(msg), "%s %s",
             eject ? msg_hash_to_str(MSG_DISK_EJECTED) :
-                  msg_hash_to_str(MSG_DISK_CLOSED));
+                  msg_hash_to_str(MSG_DISK_CLOSED),
+            msg_hash_to_str(MSG_VIRTUAL_DISK_TRAY));
    else
    {
       error = true;
       snprintf(
-            msg, sizeof(msg), "%s",
+            msg, sizeof(msg), "%s %s %s",
+            msg_hash_to_str(MSG_FAILED_TO),
             eject ? msg_hash_to_str(MSG_VIRTUAL_DISK_TRAY_EJECT) :
-                  msg_hash_to_str(MSG_VIRTUAL_DISK_TRAY_CLOSE));
+                  msg_hash_to_str(MSG_VIRTUAL_DISK_TRAY_CLOSE),
+            msg_hash_to_str(MSG_VIRTUAL_DISK_TRAY));
    }
 
    if (!string_is_empty(msg))
    {
       if (error)
-         RARCH_ERR("[Disc]: %s\n", msg);
+         RARCH_ERR("%s\n", msg);
       else
-         RARCH_LOG("[Disc]: %s\n", msg);
+         RARCH_LOG("%s\n", msg);
 
       /* Errors should always be displayed */
       if (verbosity || error)
@@ -328,20 +326,6 @@ bool disk_control_set_eject_state(
                true, NULL,
                MESSAGE_QUEUE_ICON_DEFAULT, MESSAGE_QUEUE_CATEGORY_INFO);
    }
-
-#ifdef HAVE_CHEEVOS
-   if (!error && !eject)
-   {
-      if (disk_control->cb.get_image_index && disk_control->cb.get_image_path)
-      {
-         char image_path[PATH_MAX_LENGTH] = "";
-         unsigned image_index = disk_control->cb.get_image_index();
-
-         if (disk_control->cb.get_image_path(image_index, image_path, sizeof(image_path)))
-            rcheevos_change_disc(image_path, false);
-      }
-   }
-#endif
 
    return !error;
 }
@@ -355,7 +339,7 @@ bool disk_control_set_index(
    bool error            = false;
    unsigned num_images   = 0;
    unsigned msg_duration = 0;
-   char msg[NAME_MAX_LENGTH];
+   char msg[PATH_MAX_LENGTH];
 
    msg[0] = '\0';
 
@@ -386,17 +370,16 @@ bool disk_control_set_index(
    if (!string_is_empty(msg))
    {
       if (error)
-         RARCH_ERR("[Disc]: %s\n", msg);
+         RARCH_ERR("%s\n", msg);
       else
-         RARCH_LOG("[Disc]: %s\n", msg);
+         RARCH_LOG("%s\n", msg);
 
       /* Errors should always be displayed */
       if (verbosity || error)
          runloop_msg_queue_push(
                msg, 1, msg_duration,
                true, NULL,
-               MESSAGE_QUEUE_ICON_DEFAULT,
-               MESSAGE_QUEUE_CATEGORY_INFO);
+               MESSAGE_QUEUE_ICON_DEFAULT, MESSAGE_QUEUE_CATEGORY_INFO);
    }
 
    /* If operation was successful, update disk
@@ -455,7 +438,7 @@ bool disk_control_set_index_next(
 
    if (!disk_next_enable)
    {
-      RARCH_ERR("[Disc]: %s\n", msg_hash_to_str(MSG_GOT_INVALID_DISK_INDEX));
+      RARCH_ERR("%s.\n", msg_hash_to_str(MSG_GOT_INVALID_DISK_INDEX));
       return false;
    }
 
@@ -490,7 +473,7 @@ bool disk_control_set_index_prev(
 
    if (!disk_prev_enable)
    {
-      RARCH_ERR("[Disc]: %s\n", msg_hash_to_str(MSG_GOT_INVALID_DISK_INDEX));
+      RARCH_ERR("%s.\n", msg_hash_to_str(MSG_GOT_INVALID_DISK_INDEX));
       return false;
    }
 
@@ -505,7 +488,6 @@ bool disk_control_append_image(
       disk_control_interface_t *disk_control,
       const char *image_path)
 {
-   bool initial_disk_ejected   = false;
    unsigned initial_index      = 0;
    unsigned new_index          = 0;
    const char *image_filename  = NULL;
@@ -535,15 +517,11 @@ bool disk_control_append_image(
    if (string_is_empty(image_filename))
       return false;
 
-   /* Get initial disk eject state */
-   initial_disk_ejected = disk_control_get_eject_state(disk_control);
-
    /* Cache initial image index */
    initial_index = disk_control->cb.get_image_index();
 
-   /* If tray is currently closed, eject disk */
-   if (!initial_disk_ejected &&
-       !disk_control_set_eject_state(disk_control, true, false))
+   /* Eject disk */
+   if (!disk_control_set_eject_state(disk_control, true, false))
       goto error;
 
    /* Append image */
@@ -563,10 +541,8 @@ bool disk_control_append_image(
    if (!disk_control_set_index(disk_control, new_index, false))
       goto error;
 
-   /* If tray was initially closed, insert disk
-    * (i.e. leave system in the state we found it) */
-   if (!initial_disk_ejected &&
-       !disk_control_set_eject_state(disk_control, false, false))
+   /* Insert disk */
+   if (!disk_control_set_eject_state(disk_control, false, false))
       goto error;
 
    /* Display log */
@@ -574,7 +550,7 @@ bool disk_control_append_image(
          msg, sizeof(msg), "%s: %s",
          msg_hash_to_str(MSG_APPENDED_DISK), image_filename);
 
-   RARCH_LOG("[Disc]: %s\n", msg);
+   RARCH_LOG("%s\n", msg);
    /* This message should always be displayed, since
     * the menu itself does not provide sufficient
     * visual feedback */
@@ -596,8 +572,7 @@ error:
    if (!disk_control->cb.get_eject_state())
       disk_control_set_eject_state(disk_control, true, false);
    disk_control_set_index(disk_control, initial_index, false);
-   if (!initial_disk_ejected)
-      disk_control_set_eject_state(disk_control, false, false);
+   disk_control_set_eject_state(disk_control, false, false);
 
    snprintf(
          msg, sizeof(msg), "%s: %s",
@@ -661,7 +636,7 @@ bool disk_control_set_initial_index(
           * here may not matter (have to wait until
           * disk index is verified) */
          RARCH_ERR(
-               "[Disc]: Failed to set initial disk index: [%u] %s\n",
+               "Failed to set initial disk index: [%u] %s\n",
                disk_control->index_record.image_index,
                disk_control->index_record.image_path);
          return false;
@@ -681,9 +656,7 @@ error:
  *   if functionality is supported by core
  * NOTE: Must be called immediately after
  * loading content */
-bool disk_control_verify_initial_index(
-      disk_control_interface_t *disk_control,
-      bool verbosity)
+bool disk_control_verify_initial_index(disk_control_interface_t *disk_control)
 {
    bool success         = false;
    unsigned image_index = 0;
@@ -735,14 +708,12 @@ bool disk_control_verify_initial_index(
    if (!success)
    {
       RARCH_ERR(
-               "[Disc]: Failed to set initial disk index:\n> Expected [%u] %s\n> Detected [%u] %s\n",
+               "Failed to set initial disk index:\n> Expected [%u] %s\n> Detected [%u] %s\n",
                disk_control->index_record.image_index + 1,
                disk_control->index_record.image_path,
                image_index + 1,
                image_path);
 
-      /* Ignore 'verbosity' setting - errors should
-       * always be displayed */
       runloop_msg_queue_push(
             msg_hash_to_str(MSG_FAILED_TO_SET_INITIAL_DISK),
             0, 60,
@@ -779,23 +750,17 @@ bool disk_control_verify_initial_index(
             disk_control, disk_control->initial_num_images, image_index, true,
             &msg_duration, msg, sizeof(msg));
 
-      RARCH_LOG("[Disc]: %s\n", msg);
+      RARCH_LOG("%s\n", msg);
 
       /* Note: Do not flush message queue here, since
        * it is likely other notifications will be
        * generated before setting the disk index, and
        * we do not want to 'overwrite' them */
-      if (verbosity)
-         runloop_msg_queue_push(
-               msg,
-               0, msg_duration,
-               false, NULL,
-               MESSAGE_QUEUE_ICON_DEFAULT, MESSAGE_QUEUE_CATEGORY_INFO);
-
-#ifdef HAVE_CHEEVOS
-      if (image_index > 0)
-         rcheevos_change_disc(disk_control->index_record.image_path, true);
-#endif
+      runloop_msg_queue_push(
+            msg,
+            0, msg_duration,
+            false, NULL,
+            MESSAGE_QUEUE_ICON_DEFAULT, MESSAGE_QUEUE_CATEGORY_INFO);
    }
 
    return success;
@@ -803,8 +768,7 @@ bool disk_control_verify_initial_index(
 
 /* Saves current disk index to file, if supported
  * by current core */
-bool disk_control_save_image_index(
-      disk_control_interface_t *disk_control)
+bool disk_control_save_image_index(disk_control_interface_t *disk_control)
 {
    if (!disk_control)
       return false;

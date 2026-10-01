@@ -43,8 +43,14 @@ static const char* const ICONS_NAMES[ICON_LAST] = {
 /* Widget state */
 struct gfx_widget_volume_state
 {
-   uintptr_t tag;
-   uintptr_t textures[ICON_LAST];
+   float db;
+   float percent;
+   gfx_timer_t timer;
+
+   float alpha;
+   float text_alpha;
+   gfx_animation_ctx_tag tag;
+   bool mute;
 
    unsigned widget_width;
    unsigned widget_height;
@@ -53,156 +59,147 @@ struct gfx_widget_volume_state
    float bar_normal[16];
    float bar_loud[16];
    float bar_loudest[16];
-   float alpha;
-   float text_alpha;
-   float db;
-   float percent;
-   gfx_timer_t timer;   /* float alignment */
 
-   bool mute;
+   uintptr_t textures[ICON_LAST];
 };
 
 typedef struct gfx_widget_volume_state gfx_widget_volume_state_t;
 
 static gfx_widget_volume_state_t p_w_volume_st = {
+   0.0f,
+   1.0f,
+   0.0f,
+
+   0.0f,
+   0.0f,
    (uintptr_t) &p_w_volume_st,
-   {0},
+   false,
+
    0,
    0,
+
    COLOR_HEX_TO_FLOAT(0x1A1A1A, 1.0f),
    COLOR_HEX_TO_FLOAT(0x198AC6, 1.0f),
    COLOR_HEX_TO_FLOAT(0xF5DD19, 1.0f),
    COLOR_HEX_TO_FLOAT(0xC23B22, 1.0f),
-   0.0f,
-   0.0f,
-   0.0f,
-   1.0f,
-   0.0f,
-   false
+
+   {0},
 };
 
-static void gfx_widget_volume_frame(void* data, void *user_data)
+gfx_widget_volume_state_t* gfx_widget_volume_get_ptr(void)
 {
-   static float pure_white[16]             = {
-      1.00, 1.00, 1.00, 1.00,
-      1.00, 1.00, 1.00, 1.00,
-      1.00, 1.00, 1.00, 1.00,
-      1.00, 1.00, 1.00, 1.00,
-   };
-   gfx_widget_volume_state_t *state        = &p_w_volume_st;
+   return &p_w_volume_st;
+}
+
+static void gfx_widget_volume_frame(void* data)
+{
+   gfx_widget_volume_state_t* state = gfx_widget_volume_get_ptr();
 
    if (state->alpha > 0.0f)
    {
+      video_frame_info_t *video_info = (video_frame_info_t*)data;
+
       char msg[255];
       char percentage_msg[255];
-      video_frame_info_t *video_info       = (video_frame_info_t*)data;
-      dispgfx_widget_t *p_dispwidget       = (dispgfx_widget_t*)user_data;
-      gfx_widget_font_data_t *font_regular = &p_dispwidget->gfx_widget_fonts.regular;
 
-      void *userdata                       = video_info->userdata;
-      unsigned video_width                 = video_info->width;
-      unsigned video_height                = video_info->height;
+      gfx_widget_font_data_t* font_regular = gfx_widgets_get_font_regular();
 
-      unsigned padding                     = p_dispwidget->simple_widget_padding;
+      void *userdata                = video_info->userdata;
+      unsigned video_width          = video_info->width;
+      unsigned video_height         = video_info->height;
 
-      float* backdrop_orig                 = p_dispwidget->backdrop_orig;
+      unsigned padding              = gfx_widgets_get_padding();
 
-      uintptr_t volume_icon                = 0;
-      unsigned icon_size                   = state->textures[ICON_MED] ? state->widget_height : padding;
-      unsigned text_color                  = COLOR_TEXT_ALPHA(0xffffffff, (unsigned)(state->text_alpha*255.0f));
-      unsigned text_color_db               = COLOR_TEXT_ALPHA(TEXT_COLOR_FAINT, (unsigned)(state->text_alpha*255.0f));
+      float* backdrop_orig          = gfx_widgets_get_backdrop_orig();
+      float* pure_white             = gfx_widgets_get_pure_white();
 
-      unsigned bar_x                       = icon_size;
-      unsigned bar_height                  = font_regular->line_height / 2;
-      unsigned bar_width                   = state->widget_width - bar_x - padding;
-      unsigned bar_y                       = state->widget_height / 2 + bar_height;
+      uintptr_t volume_icon         = 0;
+      unsigned icon_size            = state->textures[ICON_MED] ? state->widget_height : padding;
+      unsigned text_color           = COLOR_TEXT_ALPHA(0xffffffff, (unsigned)(state->text_alpha*255.0f));
+      unsigned text_color_db        = COLOR_TEXT_ALPHA(TEXT_COLOR_FAINT, (unsigned)(state->text_alpha*255.0f));
 
-      float *bar_background                = NULL;
-      float *bar_foreground                = NULL;
-      float bar_percentage                 = 0.0f;
-      gfx_display_t            *p_disp     = (gfx_display_t*)video_info->disp_userdata;
-      gfx_display_ctx_driver_t *dispctx    = p_disp->dispctx;
+      unsigned bar_x                = icon_size;
+      unsigned bar_height           = font_regular->line_height / 2;
+      unsigned bar_width            = state->widget_width - bar_x - padding;
+      unsigned bar_y                = state->widget_height / 2 + bar_height;
+
+      float *bar_background         = NULL;
+      float *bar_foreground         = NULL;
+      float bar_percentage          = 0.0f;
 
       /* Note: Volume + percentage text has no component
        * that extends below the baseline, so we shift
        * the text down by the font descender to achieve
        * better spacing */
-      unsigned volume_text_y               = (bar_y / 2.0f) 
-         + font_regular->line_centre_offset 
-         + font_regular->line_descender;
+      unsigned volume_text_y        = (bar_y / 2.0f) + font_regular->line_centre_offset + font_regular->line_descender;
 
-      msg[0]                               = '\0';
-      percentage_msg[0]                    = '\0';
+      msg[0] = '\0';
+      percentage_msg[0] = '\0';
 
       if (state->mute)
-         volume_icon                       = state->textures[ICON_MUTE];
+         volume_icon = state->textures[ICON_MUTE];
       else if (state->percent <= 1.0f)
       {
          if (state->percent <= 0.5f)
-            volume_icon                    = state->textures[ICON_MIN];
+            volume_icon = state->textures[ICON_MIN];
          else
-            volume_icon                    = state->textures[ICON_MED];
+            volume_icon = state->textures[ICON_MED];
 
-         bar_background                    = state->bar_background;
-         bar_foreground                    = state->bar_normal;
-         bar_percentage                    = state->percent;
+         bar_background = state->bar_background;
+         bar_foreground = state->bar_normal;
+         bar_percentage = state->percent;
       }
       else if (state->percent > 1.0f && state->percent <= 2.0f)
       {
-         volume_icon                       = state->textures[ICON_MAX];
+         volume_icon = state->textures[ICON_MAX];
 
-         bar_background                    = state->bar_normal;
-         bar_foreground                    = state->bar_loud;
-         bar_percentage                    = state->percent - 1.0f;
+         bar_background = state->bar_normal;
+         bar_foreground = state->bar_loud;
+         bar_percentage = state->percent - 1.0f;
       }
       else
       {
-         volume_icon                       = state->textures[ICON_MAX];
+         volume_icon = state->textures[ICON_MAX];
 
-         bar_background                    = state->bar_loud;
-         bar_foreground                    = state->bar_loudest;
-         bar_percentage                    = state->percent - 2.0f;
+         bar_background = state->bar_loud;
+         bar_foreground = state->bar_loudest;
+         bar_percentage = state->percent - 2.0f;
       }
 
       if (bar_percentage > 1.0f)
-         bar_percentage                    = 1.0f;
+         bar_percentage = 1.0f;
 
       /* Backdrop */
       gfx_display_set_alpha(backdrop_orig, state->alpha);
 
-      gfx_display_draw_quad(
-            p_disp,
-            userdata,
-            video_width,
-            video_height,
-            0, 0,
-            state->widget_width,
-            state->widget_height,
-            video_width,
-            video_height,
-            backdrop_orig,
-            NULL
-            );
+      gfx_display_draw_quad(userdata,
+         video_width,
+         video_height,
+         0, 0,
+         state->widget_width,
+         state->widget_height,
+         video_width,
+         video_height,
+         backdrop_orig
+      );
 
       /* Icon */
       if (volume_icon)
       {
          gfx_display_set_alpha(pure_white, state->text_alpha);
 
-         if (dispctx && dispctx->blend_begin)
-            dispctx->blend_begin(userdata);
+         gfx_display_blend_begin(userdata);
          gfx_widgets_draw_icon(
                userdata,
-               p_disp,
                video_width,
                video_height,
                icon_size, icon_size,
                volume_icon,
                0, 0,
+               video_width, video_height,
                0, 1, pure_white
                );
-         if (dispctx && dispctx->blend_end)
-            dispctx->blend_end(userdata);
+         gfx_display_blend_end(userdata);
       }
 
       if (state->mute)
@@ -212,9 +209,7 @@ static void gfx_widget_volume_frame(void* data, void *user_data)
             const char *text  = msg_hash_to_str(MSG_AUDIO_MUTED);
             gfx_widgets_draw_text(font_regular,
                   text,
-                  state->widget_width / 2,
-                  state->widget_height / 2.0f 
-                  + font_regular->line_centre_offset,
+                  state->widget_width/2, state->widget_height/2.0f + font_regular->line_centre_offset,
                   video_width, video_height,
                   text_color, TEXT_ALIGN_CENTER,
                   true);
@@ -226,28 +221,22 @@ static void gfx_widget_volume_frame(void* data, void *user_data)
          gfx_display_set_alpha(bar_background, state->text_alpha);
          gfx_display_set_alpha(bar_foreground, state->text_alpha);
 
-         gfx_display_draw_quad(
-               p_disp,
-               userdata,
+         gfx_display_draw_quad(userdata,
                video_width,
                video_height,
                bar_x + bar_percentage * bar_width, bar_y,
                bar_width - bar_percentage * bar_width, bar_height,
                video_width, video_height,
-               bar_background,
-               NULL
+               bar_background
                );
 
-         gfx_display_draw_quad(
-               p_disp,
-               userdata,
+         gfx_display_draw_quad(userdata,
                video_width,
                video_height,
                bar_x, bar_y,
                bar_percentage * bar_width, bar_height,
                video_width, video_height,
-               bar_foreground,
-               NULL
+               bar_foreground
                );
 
          /* Text */
@@ -278,8 +267,8 @@ static void gfx_widget_volume_frame(void* data, void *user_data)
 
 static void gfx_widget_volume_timer_end(void *userdata)
 {
+   gfx_widget_volume_state_t* state = gfx_widget_volume_get_ptr();
    gfx_animation_ctx_entry_t entry;
-   gfx_widget_volume_state_t *state = &p_w_volume_st;
 
    entry.cb             = NULL;
    entry.duration       = MSG_QUEUE_ANIMATION_DURATION;
@@ -298,8 +287,8 @@ static void gfx_widget_volume_timer_end(void *userdata)
 
 void gfx_widget_volume_update_and_show(float new_volume, bool mute)
 {
+   gfx_widget_volume_state_t* state = gfx_widget_volume_get_ptr();
    gfx_timer_ctx_entry_t entry;
-   gfx_widget_volume_state_t *state = &p_w_volume_st;
 
    gfx_animation_kill_by_tag(&state->tag);
 
@@ -313,20 +302,17 @@ void gfx_widget_volume_update_and_show(float new_volume, bool mute)
    entry.duration    = VOLUME_DURATION;
    entry.userdata    = NULL;
 
-   gfx_animation_timer_start(&state->timer, &entry);
+   gfx_timer_start(&state->timer, &entry);
 }
 
-static void gfx_widget_volume_layout(
-      void *data,
-      bool is_threaded, const char *dir_assets, char *font_path)
+static void gfx_widget_volume_layout(bool is_threaded, const char *dir_assets, char *font_path)
 {
-   dispgfx_widget_t *p_dispwidget       = (dispgfx_widget_t*)data;
-   gfx_widget_volume_state_t *state     = &p_w_volume_st;
-   unsigned last_video_width            = p_dispwidget->last_video_width;
-   gfx_widget_font_data_t *font_regular = &p_dispwidget->gfx_widget_fonts.regular;
+   gfx_widget_volume_state_t* state     = gfx_widget_volume_get_ptr();
+   unsigned last_video_width            = gfx_widgets_get_last_video_width();
+   gfx_widget_font_data_t* font_regular = gfx_widgets_get_font_regular();
 
-   state->widget_height                 = font_regular->line_height * 4;
-   state->widget_width                  = state->widget_height * 4;
+   state->widget_height = font_regular->line_height * 4;
+   state->widget_width  = state->widget_height * 4;
 
    /* Volume widget cannot exceed screen width
     * > If it does, scale it down */
@@ -343,8 +329,8 @@ static void gfx_widget_volume_context_reset(bool is_threaded,
       char* menu_png_path,
       char* widgets_png_path)
 {
+   gfx_widget_volume_state_t* state = gfx_widget_volume_get_ptr();
    size_t i;
-   gfx_widget_volume_state_t *state     = &p_w_volume_st;
 
    for (i = 0; i < ICON_LAST; i++)
       gfx_display_reset_textures_list(ICONS_NAMES[i], menu_png_path, &state->textures[i], TEXTURE_FILTER_MIPMAP_LINEAR, NULL, NULL);
@@ -352,8 +338,8 @@ static void gfx_widget_volume_context_reset(bool is_threaded,
 
 static void gfx_widget_volume_context_destroy(void)
 {
+   gfx_widget_volume_state_t* state = gfx_widget_volume_get_ptr();
    size_t i;
-   gfx_widget_volume_state_t *state     = &p_w_volume_st;
 
    for (i = 0; i < ICON_LAST; i++)
       video_driver_texture_unload(&state->textures[i]);
@@ -361,7 +347,7 @@ static void gfx_widget_volume_context_destroy(void)
 
 static void gfx_widget_volume_free(void)
 {
-   gfx_widget_volume_state_t *state     = &p_w_volume_st;
+   gfx_widget_volume_state_t* state = gfx_widget_volume_get_ptr();
 
    /* Kill all running animations */
    gfx_animation_kill_by_tag(&state->tag);

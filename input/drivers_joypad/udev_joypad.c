@@ -36,9 +36,6 @@
 
 #include "../input_driver.h"
 
-#include "../../configuration.h"
-#include "../../config.def.h"
-
 #include "../../tasks/tasks_internal.h"
 
 #include "../../verbosity.h"
@@ -52,7 +49,7 @@
  * Code adapted from SDL 2.0's implementation.
  */
 
-#define UDEV_NUM_BUTTONS 64
+#define UDEV_NUM_BUTTONS 32
 #define NUM_AXES 32
 
 #ifndef NUM_HATS
@@ -65,29 +62,29 @@
 
 struct udev_joypad
 {
-   dev_t device;  /* TODO/FIXME - unsure of alignment */
-   struct input_absinfo absinfo[NUM_AXES]; /* TODO/FIXME - unsure of alignment */
-
-   uint64_t buttons;
-
-   char *path;
-
    int fd;
-   int num_effects;
-   int effects[2]; /* [0] - strong, [1] - weak  */
-   int32_t vid;
-   int32_t pid;
+   dev_t device;
+
+   /* Input state polled. */
+   uint64_t buttons;
    int16_t axes[NUM_AXES];
    int8_t hats[NUM_HATS][2];
+
    /* Maps keycodes -> button/axes */
    uint8_t button_bind[KEY_MAX];
    uint8_t axes_bind[ABS_MAX];
+   struct input_absinfo absinfo[NUM_AXES];
+
+   int num_effects;
+   int effects[2]; /* [0] - strong, [1] - weak  */
+   bool has_set_ff[2];
    uint16_t strength[2];
    uint16_t configured_strength[2];
-   unsigned rumble_gain;
 
-   char ident[NAME_MAX_LENGTH];
-   bool has_set_ff[2];
+   char ident[255];
+   char *path;
+   int32_t vid;
+   int32_t pid;
    /* Deal with analog triggers that report -32767 to 32767 */
    bool neg_trigger[NUM_AXES];
 };
@@ -98,7 +95,6 @@ struct joypad_udev_entry
    struct udev_list_entry *item;
 };
 
-/* TODO/FIXME - static globals */
 static struct udev *udev_joypad_fd             = NULL;
 static struct udev_monitor *udev_joypad_mon    = NULL;
 static struct udev_joypad udev_pads[MAX_USERS];
@@ -151,37 +147,6 @@ error:
    return -1;
 }
 
-#ifndef HAVE_LAKKA_SWITCH
-static bool udev_set_rumble_gain(unsigned i, unsigned gain)
-{
-   struct input_event ie;
-   struct udev_joypad *pad = (struct udev_joypad*)&udev_pads[i];
-
-   /* Does not support > 100 gains */
-   if ((pad->fd < 0) ||
-       (gain > 100))
-      return false;
-
-   if (pad->rumble_gain == gain)
-      return true;
-
-   memset(&ie, 0, sizeof(ie));
-   ie.type = EV_FF;
-   ie.code = FF_GAIN;
-   ie.value = 0xFFFF * (gain/100.0);
-
-   if (write(pad->fd, &ie, sizeof(ie)) < (ssize_t)sizeof(ie))
-   {
-      RARCH_ERR("[udev]: Failed to set rumble gain on pad #%u.\n", i);
-      return false;
-   }
-
-   pad->rumble_gain = gain;
-
-   return true;
-}
-#endif
-
 static int udev_add_pad(struct udev_device *dev, unsigned p, int fd, const char *path)
 {
    int i;
@@ -196,24 +161,24 @@ static int udev_add_pad(struct udev_device *dev, unsigned p, int fd, const char 
    unsigned long keybit[NBITS(KEY_MAX)] = {0};
    unsigned long absbit[NBITS(ABS_MAX)] = {0};
    unsigned long ffbit[NBITS(FF_MAX)]   = {0};
-   const char *device_name              = input_config_get_device_name(p);
 
-   if (string_is_empty(device_name))
-      pad->ident[0] = '\0';
-   else
-      strlcpy(pad->ident, device_name, sizeof(pad->ident));
+   strlcpy(pad->ident, input_device_names[p], sizeof(pad->ident));
 
-   /* Failed to get pad name */
    if (ioctl(fd, EVIOCGNAME(sizeof(pad->ident)), pad->ident) < 0)
+   {
+      RARCH_LOG("[udev]: Failed to get pad name: %s.\n", pad->ident);
       return -1;
+   }
 
    pad->vid = pad->pid = 0;
 
-   if (ioctl(fd, EVIOCGID, &inputid) >= 0)
-   {
+   if (ioctl(fd, EVIOCGID, &inputid) >= 0) {
       pad->vid = inputid.vendor;
       pad->pid = inputid.product;
    }
+
+   RARCH_LOG("[udev]: Plugged pad: %s (%u:%u) on port #%u.\n",
+             pad->ident, pad->vid, pad->pid, p);
 
    if (fstat(fd, &st) < 0)
       return -1;
@@ -300,17 +265,6 @@ static int udev_add_pad(struct udev_device *dev, unsigned p, int fd, const char 
                "[udev]: Pad #%u (%s) supports %d force feedback effects.\n",
                p, path, pad->num_effects);
    }
-
-#ifndef HAVE_LAKKA_SWITCH
-   /* Set rumble gain here, if supported */
-   if (test_bit(FF_RUMBLE, ffbit))
-   {
-      settings_t *settings = config_get_ptr();
-      unsigned rumble_gain = settings ? settings->uints.input_rumble_gain
-                                      : DEFAULT_RUMBLE_GAIN;
-      udev_set_rumble_gain(p, rumble_gain);
-   }
-#endif
 
    return ret;
 }
@@ -432,16 +386,9 @@ static bool udev_set_rumble(unsigned i,
    {
       /* Create new or update old playing state. */
       struct ff_effect e = {0};
-      /* This defines the length of the effect and
-         the delay before playing it. This means there
-         is a limit on the maximum vibration time, but
-         it's hopefully sufficient for most cases. Maybe
-         there's a better way? */
-      struct ff_replay replay = {0xffff, 0};
 
       e.type = FF_RUMBLE;
       e.id   = old_effect;
-      e.replay = replay;
 
       switch (effect)
       {
@@ -514,12 +461,16 @@ static void udev_joypad_poll(void)
 
          if (val && string_is_equal(val, "1") && devnode)
          {
-            /* Hotplug add */
             if (string_is_equal(action, "add"))
+            {
+               RARCH_LOG("[udev]: Hotplug add: %s.\n", devnode);
                udev_check_device(dev, devnode);
-            /* Hotplug removal */
+            }
             else if (string_is_equal(action, "remove"))
+            {
+               RARCH_LOG("[udev]: Hotplug remove: %s.\n", devnode);
                udev_joypad_remove_device(devnode);
+            }
          }
 
          udev_device_unref(dev);
@@ -591,7 +542,7 @@ static void udev_joypad_poll(void)
    }
 }
 
-static void *udev_joypad_init(void *data)
+static bool udev_joypad_init(void *data)
 {
    unsigned i;
    unsigned sorted_count = 0;
@@ -600,12 +551,14 @@ static void *udev_joypad_init(void *data)
    struct udev_enumerate *enumerate = NULL;
    struct joypad_udev_entry sorted[MAX_USERS];
 
+   (void)data;
+
    for (i = 0; i < MAX_USERS; i++)
       udev_pads[i].fd = -1;
 
    udev_joypad_fd = udev_new();
    if (!udev_joypad_fd)
-      return NULL;
+      return false;
 
    udev_joypad_mon = udev_monitor_new_from_netlink(udev_joypad_fd, "udev");
    if (udev_joypad_mon)
@@ -620,25 +573,14 @@ static void *udev_joypad_init(void *data)
       goto error;
 
    udev_enumerate_add_match_property(enumerate, "ID_INPUT_JOYSTICK", "1");
-   udev_enumerate_add_match_subsystem(enumerate, "input");
    udev_enumerate_scan_devices(enumerate);
    devs = udev_enumerate_get_list_entry(enumerate);
-   if (!devs)
-      RARCH_DBG("[udev]: Couldn't open any joypads. Are permissions set correctly for /dev/input/event* and /run/udev/?\n");
 
    udev_list_entry_foreach(item, devs)
    {
       const char         *name = udev_list_entry_get_name(item);
       struct udev_device  *dev = udev_device_new_from_syspath(udev_joypad_fd, name);
       const char      *devnode = udev_device_get_devnode(dev);
-#if defined(DEBUG)
-      struct udev_list_entry *list_entry = NULL;
-      RARCH_DBG("udev_joypad_init entry name=%s devnode=%s\n", name, devnode);
-      udev_list_entry_foreach(list_entry, udev_device_get_properties_list_entry(dev))
-         RARCH_DBG("udev_joypad_init property %s=%s\n",
-                       udev_list_entry_get_name(list_entry),
-                       udev_list_entry_get_value(list_entry));
-#endif
 
       if (devnode)
          udev_check_device(dev, devnode);
@@ -646,19 +588,17 @@ static void *udev_joypad_init(void *data)
    }
 
    udev_enumerate_unref(enumerate);
-
-   return (void*)-1;
+   return true;
 
 error:
    udev_joypad_destroy();
-   return NULL;
+   return false;
 }
 
-static int32_t udev_joypad_button_state(
-      const struct udev_joypad *pad,
-      unsigned port, uint16_t joykey)
+static bool udev_joypad_button(unsigned port, uint16_t joykey)
 {
-   unsigned hat_dir = GET_HAT_DIR(joykey);
+   const struct udev_joypad *pad = (const struct udev_joypad*)&udev_pads[port];
+   unsigned hat_dir              = GET_HAT_DIR(joykey);
 
    if (hat_dir)
    {
@@ -668,31 +608,18 @@ static int32_t udev_joypad_button_state(
          switch (hat_dir)
          {
             case HAT_LEFT_MASK:
-               return (pad->hats[h][0] < 0);
+               return pad->hats[h][0] < 0;
             case HAT_RIGHT_MASK:
-               return (pad->hats[h][0] > 0);
+               return pad->hats[h][0] > 0;
             case HAT_UP_MASK:
-               return (pad->hats[h][1] < 0);
+               return pad->hats[h][1] < 0;
             case HAT_DOWN_MASK:
-               return (pad->hats[h][1] > 0);
-            default:
-               break;
+               return pad->hats[h][1] > 0;
          }
       }
-      /* hat requested and no hat button down */
+      return false;
    }
-   else if (joykey < UDEV_NUM_BUTTONS)
-      return (BIT64_GET(pad->buttons, joykey));
-   return 0;
-}
-
-static int32_t udev_joypad_button(unsigned port, uint16_t joykey)
-{
-   const struct udev_joypad *pad        = (const struct udev_joypad*)
-      &udev_pads[port];
-   if (port >= DEFAULT_MAX_PADS)
-      return 0;
-   return udev_joypad_button_state(pad, port, joykey);
+   return joykey < UDEV_NUM_BUTTONS && BIT64_GET(pad->buttons, joykey);
 }
 
 static void udev_joypad_get_buttons(unsigned port, input_bits_t *state)
@@ -702,83 +629,43 @@ static void udev_joypad_get_buttons(unsigned port, input_bits_t *state)
 
 	if (pad)
    {
-		BITS_COPY64_PTR( state, pad->buttons );
+		BITS_COPY16_PTR( state, pad->buttons );
 	}
    else
       BIT256_CLEAR_ALL_PTR(state);
 }
 
-static int16_t udev_joypad_axis_state(
-      const struct udev_joypad *pad,
-      unsigned port, uint32_t joyaxis)
+static int16_t udev_joypad_axis(unsigned port, uint32_t joyaxis)
 {
+   int16_t val = 0;
+   const struct udev_joypad *pad;
+   if (joyaxis == AXIS_NONE)
+      return 0;
+
+   pad = (const struct udev_joypad*)&udev_pads[port];
+
    if (AXIS_NEG_GET(joyaxis) < NUM_AXES)
    {
-      int16_t val = pad->axes[AXIS_NEG_GET(joyaxis)];
+      val = pad->axes[AXIS_NEG_GET(joyaxis)];
       /* Deal with analog triggers that report -32767 to 32767 */
-      if ((
-               (AXIS_NEG_GET(joyaxis) == ABS_Z) ||
-               (AXIS_NEG_GET(joyaxis) == ABS_RZ))
+      if (((AXIS_NEG_GET(joyaxis) == ABS_Z) || (AXIS_NEG_GET(joyaxis) == ABS_RZ))
             && (pad->neg_trigger[AXIS_NEG_GET(joyaxis)]))
          val = (val + 0x7fff) / 2;
-      if (val < 0)
-         return val;
+      if (val > 0)
+         val = 0;
    }
    else if (AXIS_POS_GET(joyaxis) < NUM_AXES)
    {
-      int16_t val = pad->axes[AXIS_POS_GET(joyaxis)];
+      val = pad->axes[AXIS_POS_GET(joyaxis)];
       /* Deal with analog triggers that report -32767 to 32767 */
-      if ((
-               (AXIS_POS_GET(joyaxis) == ABS_Z) ||
-               (AXIS_POS_GET(joyaxis) == ABS_RZ))
+      if (((AXIS_POS_GET(joyaxis) == ABS_Z) || (AXIS_POS_GET(joyaxis) == ABS_RZ))
             && (pad->neg_trigger[AXIS_POS_GET(joyaxis)]))
          val = (val + 0x7fff) / 2;
-      if (val > 0)
-         return val;
-   }
-   return 0;
-}
-
-static int16_t udev_joypad_axis(unsigned port, uint32_t joyaxis)
-{
-   const struct udev_joypad *pad = (const struct udev_joypad*)
-      &udev_pads[port];
-   return udev_joypad_axis_state(pad, port, joyaxis);
-}
-
-static int16_t udev_joypad_state(
-      rarch_joypad_info_t *joypad_info,
-      const struct retro_keybind *binds,
-      unsigned port)
-{
-   unsigned i;
-   int16_t ret                          = 0;
-   uint16_t port_idx                    = joypad_info->joy_idx;
-   const struct udev_joypad *pad        = (const struct udev_joypad*)
-      &udev_pads[port_idx];
-
-   if (port_idx >= DEFAULT_MAX_PADS)
-      return 0;
-
-   for (i = 0; i < RARCH_FIRST_CUSTOM_BIND; i++)
-   {
-      /* Auto-binds are per joypad, not per user. */
-      const uint64_t joykey  = (binds[i].joykey != NO_BTN)
-         ? binds[i].joykey  : joypad_info->auto_binds[i].joykey;
-      const uint32_t joyaxis = (binds[i].joyaxis != AXIS_NONE)
-         ? binds[i].joyaxis : joypad_info->auto_binds[i].joyaxis;
-      if (
-               (uint16_t)joykey != NO_BTN
-            && udev_joypad_button_state(pad, port_idx, (uint16_t)joykey)
-         )
-         ret |= ( 1 << i);
-      else if (joyaxis != AXIS_NONE &&
-            ((float)abs(udev_joypad_axis_state(pad, port_idx, joyaxis))
-             / 0x8000) > joypad_info->axis_threshold)
-         ret |= (1 << i);
+      if (val < 0)
+         val = 0;
    }
 
-   return ret;
+   return val;
 }
 
 static bool udev_joypad_query_pad(unsigned pad)
@@ -799,16 +686,10 @@ input_device_driver_t udev_joypad = {
    udev_joypad_query_pad,
    udev_joypad_destroy,
    udev_joypad_button,
-   udev_joypad_state,
    udev_joypad_get_buttons,
    udev_joypad_axis,
    udev_joypad_poll,
    udev_set_rumble,
-#ifndef HAVE_LAKKA_SWITCH
-   udev_set_rumble_gain,
-#else
-   NULL,
-#endif
    udev_joypad_name,
    "udev",
 };

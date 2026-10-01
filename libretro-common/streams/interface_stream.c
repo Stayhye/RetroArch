@@ -31,10 +31,11 @@
 #if defined(HAVE_ZLIB)
 #include <streams/rzip_stream.h>
 #endif
-#include <encodings/crc32.h>
 
 struct intfstream_internal
 {
+   enum intfstream_type type;
+
    struct
    {
       RFILE *fp;
@@ -42,19 +43,19 @@ struct intfstream_internal
 
    struct
    {
-      memstream_t *fp;
       struct
       {
          uint8_t *data;
          uint64_t size;
       } buf;
+      memstream_t *fp;
       bool writable;
    } memory;
 #ifdef HAVE_CHD
    struct
    {
-      chdstream_t *fp;
       int32_t track;
+      chdstream_t *fp;
    } chd;
 #endif
 #if defined(HAVE_ZLIB)
@@ -63,7 +64,6 @@ struct intfstream_internal
       rzipstream_t *fp;
    } rzip;
 #endif
-   enum intfstream_type type;
 };
 
 int64_t intfstream_get_size(intfstream_internal_t *intf)
@@ -220,24 +220,12 @@ void *intfstream_init(intfstream_info_t *info)
    if (!info)
       goto error;
 
-   intf = (intfstream_internal_t*)malloc(sizeof(*intf));
+   intf = (intfstream_internal_t*)calloc(1, sizeof(*intf));
 
    if (!intf)
       goto error;
 
-   intf->type            = info->type;
-   intf->file.fp         = NULL;
-   intf->memory.buf.data = NULL;
-   intf->memory.buf.size = 0;
-   intf->memory.fp       = NULL;
-   intf->memory.writable = false;
-#ifdef HAVE_CHD
-   intf->chd.track       = 0;
-   intf->chd.fp          = NULL;
-#endif
-#ifdef HAVE_ZLIB
-   intf->rzip.fp         = NULL;
-#endif
+   intf->type = info->type;
 
    switch (intf->type)
    {
@@ -267,8 +255,7 @@ error:
    return NULL;
 }
 
-int64_t intfstream_seek(
-      intfstream_internal_t *intf, int64_t offset, int whence)
+int64_t intfstream_seek(intfstream_internal_t *intf, int64_t offset, int whence)
 {
    if (!intf)
       return -1;
@@ -438,7 +425,7 @@ char *intfstream_gets(intfstream_internal_t *intf,
 #endif
       case INTFSTREAM_RZIP:
 #if defined(HAVE_ZLIB)
-         return rzipstream_gets(intf->rzip.fp, buffer, (size_t)len);
+         return rzipstream_gets(intf->rzip.fp, buffer, len);
 #else
          break;
 #endif
@@ -604,19 +591,6 @@ uint32_t intfstream_get_frame_size(intfstream_internal_t *intf)
    return 0;
 }
 
-uint32_t intfstream_get_first_sector(intfstream_internal_t* intf)
-{
-   if (intf)
-   {
-#ifdef HAVE_CHD
-      if (intf->type == INTFSTREAM_CHD)
-         return chdstream_get_first_track_sector(intf->chd.fp);
-#endif
-   }
-
-   return 0;
-}
-
 bool intfstream_is_compressed(intfstream_internal_t *intf)
 {
    if (!intf)
@@ -639,32 +613,6 @@ bool intfstream_is_compressed(intfstream_internal_t *intf)
    }
 
    return false;
-}
-
-bool intfstream_get_crc(intfstream_internal_t *intf, uint32_t *crc)
-{
-   int64_t data_read    = 0;
-   uint32_t accumulator = 0;
-   uint8_t buffer[4096];
-
-   if (!intf || !crc)
-      return false;
-
-   /* Ensure we start at the beginning of the file */
-   intfstream_rewind(intf);
-
-   while ((data_read = intfstream_read(intf, buffer, sizeof(buffer))) > 0)
-      accumulator = encoding_crc32(accumulator, buffer, (size_t)data_read);
-
-   if (data_read < 0)
-      return false;
-
-   *crc = accumulator;
-
-   /* Reset file to the beginning */
-   intfstream_rewind(intf);
-
-   return true;
 }
 
 intfstream_t* intfstream_open_file(const char *path,

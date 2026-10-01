@@ -13,27 +13,19 @@
 #include <QtConcurrent>
 
 #include "../ui_qt.h"
-#include "qt_dialogs.h"
+#include "playlistentrydialog.h"
 
 #ifndef CXX_BUILD
 extern "C" {
-#endif
-
-#ifdef HAVE_CONFIG_H
-#include "../../../config.h"
 #endif
 
 #include <file/file_path.h>
 #include <file/archive_file.h>
 #include <lists/string_list.h>
 #include <string/stdstring.h>
-
-#ifdef HAVE_MENU
-#include "../../../menu/menu_displaylist.h"
-#endif
-
 #include "../../../file_path_special.h"
 #include "../../../playlist.h"
+#include "../../../menu/menu_displaylist.h"
 #include "../../../setting_list.h"
 #include "../../../configuration.h"
 #include "../../../core_info.h"
@@ -388,18 +380,13 @@ void MainWindow::addFilesToPlaylist(QStringList files)
    QString selectedName;
    QString selectedPath;
    QStringList selectedExtensions;
-   playlist_config_t playlist_config;
    QListWidgetItem        *currentItem = m_listWidget->currentItem();
    PlaylistEntryDialog *playlistDialog = playlistEntryDialog();
    const char *currentPlaylistData     = NULL;
    playlist_t *playlist                = NULL;
    settings_t *settings                = config_get_ptr();
-
-   playlist_config.capacity            = COLLECTION_SIZE;
-   playlist_config.old_format          = settings->bools.playlist_use_old_format;
-   playlist_config.compress            = settings->bools.playlist_compression;
-   playlist_config.fuzzy_archive_match = settings->bools.playlist_fuzzy_archive_match;
-   playlist_config_set_base_content_directory(&playlist_config, settings->bools.playlist_portable_paths ? settings->paths.directory_menu_content : NULL);
+   bool playlist_use_old_format        = settings->bools.playlist_use_old_format;
+   bool playlist_compression           = settings->bools.playlist_compression;
 
    /* Assume a blank list means we will manually enter in all fields. */
    if (files.isEmpty())
@@ -454,7 +441,7 @@ void MainWindow::addFilesToPlaylist(QStringList files)
    if (selectedDatabase.isEmpty())
       selectedDatabase = QFileInfo(currentPlaylistPath).fileName();
    else
-      selectedDatabase.append(".lpl");
+      selectedDatabase += ".lpl";
 
    dialog.reset(new QProgressDialog(msg_hash_to_str(MENU_ENUM_LABEL_VALUE_QT_GATHERING_LIST_OF_FILES), "Cancel", 0, 0, this));
    dialog->setWindowModality(Qt::ApplicationModal);
@@ -536,8 +523,7 @@ void MainWindow::addFilesToPlaylist(QStringList files)
             MENU_ENUM_LABEL_VALUE_QT_ADDING_FILES_TO_PLAYLIST));
    dialog->setMaximum(list.count());
 
-   playlist_config_set_path(&playlist_config, currentPlaylistData);
-   playlist = playlist_init(&playlist_config);
+   playlist = playlist_init(currentPlaylistData, COLLECTION_SIZE);
 
    for (i = 0; i < list.count(); i++)
    {
@@ -652,6 +638,7 @@ void MainWindow::addFilesToPlaylist(QStringList files)
 
       {
          struct playlist_entry entry = {0};
+         bool fuzzy_archive_match    = settings->bools.playlist_fuzzy_archive_match;
 
          /* the push function reads our entry as const,
           * so these casts are safe */
@@ -662,11 +649,12 @@ void MainWindow::addFilesToPlaylist(QStringList files)
          entry.crc32     = const_cast<char*>("00000000|crc");
          entry.db_name   = const_cast<char*>(databaseData);
 
-         playlist_push(playlist, &entry);
+         playlist_push(playlist, &entry, fuzzy_archive_match);
       }
    }
 
-   playlist_write_file(playlist);
+   playlist_write_file(
+         playlist, playlist_use_old_format, playlist_compression);
    playlist_free(playlist);
 
    reloadPlaylists();
@@ -688,7 +676,6 @@ bool MainWindow::updateCurrentPlaylistEntry(
    QByteArray coreNameArray;
    QByteArray dbNameArray;
    QByteArray crc32Array;
-   playlist_config_t playlist_config;
    QString playlistPath         = getCurrentPlaylistPath();
    const char *playlistPathData = NULL;
    const char *pathData         = NULL;
@@ -701,12 +688,8 @@ bool MainWindow::updateCurrentPlaylistEntry(
    unsigned index               = 0;
    bool ok                      = false;
    settings_t *settings         = config_get_ptr();
-
-   playlist_config.capacity            = COLLECTION_SIZE;
-   playlist_config.old_format          = settings->bools.playlist_use_old_format;
-   playlist_config.compress            = settings->bools.playlist_compression;
-   playlist_config.fuzzy_archive_match = settings->bools.playlist_fuzzy_archive_match;
-   playlist_config_set_base_content_directory(&playlist_config, settings->bools.playlist_portable_paths ? settings->paths.directory_menu_content : NULL);
+   bool playlist_use_old_format = settings->bools.playlist_use_old_format;
+   bool playlist_compression    = settings->bools.playlist_compression;
 
    if (  playlistPath.isEmpty() || 
          contentHash.isEmpty()  || 
@@ -773,8 +756,7 @@ bool MainWindow::updateCurrentPlaylistEntry(
       }
    }
 
-   playlist_config_set_path(&playlist_config, playlistPathData);
-   playlist = playlist_init(&playlist_config);
+   playlist = playlist_init(playlistPathData, COLLECTION_SIZE);
 
    {
       struct playlist_entry entry = {0};
@@ -790,7 +772,8 @@ bool MainWindow::updateCurrentPlaylistEntry(
       playlist_update(playlist, index, &entry);
    }
 
-   playlist_write_file(playlist);
+   playlist_write_file(
+         playlist, playlist_use_old_format, playlist_compression);
    playlist_free(playlist);
 
    reloadPlaylists();
@@ -817,10 +800,11 @@ void MainWindow::onPlaylistWidgetContextMenuRequested(const QPoint&)
    QScopedPointer<QAction> downloadAllThumbnailsEntireSystemAction;
    QScopedPointer<QAction> downloadAllThumbnailsThisPlaylistAction;
    QPointer<QAction> selectedAction;
-   playlist_config_t playlist_config;
    QPoint cursorPos                 = QCursor::pos();
    settings_t *settings             = config_get_ptr();
    const char *path_dir_playlist    = settings->paths.directory_playlist;
+   bool playlist_use_old_format     = settings->bools.playlist_use_old_format;
+   bool playlist_compression        = settings->bools.playlist_compression;
    QDir playlistDir(path_dir_playlist);
    QListWidgetItem *selectedItem    = m_listWidget->itemAt(
          m_listWidget->viewport()->mapFromGlobal(cursorPos));
@@ -830,12 +814,6 @@ void MainWindow::onPlaylistWidgetContextMenuRequested(const QPoint&)
    int j                            = 0;
    bool specialPlaylist             = false;
    bool foundHiddenPlaylist         = false;
-
-   playlist_config.capacity            = COLLECTION_SIZE;
-   playlist_config.old_format          = settings->bools.playlist_use_old_format;
-   playlist_config.compress            = settings->bools.playlist_compression;
-   playlist_config.fuzzy_archive_match = settings->bools.playlist_fuzzy_archive_match;
-   playlist_config_set_base_content_directory(&playlist_config, settings->bools.playlist_portable_paths ? settings->paths.directory_menu_content : NULL);
 
    if (selectedItem)
    {
@@ -981,7 +959,7 @@ void MainWindow::onPlaylistWidgetContextMenuRequested(const QPoint&)
 
    if (!specialPlaylist && selectedAction->parent() == associateMenu.data())
    {
-      core_info_t *coreInfo                   = NULL;
+      core_info_ctx_find_t coreInfo;
       playlist_t *cachedPlaylist              = playlist_get_cached();
       playlist_t *playlist                    = NULL;
       bool loadPlaylist                       = true;
@@ -1002,19 +980,19 @@ void MainWindow::onPlaylistWidgetContextMenuRequested(const QPoint&)
       }
 
       if (loadPlaylist)
-      {
-         playlist_config_set_path(&playlist_config, currentPlaylistPathCString);
-         playlist = playlist_init(&playlist_config);
-      }
+         playlist = playlist_init(currentPlaylistPathCString, COLLECTION_SIZE);
 
       if (playlist)
       {
          /* Get core info */
-         if (core_info_find(corePath, &coreInfo))
+         coreInfo.inf  = NULL;
+         coreInfo.path = corePath;
+
+         if (core_info_find(&coreInfo, corePath))
          {
             /* Set new core association */
-            playlist_set_default_core_path(playlist, coreInfo->path);
-            playlist_set_default_core_name(playlist, coreInfo->display_name);
+            playlist_set_default_core_path(playlist, coreInfo.inf->path);
+            playlist_set_default_core_name(playlist, coreInfo.inf->display_name);
          }
          else
          {
@@ -1023,7 +1001,8 @@ void MainWindow::onPlaylistWidgetContextMenuRequested(const QPoint&)
          }
 
          /* Write changes to disk */
-         playlist_write_file(playlist);
+         playlist_write_file(
+               playlist, playlist_use_old_format, playlist_compression);
 
          /* Free playlist, if required */
          if (loadPlaylist)
@@ -1322,6 +1301,7 @@ bool MainWindow::currentPlaylistIsSpecial()
    QFileInfo currentPlaylistFileInfo;
    QString currentPlaylistPath;
    QString currentPlaylistDirPath;
+   bool specialPlaylist                 = false;
    settings_t *settings                 = config_get_ptr();
    QDir playlistDir(settings->paths.directory_playlist);
    QString playlistDirAbsPath           = playlistDir.absolutePath();
@@ -1337,25 +1317,29 @@ bool MainWindow::currentPlaylistIsSpecial()
    /* Don't just compare strings in case there are 
     * case differences on Windows that should be ignored. */
    if (QDir(currentPlaylistDirPath) != QDir(playlistDirAbsPath))
-      return true;
-   return false;
+      specialPlaylist = true;
+
+   return specialPlaylist;
 }
 
 bool MainWindow::currentPlaylistIsAll()
 {
    QListWidgetItem *currentPlaylistItem = m_listWidget->currentItem();
-   if (
-            currentPlaylistItem 
-         && currentPlaylistItem->data(Qt::UserRole).toString() 
+   bool all = false;
+
+   if (!currentPlaylistItem)
+      return false;
+
+   if (currentPlaylistItem->data(Qt::UserRole).toString() 
          == ALL_PLAYLISTS_TOKEN)
-      return true;
-   return false;
+      all = true;
+
+   return all;
 }
 
 void MainWindow::deleteCurrentPlaylistItem()
 {
    QByteArray playlistArray;
-   playlist_config_t playlist_config;
    QString playlistPath                = getCurrentPlaylistPath();
    QHash<QString, QString> contentHash = getCurrentContentHash();
    playlist_t *playlist                = NULL;
@@ -1364,12 +1348,8 @@ void MainWindow::deleteCurrentPlaylistItem()
    bool ok                             = false;
    bool isAllPlaylist                  = currentPlaylistIsAll();
    settings_t *settings                = config_get_ptr();
-
-   playlist_config.capacity            = COLLECTION_SIZE;
-   playlist_config.old_format          = settings->bools.playlist_use_old_format;
-   playlist_config.compress            = settings->bools.playlist_compression;
-   playlist_config.fuzzy_archive_match = settings->bools.playlist_fuzzy_archive_match;
-   playlist_config_set_base_content_directory(&playlist_config, settings->bools.playlist_portable_paths ? settings->paths.directory_menu_content : NULL);
+   bool playlist_use_old_format        = settings->bools.playlist_use_old_format;
+   bool playlist_compression           = settings->bools.playlist_compression;
 
    if (isAllPlaylist)
       return;
@@ -1391,62 +1371,51 @@ void MainWindow::deleteCurrentPlaylistItem()
    if (!showMessageBox(QString(msg_hash_to_str(MENU_ENUM_LABEL_VALUE_QT_CONFIRM_DELETE_PLAYLIST_ITEM)).arg(contentHash["label"]), MainWindow::MSGBOX_TYPE_QUESTION_YESNO, Qt::ApplicationModal, false))
       return;
 
-   playlist_config_set_path(&playlist_config, playlistData);
-   playlist = playlist_init(&playlist_config);
+   playlist = playlist_init(playlistData, COLLECTION_SIZE);
 
    playlist_delete_index(playlist, index);
-   playlist_write_file(playlist);
+   playlist_write_file(
+         playlist, playlist_use_old_format, playlist_compression);
    playlist_free(playlist);
 
    reloadPlaylists();
 }
 
-QString MainWindow::getPlaylistDefaultCore(QString plName)
+QString MainWindow::getPlaylistDefaultCore(QString dbName)
 {
-   playlist_config_t playlist_config;
    char playlistPath[PATH_MAX_LENGTH];
-   QByteArray plNameByteArray          = plName.toUtf8();
-   const char *plNameCString           = plNameByteArray.data();
-   playlist_t *cachedPlaylist          = playlist_get_cached();
-   playlist_t *playlist                = NULL;
-   bool loadPlaylist                   = true;
-   QString corePath                    = QString();
-   settings_t *settings                = config_get_ptr();
-
-   playlist_config.capacity            = COLLECTION_SIZE;
-   playlist_config.old_format          = settings->bools.playlist_use_old_format;
-   playlist_config.compress            = settings->bools.playlist_compression;
-   playlist_config.fuzzy_archive_match = settings->bools.playlist_fuzzy_archive_match;
-   playlist_config_set_base_content_directory(&playlist_config, settings->bools.playlist_portable_paths ? settings->paths.directory_menu_content : NULL);
+   settings_t *settings       = config_get_ptr();
+   QByteArray dbNameByteArray = dbName.toUtf8();
+   const char *dbNameCString  = dbNameByteArray.data();
+   playlist_t *cachedPlaylist = playlist_get_cached();
+   playlist_t *playlist       = NULL;
+   bool loadPlaylist          = true;
+   QString corePath           = QString();
 
    playlistPath[0] = '\0';
 
-   if (!settings || string_is_empty(plNameCString))
+   if (!settings || string_is_empty(dbNameCString))
       return corePath;
 
    /* Get playlist path */
    fill_pathname_join(
       playlistPath,
-      settings->paths.directory_playlist, plNameCString,
+      settings->paths.directory_playlist, dbNameCString,
       sizeof(playlistPath));
    strlcat(playlistPath, ".lpl", sizeof(playlistPath));
 
    /* Load playlist, if required */
    if (cachedPlaylist)
    {
-      if (string_is_equal(playlistPath,
-               playlist_get_conf_path(cachedPlaylist)))
+      if (string_is_equal(playlistPath, playlist_get_conf_path(cachedPlaylist)))
       {
-         playlist     = cachedPlaylist;
+         playlist = cachedPlaylist;
          loadPlaylist = false;
       }
    }
 
    if (loadPlaylist)
-   {
-      playlist_config_set_path(&playlist_config, playlistPath);
-      playlist = playlist_init(&playlist_config);
-   }
+      playlist = playlist_init(playlistPath, COLLECTION_SIZE);
 
    if (playlist)
    {
@@ -1470,34 +1439,21 @@ void MainWindow::getPlaylistFiles()
    settings_t *settings = config_get_ptr();
    QDir playlistDir(settings->paths.directory_playlist);
 
-   m_playlistFiles = playlistDir.entryList(
-         QDir::NoDotAndDotDot | QDir::Readable | QDir::Files, QDir::Name);
+   m_playlistFiles = playlistDir.entryList(QDir::NoDotAndDotDot | QDir::Readable | QDir::Files, QDir::Name);
 }
 
 void PlaylistModel::getPlaylistItems(QString path)
 {
    QByteArray pathArray;
-   playlist_config_t playlist_config;
-   const char *pathData                = NULL;
-   const char *playlistName            = NULL;
-   playlist_t *playlist                = NULL;
-   unsigned playlistSize               = 0;
-   unsigned            i               = 0;
-   settings_t *settings                = config_get_ptr();
-
-   playlist_config.capacity            = COLLECTION_SIZE;
-   playlist_config.old_format          = settings->bools.playlist_use_old_format;
-   playlist_config.compress            = settings->bools.playlist_compression;
-   playlist_config.fuzzy_archive_match = settings->bools.playlist_fuzzy_archive_match;
-   playlist_config_set_base_content_directory(&playlist_config, settings->bools.playlist_portable_paths ? settings->paths.directory_menu_content : NULL);
+   const char *pathData  = NULL;
+   playlist_t *playlist  = NULL;
+   unsigned playlistSize = 0;
+   unsigned            i = 0;
 
    pathArray.append(path);
    pathData              = pathArray.constData();
-   if (!string_is_empty(pathData))
-      playlistName       = path_basename(pathData);
 
-   playlist_config_set_path(&playlist_config, pathData);
-   playlist              = playlist_init(&playlist_config);
+   playlist              = playlist_init(pathData, COLLECTION_SIZE);
    playlistSize          = playlist_get_size(playlist);
 
    for (i = 0; i < playlistSize; i++)
@@ -1510,8 +1466,8 @@ void PlaylistModel::getPlaylistItems(QString path)
       if (string_is_empty(entry->path))
          continue;
 
-      hash["path"]           = entry->path;
-      hash["index"]          = QString::number(i);
+      hash["path"]  = entry->path;
+      hash["index"] = QString::number(i);
 
       if (string_is_empty(entry->label))
       {
@@ -1525,24 +1481,18 @@ void PlaylistModel::getPlaylistItems(QString path)
       }
 
       if (!string_is_empty(entry->core_path))
-         hash["core_path"]   = entry->core_path;
+         hash["core_path"] = entry->core_path;
 
       if (!string_is_empty(entry->core_name))
-         hash["core_name"]   = entry->core_name;
+         hash["core_name"] = entry->core_name;
 
       if (!string_is_empty(entry->crc32))
-         hash["crc32"]       = entry->crc32;
+         hash["crc32"] = entry->crc32;
 
       if (!string_is_empty(entry->db_name))
       {
-         hash["db_name"]     = entry->db_name;
+         hash["db_name"] = entry->db_name;
          hash["db_name"].remove(".lpl");
-      }
-
-      if (!string_is_empty(playlistName))
-      {
-         hash["pl_name"]     = playlistName;
-         hash["pl_name"].remove(".lpl");
       }
 
       m_contents.append(hash);
@@ -1590,7 +1540,7 @@ void PlaylistModel::addDir(QString path, QFlags<QDir::Filter> showHidden)
    for (i = 0; i < dirList.count(); i++)
    {
       QHash<QString, QString> hash;
-      QString fileName    = dirList.at(i);
+      QString fileName = dirList.at(i);
       QString filePath(
             QDir::toNativeSeparators(dir.absoluteFilePath(fileName)));
       QFileInfo fileInfo(filePath);

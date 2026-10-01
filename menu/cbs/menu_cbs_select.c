@@ -27,20 +27,30 @@
 
 #ifdef HAVE_NETWORKING
 #include "../../network/netplay/netplay.h"
+#include "../../network/netplay/netplay_discovery.h"
 #endif
 
 #ifndef BIND_ACTION_SELECT
 #define BIND_ACTION_SELECT(cbs, name) (cbs)->action_select = (name)
 #endif
 
-static int action_select_default(
-      const char *path, const char *label, unsigned type,
+static int action_select_default(const char *path, const char *label, unsigned type,
       size_t idx, size_t entry_idx)
 {
+   menu_entry_t entry;
    int ret                    = 0;
    enum menu_action action    = MENU_ACTION_NOOP;
    menu_file_list_cbs_t *cbs  = NULL;
    file_list_t *selection_buf = menu_entries_get_selection_buf_ptr(0);
+
+   menu_entry_init(&entry);
+   /* Note: If menu_entry_action() is modified,
+    * will have to verify that these parameters
+    * remain unused... */
+   entry.rich_label_enabled = false;
+   entry.value_enabled      = false;
+   entry.sublabel_enabled   = false;
+   menu_entry_get(&entry, 0, idx, NULL, false);
 
    if (selection_buf)
       cbs                     = (menu_file_list_cbs_t*)
@@ -51,7 +61,7 @@ static int action_select_default(
 
    if (cbs->setting)
    {
-      switch (cbs->setting->type)
+      switch (setting_get_type(cbs->setting))
       {
          case ST_BOOL:
          case ST_INT:
@@ -91,20 +101,7 @@ static int action_select_default(
    }
 
    if (action != MENU_ACTION_NOOP)
-   {
-      menu_entry_t entry;
-      MENU_ENTRY_INIT(entry);
-
-      /* Note: If menu_entry_action() is modified,
-       * will have to verify that these parameters
-       * remain unused... */
-      entry.rich_label_enabled = false;
-      entry.value_enabled      = false;
-      entry.sublabel_enabled   = false;
-      menu_entry_get(&entry, 0, idx, NULL, false);
-
-      ret = menu_entry_action(&entry, idx, action);
-   }
+       ret = menu_entry_action(&entry, idx, action);
 
    task_queue_check();
 
@@ -123,16 +120,43 @@ static int action_select_core_setting(const char *path, const char *label, unsig
    return action_ok_core_option_dropdown_list(path, label, type, idx, 0);
 }
 
+static int action_select_input_desc(const char *path, const char *label, unsigned type,
+      size_t idx, size_t entry_idx)
+{
+   return action_right_input_desc(type, label, true);
+}
+
+static int action_select_input_desc_kbd(const char *path,
+      const char *label, unsigned type,
+      size_t idx, size_t entry_idx)
+{
+   return action_right_input_desc_kbd(type, label, true);
+}
+
 static int menu_cbs_init_bind_select_compare_type(
       menu_file_list_cbs_t *cbs, unsigned type)
 {
-   switch (type)
+   if (type >= MENU_SETTINGS_INPUT_DESC_BEGIN
+         && type <= MENU_SETTINGS_INPUT_DESC_END)
    {
-      case FILE_TYPE_USE_DIRECTORY:
-         BIND_ACTION_SELECT(cbs, action_select_path_use_directory);
-         break;
-      default:
-         return -1;
+      BIND_ACTION_SELECT(cbs, action_select_input_desc);
+   }
+   else if (type >= MENU_SETTINGS_INPUT_DESC_KBD_BEGIN
+         && type <= MENU_SETTINGS_INPUT_DESC_KBD_END)
+   {
+      BIND_ACTION_SELECT(cbs, action_select_input_desc_kbd);
+   }
+   else
+   {
+
+      switch (type)
+      {
+         case FILE_TYPE_USE_DIRECTORY:
+            BIND_ACTION_SELECT(cbs, action_select_path_use_directory);
+            break;
+         default:
+            return -1;
+      }
    }
 
    return 0;

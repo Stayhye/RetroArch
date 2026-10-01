@@ -2,11 +2,9 @@ TARGET := retroarch_3ds_salamander
 LIBRETRO =
 
 DEBUG                   = 0
-CONSOLE_LOG             = 0
 BUILD_3DSX              = 1
 BUILD_3DS               = 0
 BUILD_CIA               = 1
-USE_CTRULIB_2          ?= 0
 
 APP_TITLE            = RetroArch 3DS
 APP_DESCRIPTION      = RetroArch 3DS
@@ -39,30 +37,19 @@ OBJ := ctr/ctr_system.o \
 		 libretro-common/file/config_file.o \
 		 libretro-common/streams/file_stream.o \
 		 libretro-common/vfs/vfs_implementation.o \
-		 libretro-common/hash/lrc_hash.o \
-		 libretro-common/time/rtime.o \
+		 libretro-common/hash/rhash.o \
+		 file_path_str.o \
 		 verbosity.o
 
 OBJ += ctr/exec-3dsx/exec_cia.o \
 	ctr/exec-3dsx/exec_3dsx.o \
 	ctr/exec-3dsx/mini-hb-menu/launch.o \
 	ctr/exec-3dsx/mini-hb-menu/loaders/rosalina.o \
-	ctr/exec-3dsx/mini-hb-menu/loaders/hax2.o
+	ctr/exec-3dsx/mini-hb-menu/loaders/hax2.o \
+	ctr/exec-3dsx/mini-hb-menu/loaders/ninjhax1.o
 
 ifeq ($(strip $(DEVKITPRO)),)
 	$(error "Please set DEVKITPRO in your environment. export DEVKITPRO=<path to>devkitpro")
-endif
-
-ifeq ($(strip $(USE_CTRULIB_2)),1)
-	CFLAGS += -DUSE_CTRULIB_2
-endif
-
-ifeq ($(strip $(DEVKITTOOLS)),)
-	ifeq ($(strip $(USE_CTRULIB_2)),1)
-		DEVKITTOOLS = $(DEVKITPRO)/tools
-	else
-		DEVKITTOOLS = $(DEVKITARM)
-	endif
 endif
 
 ifeq ($(strip $(CTRULIB)),)
@@ -94,10 +81,6 @@ ifeq ($(DEBUG), 1)
    CFLAGS	+= -O0 -g
 else
    CFLAGS	+= -O3
-endif
-
-ifeq ($(CONSOLE_LOG), 1)
-   CFLAGS	+= -DCONSOLE_LOG
 endif
 
 CFLAGS += -I. -Ideps/7zip -Ideps/stb -Ilibretro-common/include -Ilibretro-common/include/compat/zlib
@@ -170,13 +153,13 @@ else
 endif
 
 %.o: %.vsh %.gsh
-	$(DEVKITTOOLS)/bin/picasso $^ -o $*.shbin
-	$(DEVKITTOOLS)/bin/bin2s $*.shbin | $(PREFIX)as -o $@
+	$(DEVKITARM)/bin/picasso $^ -o $*.shbin
+	$(DEVKITARM)/bin/bin2s $*.shbin | $(PREFIX)as -o $@
 	rm $*.shbin
 
 %.o: %.vsh
-	$(DEVKITTOOLS)/bin/picasso $^ -o $*.shbin
-	$(DEVKITTOOLS)/bin/bin2s $*.shbin | $(PREFIX)as -o $@
+	$(DEVKITARM)/bin/picasso $^ -o $*.shbin
+	$(DEVKITARM)/bin/bin2s $*.shbin | $(PREFIX)as -o $@
 	rm $*.shbin
 
 %.o: %.cpp
@@ -197,7 +180,7 @@ endif
 %.vsh:
 
 $(TARGET).smdh: $(APP_ICON)
-	$(DEVKITTOOLS)/bin/smdhtool --create "$(APP_TITLE)" "$(APP_DESCRIPTION)" "$(APP_AUTHOR)" $(APP_ICON) $@
+	$(DEVKITARM)/bin/smdhtool --create "$(APP_TITLE)" "$(APP_DESCRIPTION)" "$(APP_AUTHOR)" $(APP_ICON) $@
 
 $(TARGET).3dsx: $(TARGET).elf
 ifeq ($(APP_BIG_TEXT_SECTION), 1)
@@ -205,7 +188,7 @@ ifeq ($(APP_BIG_TEXT_SECTION), 1)
 else
 	rm -f $(TARGET).xml
 endif
-	$(DEVKITTOOLS)/bin/3dsxtool $< $@ $(_3DSXFLAGS)
+	$(DEVKITARM)/bin/3dsxtool $< $@ $(_3DSXFLAGS)
 
 $(TARGET).elf: ctr/3dsx_custom_crt0.o
 	$(LD) $(LDFLAGS) $(OBJ) $(LIBDIRS) $(LIBS) -o $@

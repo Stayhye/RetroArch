@@ -40,19 +40,19 @@ RETRO_BEGIN_DECLS
 
 typedef struct
 {
-   double ratio;
    void *buf;
    int16_t *upsample_buf;
    float *float_buf;
    float *float_resample_buf;
    int16_t *resample_buf;
-   const retro_resampler_t *resampler;
-   void *resampler_data;
-   rwav_t *rwav;
    ssize_t len;
    size_t resample_len;
+   rwav_t *rwav;
    int sample_rate;
    bool resample;
+   const retro_resampler_t *resampler;
+   void *resampler_data;
+   double ratio;
 } audio_chunk_t;
 
 #if defined(__SSE2__)
@@ -68,8 +68,7 @@ void audio_mix_volume_C(float *dst, const float *src, float vol, size_t samples)
 
 void audio_mix_free_chunk(audio_chunk_t *chunk);
 
-audio_chunk_t* audio_mix_load_wav_file(const char *path, int sample_rate,
-      const char *resampler_ident, enum resampler_quality quality);
+audio_chunk_t* audio_mix_load_wav_file(const char *path, int sample_rate);
 
 size_t audio_mix_get_chunk_num_samples(audio_chunk_t *chunk);
 

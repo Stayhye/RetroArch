@@ -21,40 +21,56 @@
 
 #include <boolean.h>
 
+#include "../verbosity.h"
+
 #include <retro_common_api.h>
 
 RETRO_BEGIN_DECLS
 
-bool rcheevos_load(const void *data);
-void rcheevos_change_disc(const char* new_disc_path, bool initial_disc);
+typedef struct rcheevos_ctx_desc
+{
+   unsigned idx;
+   char *s;
+   size_t len;
+} rcheevos_ctx_desc_t;
 
-size_t rcheevos_get_serialize_size(void);
-bool rcheevos_get_serialized_data(void* buffer);
-bool rcheevos_set_serialized_data(void* buffer);
+enum
+{
+   RCHEEVOS_ACTIVE_SOFTCORE = 1 << 0,
+   RCHEEVOS_ACTIVE_HARDCORE = 1 << 1
+};
+
+bool rcheevos_load(const void *data);
+
+void rcheevos_reset_game(void);
+
+void rcheevos_populate_menu(void *data);
+void rcheevos_get_achievement_state(unsigned index, char* buffer, size_t buffer_size);
+
+bool rcheevos_get_description(rcheevos_ctx_desc_t *desc);
+
+void rcheevos_pause_hardcore();
 
 bool rcheevos_unload(void);
 
+bool rcheevos_toggle_hardcore_mode(void);
+
 void rcheevos_test(void);
 
-void rcheevos_reset_game(bool widgets_ready);
-
-void rcheevos_pause_hardcore(void);
-void rcheevos_hardcore_enabled_changed(void);
-void rcheevos_toggle_hardcore_paused(void);
-bool rcheevos_hardcore_active(void);
-
-void rcheevos_validate_config_settings(void);
-
-void rcheevos_leaderboards_enabled_changed(void);
-
 void rcheevos_set_support_cheevos(bool state);
+
 bool rcheevos_get_support_cheevos(void);
 
-const char* rcheevos_get_hash(void);
-int rcheevos_get_richpresence(char buffer[], int buffer_size);
-uintptr_t rcheevos_get_badge_texture(const char *badge, bool locked);
+int rcheevos_get_console(void);
 
-uint8_t* rcheevos_patch_address(unsigned address);
+const char* rcheevos_get_hash(void);
+
+const char *rcheevos_get_richpresence(void);
+
+extern bool rcheevos_loaded;
+extern bool rcheevos_hardcore_active;
+extern bool rcheevos_hardcore_paused;
+extern bool rcheevos_state_loaded_flag;
 
 RETRO_END_DECLS
 

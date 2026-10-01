@@ -99,9 +99,10 @@ static void frontend_xdk_get_environment_settings(int *argc, char *argv[],
 #endif
 
 #if defined(_XBOX1)
-   strcpy_literal(g_defaults.dirs[DEFAULT_DIR_CORE], "D:");
-   fill_pathname_join(g_defaults.path_config, g_defaults.dirs[DEFAULT_DIR_CORE],
-         FILE_PATH_MAIN_CONFIG, sizeof(g_defaults.path_config));
+   strlcpy(g_defaults.dirs[DEFAULT_DIR_CORE],
+         "D:", sizeof(g_defaults.dirs[DEFAULT_DIR_CORE]));
+   fill_pathname_join(g_defaults.path.config, g_defaults.dirs[DEFAULT_DIR_CORE],
+         file_path_str(FILE_PATH_MAIN_CONFIG), sizeof(g_defaults.path.config));
    fill_pathname_join(g_defaults.dirs[DEFAULT_DIR_SAVESTATE],
          g_defaults.dirs[DEFAULT_DIR_CORE],
          "savestates",
@@ -141,22 +142,28 @@ static void frontend_xdk_get_environment_settings(int *argc, char *argv[],
          g_defaults.dirs[DEFAULT_DIR_CORE],
          "logs", sizeof(g_defaults.dirs[DEFAULT_DIR_LOGS]));
 #elif defined(_XBOX360)
-   strcpy_literal(g_defaults.dirs[DEFAULT_DIR_CORE],
-         "game:");
-   strcpy_literal(g_defaults.path_config,
-         "game:\\retroarch.cfg");
-   strcpy_literal(g_defaults.dirs[DEFAULT_DIR_SCREENSHOT],
-         "game:");
-   strcpy_literal(g_defaults.dirs[DEFAULT_DIR_SAVESTATE],
-         "game:\\savestates");
-   strcpy_literal(g_defaults.dirs[DEFAULT_DIR_PLAYLIST],
-         "game:\\playlists");
-   strcpy_literal(g_defaults.dirs[DEFAULT_DIR_SRAM],
-         "game:\\savefiles");
-   strcpy_literal(g_defaults.dirs[DEFAULT_DIR_SYSTEM],
-         "game:\\system");
-   strcpy_literal(g_defaults.dirs[DEFAULT_DIR_LOGS],
-         "game:\\logs");
+   strlcpy(g_defaults.dirs[DEFAULT_DIR_CORE],
+         "game:",
+         sizeof(g_defaults.dirs[DEFAULT_DIR_CORE]));
+   strlcpy(g_defaults.path.config,
+         "game:\\retroarch.cfg", sizeof(g_defaults.path.config));
+   strlcpy(g_defaults.dirs[DEFAULT_DIR_SCREENSHOT],
+         "game:",
+         sizeof(g_defaults.dirs[DEFAULT_DIR_SCREENSHOT]));
+   strlcpy(g_defaults.dirs[DEFAULT_DIR_SAVESTATE],
+         "game:\\savestates",
+         sizeof(g_defaults.dirs[DEFAULT_DIR_SAVESTATE]));
+   strlcpy(g_defaults.dirs[DEFAULT_DIR_PLAYLIST],
+         "game:\\playlists",
+         sizeof(g_defaults.dirs[DEFAULT_DIR_PLAYLIST]));
+   strlcpy(g_defaults.dirs[DEFAULT_DIR_SRAM],
+         "game:\\savefiles",
+         sizeof(g_defaults.dirs[DEFAULT_DIR_SRAM]));
+   strlcpy(g_defaults.dirs[DEFAULT_DIR_SYSTEM],
+         "game:\\system", sizeof(g_defaults.dirs[DEFAULT_DIR_SYSTEM]));
+   strlcpy(g_defaults.dirs[DEFAULT_DIR_LOGS],
+         "game:\\logs",
+         sizeof(g_defaults.dirs[DEFAULT_DIR_LOGS]));
 #endif
    fill_pathname_join(g_defaults.dirs[DEFAULT_DIR_CORE_INFO],
          g_defaults.dirs[DEFAULT_DIR_CORE],
@@ -227,8 +234,6 @@ exit:
    else
       verbosity_disable();
 #endif
-
-   dir_check_defaults("custom.ini");
 #endif
 }
 
@@ -252,20 +257,14 @@ static void frontend_xdk_exec(const char *path, bool should_load_content)
    bool original_verbose       = verbosity_is_enabled();
 #endif
 #if defined(_XBOX1)
-#ifndef IS_SALAMANDER
    LAUNCH_DATA ptr;
-#endif
 #elif defined(_XBOX360)
    char game_path[1024]        = {0};
 #endif
 
 #ifdef IS_SALAMANDER
    if (!string_is_empty(path))
-#ifdef _XBOX360
-      XLaunchNewImage(path, 0);
-#else
       XLaunchNewImage(path, NULL);
-#endif
 #else
 #if defined(_XBOX1)
    memset(&ptr, 0, sizeof(ptr));
@@ -351,7 +350,7 @@ static int frontend_xdk_get_rating(void)
 #endif
 }
 
-enum frontend_architecture frontend_xdk_get_arch(void)
+enum frontend_architecture frontend_xdk_get_architecture(void)
 {
 #if defined(_XBOX360)
    return FRONTEND_ARCH_PPC;
@@ -409,35 +408,33 @@ static int frontend_xdk_parse_drive_list(void *data, bool load_content)
 }
 
 frontend_ctx_driver_t frontend_ctx_xdk = {
-   frontend_xdk_get_env_settings,/* env_settings */
-   frontend_xdk_init,            /* init   */
+   frontend_xdk_get_environment_settings,
+   frontend_xdk_init,
    NULL,                         /* deinit */
-   frontend_xdk_exitspawn,       /* exitspawn */
+   frontend_xdk_exitspawn,
    NULL,                         /* process_args */
-   frontend_xdk_exec,            /* exec */
+   frontend_xdk_exec,
 #ifdef IS_SALAMANDER
-   NULL,                         /* set_fork */
+   NULL,
 #else
-   frontend_xdk_set_fork,        /* set_fork */
+   frontend_xdk_set_fork,
 #endif
    NULL,                         /* shutdown */
    NULL,                         /* get_name */
    NULL,                         /* get_os */
    frontend_xdk_get_rating,
-   NULL,                         /* content_loaded */
-   frontend_xdk_get_arch,        /* get_architecture */
+   NULL,                         /* load_content */
+   frontend_xdk_get_architecture,
    NULL,                         /* get_powerstate */
-   frontend_xdk_parse_drive_list,/* parse_drive_list */
-   NULL,                         /* get_total_mem */
-   NULL,                         /* get_free_mem */
+   frontend_xdk_parse_drive_list,
+   NULL,                         /* get_mem_total */
+   NULL,                         /* get_mem_free */
    NULL,                         /* install_signal_handler */
    NULL,                         /* get_sighandler_state */
    NULL,                         /* set_sighandler_state */
    NULL,                         /* destroy_sighandler_state */
    NULL,                         /* attach_console */
    NULL,                         /* detach_console */
-   NULL,                         /* get_lakka_version */
-   NULL,                         /* set_screen_brightness */
    NULL,                         /* watch_path_for_changes */
    NULL,                         /* check_for_path_changes */
    NULL,                         /* set_sustained_performance_mode */
@@ -445,7 +442,5 @@ frontend_ctx_driver_t frontend_ctx_xdk = {
    NULL,                         /* get_user_language */
    NULL,                         /* is_narrator_running */
    NULL,                         /* accessibility_speak */
-   NULL,                         /* set_gamemode */
-   "xdk",                        /* ident */
-   NULL                          /* get_video_driver */
+   "xdk",
 };

@@ -33,7 +33,29 @@
 
 RETRO_BEGIN_DECLS
 
-/* Enums */
+typedef struct
+{
+   unsigned hours;
+   unsigned minutes;
+   unsigned seconds;
+} rtl_runtime_t;
+
+typedef struct
+{
+   unsigned year;
+   unsigned month;
+   unsigned day;
+   unsigned hour;
+   unsigned minute;
+   unsigned second;
+} rtl_last_played_t;
+
+typedef struct
+{
+   rtl_runtime_t runtime;
+   rtl_last_played_t last_played;
+   char path[PATH_MAX_LENGTH];
+} runtime_log_t;
 
 enum playlist_sublabel_last_played_style_type
 {
@@ -80,39 +102,11 @@ enum playlist_sublabel_runtime
    PLAYLIST_RUNTIME_LAST
 };
 
-/* Structs */
-
-typedef struct
-{
-   unsigned hours;
-   unsigned minutes;
-   unsigned seconds;
-} rtl_runtime_t;
-
-typedef struct
-{
-   unsigned year;
-   unsigned month;
-   unsigned day;
-   unsigned hour;
-   unsigned minute;
-   unsigned second;
-} rtl_last_played_t;
-
-typedef struct
-{
-   rtl_runtime_t runtime;           /* unsigned alignment */
-   rtl_last_played_t last_played;   /* unsigned alignment */
-   char path[PATH_MAX_LENGTH];
-} runtime_log_t;
-
 /* Initialisation */
 
 /* Initialise runtime log, loading current parameters
  * if log file exists. Returned object must be free()'d.
- * Returns NULL if core_path is invalid, or content_path
- * is invalid and core does not support contentless
- * operation */
+ * Returns NULL if content_path and/or core_path are invalid */
 runtime_log_t *runtime_log_init(
       const char *content_path,
       const char *core_path,
@@ -206,20 +200,6 @@ void runtime_update_playlist(
       bool log_per_core,
       enum playlist_sublabel_last_played_style_type timedate_style,
       enum playlist_sublabel_last_played_date_separator_type date_separator);
-
-#if defined(HAVE_MENU)
-/* Contentless cores manipulation */
-
-/* Updates specified contentless core runtime values with
- * contents of associated log file */
-void runtime_update_contentless_core(
-      const char *core_path,
-      const char *dir_runtime_log,
-      const char *dir_playlist,
-      bool log_per_core,
-      enum playlist_sublabel_last_played_style_type timedate_style,
-      enum playlist_sublabel_last_played_date_separator_type date_separator);
-#endif
 
 RETRO_END_DECLS
 

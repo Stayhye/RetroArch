@@ -210,8 +210,7 @@ static void drm_surface_free(void *data, struct drm_surface **sp)
 /* Changes surface ratio only without recreating the buffers etc. */
 static void drm_surface_set_aspect(struct drm_surface *surface, float aspect)
 {
-   if (surface)
-      surface->aspect = aspect;
+	surface->aspect = aspect;
 }
 
 static void drm_surface_setup(void *data,  int src_width, int src_height,
@@ -758,9 +757,7 @@ static bool drm_gfx_frame(void *data, const void *frame, unsigned width,
       video_frame_info_t *video_info)
 {
    struct drm_video *_drmvars = data;
-#ifdef HAVE_MENU
    bool menu_is_alive         = video_info->menu_is_alive;
-#endif
 
    if (  ( width != _drmvars->core_width) ||
          (height != _drmvars->core_height))
@@ -923,7 +920,7 @@ static void drm_set_aspect_ratio (void *data, unsigned aspect_ratio_idx)
    /* Here we obtain the new aspect ratio. */
    float new_aspect = aspectratio_lut[aspect_ratio_idx].value;
 
-   if (_drmvars && _drmvars->current_aspect != new_aspect)
+   if (_drmvars->current_aspect != new_aspect)
    {
       _drmvars->current_aspect = new_aspect;
       drm_surface_set_aspect(_drmvars->main_surface, new_aspect);
@@ -956,11 +953,7 @@ static const video_poke_interface_t drm_poke_interface = {
    NULL,                         /* grab_mouse_toggle */
    NULL,                         /* get_current_shader */
    NULL,                         /* get_current_software_framebuffer */
-   NULL,                         /* get_hw_render_interface */
-   NULL,                         /* set_hdr_max_nits */
-   NULL,                         /* set_hdr_paper_white_nits */
-   NULL,                         /* set_hdr_contrast */
-   NULL                          /* set_hdr_expand_gamut */
+   NULL                          /* get_hw_render_interface */
 };
 
 static void drm_gfx_get_poke_interface(void *data,

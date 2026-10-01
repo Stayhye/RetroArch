@@ -35,6 +35,12 @@
 #include <stdio.h>
 #include <string.h>
 
+#if defined(MBEDTLS_PLATFORM_C)
+#include "mbedtls/platform.h"
+#else
+#define mbedtls_snprintf snprintf
+#endif
+
 #if defined(MBEDTLS_X509_USE_C) || defined(MBEDTLS_X509_CREATE_C)
 #include "mbedtls/x509.h"
 #endif
@@ -309,6 +315,18 @@ typedef struct {
 static const oid_sig_alg_t oid_sig_alg[] =
 {
 #if defined(MBEDTLS_RSA_C)
+#if defined(MBEDTLS_MD2_C)
+    {
+        { ADD_LEN( MBEDTLS_OID_PKCS1_MD2 ),        "md2WithRSAEncryption",     "RSA with MD2" },
+        MBEDTLS_MD_MD2,      MBEDTLS_PK_RSA,
+    },
+#endif /* MBEDTLS_MD2_C */
+#if defined(MBEDTLS_MD4_C)
+    {
+        { ADD_LEN( MBEDTLS_OID_PKCS1_MD4 ),        "md4WithRSAEncryption",     "RSA with MD4" },
+        MBEDTLS_MD_MD4,      MBEDTLS_PK_RSA,
+    },
+#endif /* MBEDTLS_MD4_C */
 #if defined(MBEDTLS_MD5_C)
     {
         { ADD_LEN( MBEDTLS_OID_PKCS1_MD5 ),        "md5WithRSAEncryption",     "RSA with MD5" },
@@ -554,6 +572,18 @@ typedef struct {
 
 static const oid_md_alg_t oid_md_alg[] =
 {
+#if defined(MBEDTLS_MD2_C)
+    {
+        { ADD_LEN( MBEDTLS_OID_DIGEST_ALG_MD2 ),       "id-md2",       "MD2" },
+        MBEDTLS_MD_MD2,
+    },
+#endif /* MBEDTLS_MD2_C */
+#if defined(MBEDTLS_MD4_C)
+    {
+        { ADD_LEN( MBEDTLS_OID_DIGEST_ALG_MD4 ),       "id-md4",       "MD4" },
+        MBEDTLS_MD_MD4,
+    },
+#endif /* MBEDTLS_MD4_C */
 #if defined(MBEDTLS_MD5_C)
     {
         { ADD_LEN( MBEDTLS_OID_DIGEST_ALG_MD5 ),       "id-md5",       "MD5" },
@@ -651,7 +681,7 @@ int mbedtls_oid_get_numeric_string( char *buf, size_t size,
     /* First byte contains first two dots */
     if( oid->len > 0 )
     {
-        ret = snprintf( p, n, "%d.%d", oid->p[0] / 40, oid->p[0] % 40 );
+        ret = mbedtls_snprintf( p, n, "%d.%d", oid->p[0] / 40, oid->p[0] % 40 );
         OID_SAFE_SNPRINTF;
     }
 
@@ -668,7 +698,7 @@ int mbedtls_oid_get_numeric_string( char *buf, size_t size,
         if( !( oid->p[i] & 0x80 ) )
         {
             /* Last byte */
-            ret = snprintf( p, n, ".%d", value );
+            ret = mbedtls_snprintf( p, n, ".%d", value );
             OID_SAFE_SNPRINTF;
             value = 0;
         }

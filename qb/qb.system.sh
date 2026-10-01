@@ -1,5 +1,4 @@
 PLATFORM_NAME="$(uname -s)"
-ARCHITECTURE_NAME="$(uname -m)"
 
 if [ -n "${CROSS_COMPILE:=}" ]; then
 	case "$CROSS_COMPILE" in

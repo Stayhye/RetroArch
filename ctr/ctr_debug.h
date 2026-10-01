@@ -8,7 +8,6 @@
 extern "C" {
 #endif
 void wait_for_input(void);
-void error_and_quit(const char* errorStr);
 void dump_result_value(Result val);
 #ifdef __cplusplus
 }
