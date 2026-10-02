@@ -136,23 +136,21 @@ POSTCOMPILE = mv -f $*.Tdepend $*.depend
 
 all: $(TARGETS)
 
-%.o: %.cpp %.depend
+%.o: %.cpp
 	$(CXX) -c -o $@ $< $(CXXFLAGS) $(INCDIRS) $(DEPFLAGS)
 	$(POSTCOMPILE)
 
-%.o: %.c %.depend
+%.o: %.c
 	$(CC) -c -o $@ $< $(CFLAGS) $(INCDIRS) $(DEPFLAGS)
 	$(POSTCOMPILE)
 
-%.o: %.S %.depend
+%.o: %.S
 	$(CC) -c -o $@ $< $(ASFLAGS) $(INCDIRS) $(DEPFLAGS)
 	$(POSTCOMPILE)
 
-%.o: %.s %.depend
+%.o: %.s
 	$(CC) -c -o $@ $< $(ASFLAGS) $(INCDIRS) $(DEPFLAGS)
 	$(POSTCOMPILE)
-
-%.depend: ;
 
 $(TARGET).elf: $(OBJ) libretro_orbis.a
 	$(LD) $(CRTFILE) $(OBJ) $(LDFLAGS) $(LIBDIRS) $(LIBS) -o $@
@@ -162,6 +160,5 @@ clean:
 	rm -f $(OBJ:.o=.depend)
 
 .PHONY: clean all
-.PRECIOUS: %.depend
 
 -include $(OBJ:.o=.depend)
