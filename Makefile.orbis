@@ -1,13 +1,13 @@
-TARGET		    := retroarch_orbis
-DEBUG               ?= 0
+TARGET            := retroarch_orbis
+DEBUG                ?= 0
 GRIFFIN_BUILD        = 0
 WHOLE_ARCHIVE_LINK   = 0
 
-PS4_TITLE_ID	:= RETROARCH
-PS4_TITLE_NAME	:= RetroArch
+PS4_TITLE_ID    := RETROARCH
+PS4_TITLE_NAME    := RetroArch
 
 PC_DEVELOPMENT_IP_ADDRESS  =
-PC_DEVELOPMENT_UDP_PORT	   =
+PC_DEVELOPMENT_UDP_PORT       =
 
 OBJ :=
 
@@ -23,33 +23,33 @@ ifeq ($(GRIFFIN_BUILD), 1)
 	endif
 else
 
-	HAVE_FILTERS_BUILTIN	:= 1
-	HAVE_LANGEXTRA		:= 0
-	HAVE_RPNG		:= 1
-	HAVE_RJPEG		:= 1
-	HAVE_RBMP		:= 1
-	HAVE_RTGA		:= 1
-	HAVE_ZLIB		:= 1
-	HAVE_OVERLAY		:= 1
+	HAVE_FILTERS_BUILTIN    := 1
+	HAVE_LANGEXTRA        := 0
+	HAVE_RPNG        := 1
+	HAVE_RJPEG        := 1
+	HAVE_RBMP        := 1
+	HAVE_RTGA        := 1
+	HAVE_ZLIB        := 1
+	HAVE_OVERLAY        := 1
 	HAVE_VIDEO_LAYOUT := 0
-	HAVE_7ZIP		:= 1
-	HAVE_EGL 		:= 1
+	HAVE_7ZIP        := 1
+	HAVE_EGL         := 1
 	HAVE_GFX_WIDGETS := 1
 	HAVE_GLSL      := 1
-	HAVE_OPENGLES  		:= 1
-	HAVE_NETWORKING		:= 0
-	HAVE_SOCKET_LEGACY	:= 0
-	HAVE_MENU		:= 1
-	HAVE_MENU_COMMON	:= 1
+	HAVE_OPENGLES         := 1
+	HAVE_NETWORKING        := 0
+	HAVE_SOCKET_LEGACY    := 0
+	HAVE_MENU        := 1
+	HAVE_MENU_COMMON    := 1
 	HAVE_CONFIGFILE := 1
-	HAVE_RGUI		:= 0
-	HAVE_MATERIALUI 	:= 0
-	HAVE_XMB		:= 1
-	HAVE_THREADS		:= 1
-	HAVE_LIBRETRODB		:= 1
-	HAVE_CC_RESAMPLER	:= 1
-	HAVE_CHEEVOS		:= 1
-	RARCH_CONSOLE		:= 1
+	HAVE_RGUI        := 0
+	HAVE_MATERIALUI      := 0
+	HAVE_XMB        := 1
+	HAVE_THREADS        := 1
+	HAVE_LIBRETRODB        := 1
+	HAVE_CC_RESAMPLER    := 1
+	HAVE_CHEEVOS        := 1
+	RARCH_CONSOLE        := 1
 	HAVE_STATIC_VIDEO_FILTERS = 1
 	HAVE_STATIC_AUDIO_FILTERS = 1
 
@@ -86,6 +86,12 @@ LIBDIRS := -L.
 ARCHFLAGS := -m64 -DORBIS -DHAVE_LIBORBIS
 CFLAGS    += $(ARCHFLAGS) -std=c11 -mcmodel=large -ffreestanding -nostdlib -nostdinc -fno-builtin -fno-stack-protector
 
+# Automatically resolve Clang's internal resource headers (fixes missing <inttypes.h> under -nostdinc)
+CLANG_INCLUDE := $(shell $(CC) -print-file-name=include)
+ifneq ($(CLANG_INCLUDE),)
+    CFLAGS += -isystem $(CLANG_INCLUDE)
+endif
+
 ifeq ($(DEBUG), 1)
    CFLAGS += -O2 -g
 else
@@ -119,9 +125,9 @@ endif
 CXXFLAGS := $(CFLAGS)
 
 PS4_LIBS := -lps4link -ldebugnet -lorbisFile -lelfloader -lorbisKeyboard -lorbis2d -lpng -lz -lorbisGl -lorbisPad -lorbisAudio -lmod -lorbisFileBrowser -lorbisXbmFont -lSceNet_stub -lScePigletv2VSH_stub -lSceSystemService_stub -lSceUserService_stub -lScePad_stub -lSceAudioOut_stub -lSceIme_stub -lSceSysmodule_stub \
-	-lPs4_extension_kernel_call_standard -lPs4_extension_kernel_execute_dynlib_prepare_dlclose -lPs4_common_kernel -lPs4_common_user -lPs4_common_generic -lPs4LibCInternalAdaptive_stub -lPs4LibKernelAdaptive_stub -lSceLibcInternal_stub -lkernel_stub -lps4Kernel_stub -lPs4_base_stub_resolve_minimal -lPs4_base_kernel_dlsym_standard -lPs4_base_kernel_seek_elf_address_standard -lPs4_base_assembler_register_parameter_standard -lPs4_base_assembler_system_call_standard
+    -lPs4_extension_kernel_call_standard -lPs4_extension_kernel_execute_dynlib_prepare_dlclose -lPs4_common_kernel -lPs4_common_user -lPs4_common_generic -lPs4LibCInternalAdaptive_stub -lPs4LibKernelAdaptive_stub -lSceLibcInternal_stub -lkernel_stub -lps4Kernel_stub -lPs4_base_stub_resolve_minimal -lPs4_base_kernel_dlsym_standard -lPs4_base_kernel_seek_elf_address_standard -lPs4_base_assembler_register_parameter_standard -lPs4_base_assembler_system_call_standard
 
-LIBS	:= $(WHOLE_START) -lretro_orbis $(WHOLE_END) $(PS4_LIBS)
+LIBS    := $(WHOLE_START) -lretro_orbis $(WHOLE_END) $(PS4_LIBS)
 
 TARGETS := $(TARGET).elf
 
@@ -130,22 +136,18 @@ POSTCOMPILE = mv -f $*.Tdepend $*.depend
 
 all: $(TARGETS)
 
-%.o: %.cpp
 %.o: %.cpp %.depend
 	$(CXX) -c -o $@ $< $(CXXFLAGS) $(INCDIRS) $(DEPFLAGS)
 	$(POSTCOMPILE)
 
-%.o: %.c
 %.o: %.c %.depend
 	$(CC) -c -o $@ $< $(CFLAGS) $(INCDIRS) $(DEPFLAGS)
 	$(POSTCOMPILE)
 
-%.o: %.S
 %.o: %.S %.depend
 	$(CC) -c -o $@ $< $(ASFLAGS) $(INCDIRS) $(DEPFLAGS)
 	$(POSTCOMPILE)
 
-%.o: %.s
 %.o: %.s %.depend
 	$(CC) -c -o $@ $< $(ASFLAGS) $(INCDIRS) $(DEPFLAGS)
 	$(POSTCOMPILE)
